@@ -1,20 +1,89 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# BeatVegas MVP — Startup Guide
 
-# Run and deploy your AI Studio app
+A concise guide to start the BeatVegas MVP app. Minimum required terminals: 2 (Backend + Frontend). Optional third terminal if running MongoDB locally.
 
-This contains everything you need to run your app locally.
+## Terminal setup
+- Terminal 1 — Backend (FastAPI)
+- Terminal 2 — Frontend (React + Vite)
+- Terminal 3 (optional) — MongoDB (local) or use MongoDB Atlas (no local process)
 
-View your app in AI Studio: https://ai.studio/apps/drive/1he2V5b-xfKPasCVkhxt9S6PLeLYNRSI6
+## Step-by-step
 
-## Run Locally
+### Terminal 1 — Start Backend API
+Commands:
+```bash
+# from backend directory
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+Expected:
+- Backend: http://localhost:8000
+- API docs (Swagger): http://localhost:8000/docs
+- Alternative docs (Redoc): http://localhost:8000/redoc
 
-**Prerequisites:**  Node.js
+### Terminal 2 — Start Frontend
+Commands:
+```bash
+# from frontend directory
+npm install
+npm run dev
+```
+Expected:
+- Frontend: http://localhost:5173
 
+### Terminal 3 (Optional) — MongoDB
+Option A — MongoDB Atlas (recommended)
+- No local process required.
+- Set MONGODB_URI in .env to your Atlas connection string.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Option B — Local MongoDB (development)
+```bash
+# ensure mongod is running
+mongod --port 27017 --dbpath ./data/db
+```
+
+## Pre-start checklist
+- .env: required variables present (e.g. MONGODB_URI, ODDS_API_KEY, other app-specific keys)
+- Dependencies installed:
+   - Backend: Python packages from requirements.txt
+   - Frontend: npm packages
+- MongoDB reachable (Atlas or local)
+
+## Quick start (two terminals)
+Terminal 1 (backend):
+```bash
+cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+Terminal 2 (frontend):
+```bash
+cd frontend
+npm run dev
+```
+
+## Test the setup
+- Backend health / API: curl http://localhost:8000/health or open /docs
+- Frontend: open http://localhost:5173
+- Full flow: exercise a UI action that triggers a backend request
+
+## How to stop
+- Backend / Frontend: press Ctrl + C in each terminal
+- Local MongoDB: stop mongod process
+
+## Troubleshooting (common issues)
+- "Port 8000 already in use": stop the process using that port or change backend port.
+- "MongoDB connection refused": verify MONGODB_URI, network access, and that mongod is running.
+- "ODDS_API_KEY not configured": add the key to .env.
+- "Module not found" (Python): ensure virtualenv is active and requirements are installed.
+- Frontend errors: run npm install; check console for missing packages or build errors.
+
+## Summary
+| Component   | Terminal | Command (example)                          | Port  | URL                      |
+|-------------|----------|-------------------------------------------|-------|--------------------------|
+| Backend API | 1        | uvicorn main:app --reload --port 8000     | 8000  | http://localhost:8000    |
+| Frontend    | 2        | npm run dev                               | 5173  | http://localhost:5173    |
+| MongoDB     | 3 (opt)  | mongod --port 27017                       | 27017 | (local)                 |
+
+Minimum required: 2 terminals (Backend + Frontend). Optional: 3 if running MongoDB locally.
+
+Need a startup script or help creating a .env template? I can generate one for you.

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getAffiliateStats, getRecentReferrals } from '../services/api';
+import { getAffiliateStats, getRecentReferrals, getUserProfile } from '../services/api';
 import type { AffiliateStat, Referral } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
@@ -20,14 +20,20 @@ const Affiliates: React.FC = () => {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [statsData, referralsData] = await Promise.all([getAffiliateStats(), getRecentReferrals()]);
+        const [statsData, referralsData, profileData] = await Promise.all([
+          getAffiliateStats(), 
+          getRecentReferrals(),
+          getUserProfile().catch(() => null)
+        ]);
         setStats(statsData);
         setReferrals(referralsData);
+        setProfile(profileData);
         setError(null);
       } catch (err) {
         setError('Failed to fetch affiliate data.');
@@ -38,6 +44,10 @@ const Affiliates: React.FC = () => {
     };
     loadData();
   }, []);
+
+  const referralLink = profile?.username 
+    ? `https://aibet.co/ref/${profile.username}` 
+    : 'https://aibet.co/ref/yourUsername';
 
   if (error) {
     return <div className="text-center text-bold-red">{error}</div>;
@@ -57,7 +67,7 @@ const Affiliates: React.FC = () => {
                 <h3 className="font-bold text-white mb-2">Your Referral Link</h3>
                 <p className="text-sm text-light-gray mb-4">Share this link to earn a commission on every new subscriber!</p>
                 <div className="flex items-center space-x-2">
-                    <input type="text" readOnly value="https://aibet.co/ref/alexryder77" className="w-full bg-navy border-none rounded-lg px-4 py-2 text-white"/>
+                    <input type="text" readOnly value={referralLink} className="w-full bg-navy border-none rounded-lg px-4 py-2 text-white"/>
                     <button className="bg-electric-blue text-white font-semibold px-6 py-2 rounded-lg hover:bg-opacity-80 transition-colors">Copy Link</button>
                 </div>
             </div>

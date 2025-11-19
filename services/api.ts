@@ -80,56 +80,137 @@ export const fetchEvents = async (): Promise<Event[]> => {
         throw new Error('Failed to fetch live event data.');
     }
 
-    return response.json();
+    const data = await response.json();
+    // Backend may return either an array or an object { count, events }
+    if (Array.isArray(data)) {
+        return normalizeEvents(data);
+    }
+    if (data && Array.isArray((data as any).events)) {
+        return normalizeEvents((data as any).events);
+    }
+    // Unexpected shape
+    throw new Error('Invalid response shape from events API');
 };
 
+// Helper to normalize event field names from backend
+function normalizeEvents(events: any[]): Event[] {
+    return events.map(event => ({
+        ...event,
+        id: event.id || event.event_id, // Backend uses event_id, frontend expects id
+    }));
+}
 
-// --- MOCK DATA FOR OTHER FEATURES (to be replaced) ---
-const MOCK_PREDICTIONS: Prediction[] = [
-  { event_id: 'evt001', confidence: 0.85 },
-  { event_id: 'evt002', confidence: 0.68 },
-  { event_id: 'evt003', confidence: 0.48 },
-];
 
-const MOCK_AFFILIATE_STATS: AffiliateStat[] = [
-    { label: 'Total Referrals', value: '128', change: '+12 this month', changeType: 'increase' },
-    { label: 'Active Subscriptions', value: '82', change: '+5 this month', changeType: 'increase' },
-    { label: 'Commission Rate', value: '25%', change: 'Tier 2', changeType: 'increase' },
-    { label: 'Monthly Earnings', value: '$1,230.00', change: '-$50 vs last month', changeType: 'decrease' },
-]
+// --- Real backend-powered helpers for other features ---
+const ensureAuthHeaders = () => {
+    const token = getToken();
+    if (!token) throw new Error('No authentication token found.');
+    return { 'Authorization': `Bearer ${token}` };
+};
 
-const MOCK_REFERRALS: Referral[] = [
-    { id: 'ref01', user: 'user_fanatic_22', date_joined: '2024-07-21', status: 'Active', commission: 15.00 },
-    { id: 'ref02', user: 'bet_believer', date_joined: '2024-07-19', status: 'Active', commission: 15.00 },
-    { id: 'ref03', user: 'sports_guru99', date_joined: '2024-07-15', status: 'Cancelled', commission: 0.00 },
-];
+export const getPredictions = async (): Promise<Prediction[]> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/core/predictions`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch predictions');
+    const data = await res.json();
+    if (Array.isArray(data)) return data as Prediction[];
+    if (data && Array.isArray((data as any).predictions)) return (data as any).predictions;
+    return [];
+};
 
-const MOCK_CHAT_MESSAGES: ChatMessage[] = [
-    { id: 'msg01', user: { username: 'BetMasterFlex', avatarUrl: 'https://i.pravatar.cc/150?u=BetMasterFlex' }, message: 'That Lakers prediction is bold. I\'m taking the points with the Celtics.', timestamp: '2 min ago' },
-    { id: 'msg02', user: { username: 'StatsGeek', avatarUrl: 'https://i.pravatar.cc/150?u=StatsGeek' }, message: 'The AI has been hot on overs lately. Tailing the 225.5 total.', timestamp: '1 min ago' },
-    { id: 'msg03', user: { username: 'Admin', avatarUrl: 'https://i.pravatar.cc/150?u=Admin', is_admin: true }, message: 'Welcome to the community! Remember to bet responsibly.', timestamp: 'Announcement', announcement: true },
-];
+export const getLeaderboard = async (): Promise<User[]> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/core/leaderboard`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch leaderboard');
+    const data = await res.json();
+    if (Array.isArray(data)) return data as User[];
+    if (data && Array.isArray((data as any).leaderboard)) return (data as any).leaderboard;
+    return [];
+};
 
-const MOCK_TOP_ANALYSTS: TopAnalyst[] = [
-    { id: 'usr01', rank: 1, username: 'BetMasterFlex', avatarUrl: 'https://i.pravatar.cc/150?u=BetMasterFlex', units: 15.2 },
-    { id: 'usr02', rank: 2, username: 'StatsGeek', avatarUrl: 'https://i.pravatar.cc/150?u=StatsGeek', units: 12.8 },
-    { id: 'usr03', rank: 3, username: 'ParlayPrincess', avatarUrl: 'https://i.pravatar.cc/150?u=ParlayPrincess', units: 9.5 },
-];
+export const getAffiliateStats = async (): Promise<AffiliateStat[]> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/core/affiliate-stats`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch affiliate stats');
+    const data = await res.json();
+    if (Array.isArray(data)) return data as AffiliateStat[];
+    if (data && Array.isArray((data as any).affiliate_stats)) return (data as any).affiliate_stats;
+    return [];
+};
 
-const MOCK_LEADERBOARD_USERS: User[] = [
-    { id: 'usr01', rank: 1, username: 'BetMasterFlex', avatarUrl: 'https://i.pravatar.cc/150?u=BetMasterFlex', score: 15200, streaks: 8 },
-    { id: 'usr02', rank: 2, username: 'StatsGeek', avatarUrl: 'https://i.pravatar.cc/150?u=StatsGeek', score: 12800, streaks: 5 },
-    { id: 'usr03', rank: 3, username: 'ParlayPrincess', avatarUrl: 'https://i.pravatar.cc/150?u=ParlayPrincess', score: 9500, streaks: 3 },
-    { id: 'usr04', rank: 4, username: 'WagerWizard', avatarUrl: 'https://i.pravatar.cc/150?u=WagerWizard', score: 8700, streaks: 2 },
-    { id: 'usr05', rank: 5, username: 'LuckyLocks', avatarUrl: 'https://i.pravatar.cc/150?u=LuckyLocks', score: 8100, streaks: 1 },
-];
+export const getRecentReferrals = async (): Promise<Referral[]> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/core/referrals`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch referrals');
+    const data = await res.json();
+    if (Array.isArray(data)) return data as Referral[];
+    if (data && Array.isArray((data as any).referrals)) return (data as any).referrals;
+    return [];
+};
 
-const simulateApiCall = <T,>(data: T): Promise<T> =>
-  new Promise((resolve) => setTimeout(() => resolve(data), 500));
+export const getChatMessages = async (): Promise<ChatMessage[]> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/core/chat`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch chat messages');
+    const data = await res.json();
+    if (Array.isArray(data)) return data as ChatMessage[];
+    if (data && Array.isArray((data as any).messages)) return (data as any).messages;
+    return [];
+};
 
-export const getPredictions = (): Promise<Prediction[]> => simulateApiCall(MOCK_PREDICTIONS);
-export const getLeaderboard = (): Promise<User[]> => simulateApiCall(MOCK_LEADERBOARD_USERS);
-export const getAffiliateStats = (): Promise<AffiliateStat[]> => simulateApiCall(MOCK_AFFILIATE_STATS);
-export const getRecentReferrals = (): Promise<Referral[]> => simulateApiCall(MOCK_REFERRALS);
-export const getChatMessages = (): Promise<ChatMessage[]> => simulateApiCall(MOCK_CHAT_MESSAGES);
-export const getTopAnalysts = (): Promise<TopAnalyst[]> => simulateApiCall(MOCK_TOP_ANALYSTS);
+export const getTopAnalysts = async (): Promise<TopAnalyst[]> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/core/top-analysts`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch top analysts');
+    const data = await res.json();
+    if (Array.isArray(data)) return data as TopAnalyst[];
+    if (data && Array.isArray((data as any).analysts)) return (data as any).analysts;
+    return [];
+};
+
+// --- Account endpoints ---
+export const getUserProfile = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/profile`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch profile');
+    const data = await res.json();
+    return data.profile || data;
+};
+
+export const getUserWallet = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/wallet`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch wallet');
+    const data = await res.json();
+    return data.wallet || data;
+};
+
+export const getUserSettings = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/settings`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch settings');
+    const data = await res.json();
+    return data.settings || data;
+};
+
+export const updateUserSettings = async (settings: any) => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/account/settings`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(settings),
+    });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to update settings');
+    const data = await res.json();
+    return data.settings || data;
+};

@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+requests
+pymongo
+python-dotenv
+apscheduler
+pydantic
+pydantic[email]
+python-multipart
+stripe

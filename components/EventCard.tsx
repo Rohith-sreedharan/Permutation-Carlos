@@ -11,8 +11,15 @@ const getConfidenceColor = (confidence: number) => {
     return 'bg-bold-red';
 }
 
-const EventCard: React.FC<EventCardProps> = ({ event }) => {
-  const { home_team, away_team, commence_time, bets, top_prop_bet, prediction, sport_key } = event;
+const EventCard: React.FC<EventCardProps> = ({ event, prediction }) => {
+  const {
+    home_team,
+    away_team,
+    commence_time,
+    sport_key,
+    bets = [],
+    top_prop_bet = null,
+  } = event;
   const gameTime = new Date(commence_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).replace(' ', ' ') + ' EST';
 
   const confidencePercentage = prediction ? Math.round(prediction.confidence * 100) : 0;
@@ -27,17 +34,21 @@ const EventCard: React.FC<EventCardProps> = ({ event }) => {
       </div>
       
       <div className="space-y-2">
-        {bets.map(bet => (
+        {bets.length > 0 ? (
+          bets.map(bet => (
             <div key={bet.type} className="flex justify-between items-center text-sm">
                 <span className="text-light-gray">{bet.type}</span>
                 <span className="font-semibold text-white">{bet.pick} {bet.value}</span>
             </div>
-        ))}
+          ))
+        ) : (
+          <div className="text-sm text-light-gray italic">No betting lines available yet</div>
+        )}
       </div>
 
       <div className="border-t border-navy pt-3">
         <p className="text-xs text-light-gray font-semibold">TOP PROP BET</p>
-        <p className="text-sm font-bold text-white">{top_prop_bet}</p>
+        <p className="text-sm font-bold text-white">{top_prop_bet || 'No prop bet available'}</p>
       </div>
       
       {prediction && (

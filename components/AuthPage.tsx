@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { loginUser, registerUser } from '../services/api';
+import { swalSuccess, swalError } from '../utils/swal';
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
@@ -65,9 +66,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
         await loginUser({ email, password });
         onAuthSuccess();
       } else {
-        await registerUser({ email, username: email, password });
-        handleModeChange('signin');
-        alert('Registration successful! Please sign in.');
+  await registerUser({ email, username: email, password });
+  handleModeChange('signin');
+  await swalSuccess('Registration successful!', 'Please sign in.');
       }
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');

@@ -1,0 +1,10 @@
+{
+  "min_edge_threshold": 0.05,
+  "min_confidence": 0.45,
+  "sharp_consensus_weight": 0.3,
+  "max_picks_per_day": 10,
+  "kelly_fraction": 0.25,
+  "markets": ["h2h", "spreads", "totals"],
+  "last_updated": "2025-11-10T00:00:00.000Z",
+  "version": "1.0.0"
+}
