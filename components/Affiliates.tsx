@@ -46,8 +46,8 @@ const Affiliates: React.FC = () => {
   }, []);
 
   const referralLink = profile?.username 
-    ? `https://aibet.co/ref/${profile.username}` 
-    : 'https://aibet.co/ref/yourUsername';
+    ? `https://beatvegas.ai/ref/${profile.username}` 
+    : 'https://beatvegas.ai/ref/yourUsername';
 
   if (error) {
     return <div className="text-center text-bold-red">{error}</div>;

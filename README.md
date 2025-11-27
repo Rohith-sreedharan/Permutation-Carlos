@@ -1,89 +1,143 @@
-# BeatVegas MVP — Startup Guide
+# BeatVegas Analytics Engine v1.0
 
-A concise guide to start the BeatVegas MVP app. Minimum required terminals: 2 (Backend + Frontend). Optional third terminal if running MongoDB locally.
+Enterprise-grade sports analytics platform with real-time Monte Carlo simulations, multi-agent AI system, and compliant decision intelligence features.
 
-## Terminal setup
-- Terminal 1 — Backend (FastAPI)
-- Terminal 2 — Frontend (React + Vite)
-- Terminal 3 (optional) — MongoDB (local) or use MongoDB Atlas (no local process)
+## 🏗️ Architecture
 
-## Step-by-step
+### Backend (Python/FastAPI)
+- **Monte Carlo Engine**: 50,000+ iteration simulations for NBA, NFL, MLB, NHL
+- **7-Agent Multi-Agent System**: Specialized AI agents for parlay analysis, risk management, market analysis, and behavioral modeling
+- **Event Bus**: Redis-powered pub/sub for real-time agent communication
+- **WebSocket Support**: Live updates for game events and risk alerts
 
-### Terminal 1 — Start Backend API
-Commands:
+### Frontend (React/TypeScript/Vite)
+- **Dashboard**: Real-time event cards with simulation results
+- **Decision Capital Profile**: Compliance-focused risk management (replaces gambling terminology)
+- **Creator Intelligence Marketplace**: Verified analyst content platform
+- **Stripe Integration**: Subscription billing (Starter/Pro/Enterprise)
+
+### Database (MongoDB)
+- Events, predictions, user profiles, decision logs
+- Monte Carlo simulation results
+- A/B testing analytics
+- Subscription and payment tracking
+
+## Quick Start
+
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- MongoDB (localhost:27017)
+- Redis (localhost:6379)
+- The Odds API key (optional, for live data)
+
+### Installation
+
+1. **Clone & Setup Environment**
 ```bash
-# from backend directory
-pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+git clone <repo-url>
+cd Permutation-Carlos
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
-Expected:
-- Backend: http://localhost:8000
-- API docs (Swagger): http://localhost:8000/docs
-- Alternative docs (Redoc): http://localhost:8000/redoc
 
-### Terminal 2 — Start Frontend
-Commands:
+2. **Install Dependencies**
 ```bash
-# from frontend directory
+# Frontend
 npm install
-npm run dev
-```
-Expected:
-- Frontend: http://localhost:5173
 
-### Terminal 3 (Optional) — MongoDB
-Option A — MongoDB Atlas (recommended)
-- No local process required.
-- Set MONGODB_URI in .env to your Atlas connection string.
-
-Option B — Local MongoDB (development)
-```bash
-# ensure mongod is running
-mongod --port 27017 --dbpath ./data/db
+# Backend
 ```
 
-## Pre-start checklist
-- .env: required variables present (e.g. MONGODB_URI, ODDS_API_KEY, other app-specific keys)
-- Dependencies installed:
-   - Backend: Python packages from requirements.txt
-   - Frontend: npm packages
-- MongoDB reachable (Atlas or local)
+4. **Start Services**
+```bash
+# Terminal 1: Start backend
+./start.sh
 
-## Quick start (two terminals)
-Terminal 1 (backend):
-```bash
-cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-Terminal 2 (frontend):
-```bash
-cd frontend
+# Terminal 2: Start frontend  
 npm run dev
 ```
 
-## Test the setup
-- Backend health / API: curl http://localhost:8000/health or open /docs
-- Frontend: open http://localhost:5173
-- Full flow: exercise a UI action that triggers a backend request
+5. **Access Application**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
 
-## How to stop
-- Backend / Frontend: press Ctrl + C in each terminal
-- Local MongoDB: stop mongod process
+## Features
 
-## Troubleshooting (common issues)
-- "Port 8000 already in use": stop the process using that port or change backend port.
-- "MongoDB connection refused": verify MONGODB_URI, network access, and that mongod is running.
-- "ODDS_API_KEY not configured": add the key to .env.
-- "Module not found" (Python): ensure virtualenv is active and requirements are installed.
-- Frontend errors: run npm install; check console for missing packages or build errors.
+### Core Analytics
+- **Monte Carlo Simulations**: 50,000+ iterations for precise win probability calculations
+- **Multi-Sport Support**: NBA, NFL, MLB, NHL with sport-specific modeling
+- **Real-Time Odds Integration**: Live data from The Odds API
+- **Player Props Analysis**: Individual player performance projections
 
-## Summary
-| Component   | Terminal | Command (example)                          | Port  | URL                      |
-|-------------|----------|-------------------------------------------|-------|--------------------------|
-| Backend API | 1        | uvicorn main:app --reload --port 8000     | 8000  | http://localhost:8000    |
-| Frontend    | 2        | npm run dev                               | 5173  | http://localhost:5173    |
-| MongoDB     | 3 (opt)  | mongod --port 27017                       | 27017 | (local)                 |
+### Decision Intelligence
+- **Risk Management**: Kelly Criterion-based position sizing
+- **Decision Capital Profile**: Compliance-focused bankroll management
+- **Tilt Detection**: Behavioral pattern analysis with real-time alerts
+- **Performance Tracking**: Brier Score, Log Loss, ROI metrics
 
-Minimum required: 2 terminals (Backend + Frontend). Optional: 3 if running MongoDB locally.
+### Enterprise Features
+- **WebSocket Support**: Real-time updates for live games
+- **Subscription Tiers**: Stripe-powered billing (Starter/Pro/Enterprise)
+- **Affiliate System**: Commission tracking and payouts
+- **A/B Testing**: Built-in experimentation framework
 
-Need a startup script or help creating a .env template? I can generate one for you.
+## API Documentation
+
+Interactive API docs available at http://localhost:8000/docs
+
+### Key Endpoints
+- `GET /api/odds/` - Fetch current game odds
+- `POST /api/simulate/` - Run Monte Carlo simulation
+- `GET /api/predictions/` - Get AI predictions
+- `POST /api/parlay/analyze` - Analyze parlay correlations
+- `GET /health` - System health check
+
+## Tech Stack
+
+**Backend**
+- FastAPI (Python 3.11+)
+- MongoDB (database)
+- Redis (event bus & caching)
+- NumPy (simulations)
+- APScheduler (background tasks)
+
+**Frontend**
+- React 19 + TypeScript
+- Vite (build tool)
+- Tailwind CSS
+- WebSocket client
+
+## Project Structure
+
+```
+Permutation-Carlos/
+├── backend/
+│   ├── core/              # Monte Carlo engine, AI agents
+│   ├── routes/            # API endpoints
+│   ├── services/          # Business logic
+│   ├── db/                # MongoDB schemas
+│   ├── integrations/      # External APIs
+│   └── main.py            # FastAPI app
+├── components/            # React UI components
+├── services/              # Frontend API clients
+├── utils/                 # Shared utilities
+└── docs/                  # Documentation
+```
+
+## License
+
+Proprietary - All rights reserved  
+**Infrastructure:** Redis Event Bus for agent communication
+
+## Documentation
+
+- [MULTI_AGENT_SYSTEM.md](MULTI_AGENT_SYSTEM.md) - **NEW:** Complete agent architecture
+- [AGENT_IMPLEMENTATION_COMPLETE.md](AGENT_IMPLEMENTATION_COMPLETE.md) - Implementation summary
+- [BACKEND_FRONTEND_INTEGRATION.md](BACKEND_FRONTEND_INTEGRATION.md) - API integration guide
+- [QUICKSTART.md](QUICKSTART.md) - Detailed setup instructions
+
+## License
+
+Proprietary - All Rights Reserved

@@ -28,7 +28,7 @@ class ConversionWebhookRequest(BaseModel):
     subscription_id: str
     invoice_id: str
     amount: float  # Subscription amount in USD
-    plan: Literal["pro", "elite"]
+    plan: Literal["starter", "pro", "sharps_room", "founder"]
 
 
 @router.post("/register")
@@ -132,8 +132,11 @@ async def stripe_webhook(body: ConversionWebhookRequest):
     
     # If there's an affiliate ref, create commission
     if ref:
-        # Default commission: 20% of first payment
-        commission_rate = 0.20
+        # Tier-based commission rates (20-40%)
+        from services.tier_config import get_commission_rate
+        
+        tier = body.plan
+        commission_rate = get_commission_rate(tier)
         commission_amount = body.amount * commission_rate
         
         commission = CommissionEarned(
@@ -142,6 +145,7 @@ async def stripe_webhook(body: ConversionWebhookRequest):
             basis=body.amount,
             commission_rate=commission_rate,
             amount=commission_amount,
+            tier=tier,
             commission_type="first_payment",
             status="pending",
             stripe_subscription_id=body.subscription_id,

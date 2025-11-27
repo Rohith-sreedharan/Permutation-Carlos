@@ -32,6 +32,7 @@ def ensure_indexes() -> None:
     db["subscribers"].create_index([("ref", 1)])
     db["subscribers"].create_index([("status", 1)])
     db["subscribers"].create_index("stripe_customer_id", unique=True, sparse=True)
+    db["subscribers"].create_index([("tier", 1)])  # NEW: For tier-based queries
     
     # AI Pick indexes
     db["ai_picks"].create_index("pick_id", unique=True)
@@ -39,6 +40,7 @@ def ensure_indexes() -> None:
     db["ai_picks"].create_index([("created_at", -1)])
     db["ai_picks"].create_index([("outcome", 1)])  # For ROI analysis
     db["ai_picks"].create_index([("clv_pct", 1)])  # For CLV tracking
+    db["ai_picks"].create_index([("settled_at", -1)])  # NEW: For performance reports
     
     # User Action indexes (Module 7 input)
     db["user_actions"].create_index([("pick_id", 1)])
@@ -73,6 +75,38 @@ def ensure_indexes() -> None:
     db["affiliate_accounts"].create_index("affiliate_id", unique=True)
     db["affiliate_accounts"].create_index("email", unique=True)
     db["affiliate_accounts"].create_index([("status", 1)])
+    
+    # NEW: Monte Carlo Simulation indexes
+    db["monte_carlo_simulations"].create_index("simulation_id", unique=True)
+    db["monte_carlo_simulations"].create_index([("event_id", 1), ("created_at", -1)])
+    db["monte_carlo_simulations"].create_index([("created_at", -1)])
+    db["monte_carlo_simulations"].create_index([("confidence_score", -1)])
+    
+    # NEW: Multi-Agent System indexes
+    db["agent_events"].create_index([("event_id", 1)])
+    db["agent_events"].create_index([("event_type", 1), ("timestamp", -1)])
+    db["agent_events"].create_index([("correlation_id", 1)])  # Track related events
+    db["agent_events"].create_index([("source_agent", 1), ("timestamp", -1)])
+    db["agent_events"].create_index([("status", 1)])
+    
+    # NEW: Performance Report indexes
+    db["performance_reports"].create_index("report_id", unique=True)
+    db["performance_reports"].create_index([("generated_at", -1)])
+    
+    # NEW: Recalibration Recommendation indexes
+    db["recalibration_recommendations"].create_index("recommendation_id", unique=True)
+    db["recalibration_recommendations"].create_index([("status", 1), ("generated_at", -1)])
+    db["recalibration_recommendations"].create_index([("based_on_report", 1)])
+    
+    # NEW: Live Event Trigger indexes
+    db["live_triggers"].create_index([("event_id", 1), ("trigger_time", -1)])
+    db["live_triggers"].create_index([("trigger_type", 1)])
+    db["live_triggers"].create_index([("processed", 1), ("trigger_time", -1)])
+    
+    # NEW: Prop Mispricing Detection indexes
+    db["prop_mispricings"].create_index([("event_id", 1)])
+    db["prop_mispricings"].create_index([("edge_pct", -1)])  # Sort by biggest edges
+    db["prop_mispricings"].create_index([("detected_at", -1)])
 
 
 def insert_many(collection: str, data: List[Dict[str, Any]]) -> Optional[List[Any]]:
@@ -124,6 +158,11 @@ def find_events(collection: str, filter: Optional[Dict[str, Any]] = None, limit:
         if '_id' in doc:
             doc['_id'] = str(doc['_id'])
         
+        # Ensure 'id' field exists for frontend compatibility
+        # Frontend expects event.id, but we store event_id
+        if 'event_id' in doc and 'id' not in doc:
+            doc['id'] = doc['event_id']
+        
         # Transform bookmakers data into bets array for frontend compatibility
         if 'bookmakers' in doc and doc['bookmakers']:
             bets = []
@@ -139,8 +178,11 @@ def find_events(collection: str, filter: Optional[Dict[str, Any]] = None, limit:
                             if abs(price) < 50:  # Likely decimal odds (e.g., 1.02, 2.5)
                                 if price >= 2.0:
                                     american_odds = int((price - 1) * 100)
-                                else:
+                                elif price > 1.0:  # Prevent division by zero
                                     american_odds = int(-100 / (price - 1))
+                                else:
+                                    # Handle edge case: price = 1.0 or invalid
+                                    american_odds = 100
                                 formatted_price = f"+{american_odds}" if american_odds > 0 else str(american_odds)
                             else:  # Already American odds
                                 formatted_price = f"+{int(price)}" if price > 0 else str(int(price))

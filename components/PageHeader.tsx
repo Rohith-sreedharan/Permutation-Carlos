@@ -15,7 +15,8 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
                 const profile = await getUserProfile();
                 setUser(profile);
             } catch (err) {
-                console.error('Failed to load user profile:', err);
+                // Silently fail - profile is optional for now
+                console.log('Profile not loaded (auth not implemented)');
             }
         };
         loadUser();

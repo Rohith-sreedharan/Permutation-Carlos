@@ -1,32 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import { getChatMessages, getTopAnalysts } from '../services/api';
+import { getChatMessages, getTopAnalysts, sendChatMessage } from '../services/api';
 import type { ChatMessage, TopAnalyst } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
+import { swalSuccess, swalError } from '../utils/swal';
 
 const Community: React.FC = () => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [analysts, setAnalysts] = useState<TopAnalyst[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [newMessage, setNewMessage] = useState<string>('');
+    const [sending, setSending] = useState<boolean>(false);
 
     useEffect(() => {
-        const loadData = async () => {
-            try {
-                setLoading(true);
-                const [chatData, analystData] = await Promise.all([getChatMessages(), getTopAnalysts()]);
-                setMessages(chatData);
-                setAnalysts(analystData);
-                setError(null);
-            } catch (err) {
-                setError('Failed to fetch community data.');
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
         loadData();
+        // Poll for new messages every 10 seconds
+        const interval = setInterval(loadData, 10000);
+        return () => clearInterval(interval);
     }, []);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            const [chatData, analystData] = await Promise.all([getChatMessages(), getTopAnalysts()]);
+            setMessages(chatData);
+            setAnalysts(analystData);
+            setError(null);
+        } catch (err) {
+            setError('Failed to fetch community data.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSendMessage = async () => {
+        if (!newMessage.trim() || sending) return;
+
+        try {
+            setSending(true);
+            await sendChatMessage(newMessage, 'nba_general');
+            setNewMessage('');
+            await loadData(); // Refresh messages
+            await swalSuccess('Message Sent', 'Your message has been posted to the community.');
+        } catch (err: any) {
+            await swalError('Send Failed', err.message || 'Failed to send message');
+            console.error(err);
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+    };
 
     if (error) {
         return <div className="text-center text-bold-red">{error}</div>;
@@ -56,8 +87,22 @@ const Community: React.FC = () => {
                             ))}
                        </div>
                        <div className="mt-4 flex items-center space-x-2 border-t border-navy/50 pt-4">
-                            <input type="text" placeholder="Type your message..." className="flex-1 bg-navy border-none rounded-lg px-4 py-2 text-white placeholder-light-gray focus:ring-2 focus:ring-electric-blue" />
-                            <button className="bg-electric-blue text-white font-semibold px-6 py-2 rounded-lg hover:bg-opacity-80 transition-colors">Send</button>
+                            <input 
+                                type="text" 
+                                placeholder="Type your message..." 
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
+                                onKeyPress={handleKeyPress}
+                                disabled={sending}
+                                className="flex-1 bg-navy border-none rounded-lg px-4 py-2 text-white placeholder-light-gray focus:ring-2 focus:ring-electric-blue disabled:opacity-50" 
+                            />
+                            <button 
+                                onClick={handleSendMessage}
+                                disabled={!newMessage.trim() || sending}
+                                className="bg-electric-blue text-white font-semibold px-6 py-2 rounded-lg hover:bg-opacity-80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {sending ? '...' : 'Send'}
+                            </button>
                        </div>
                     </div>
                     {/* Top Analysts Section */}

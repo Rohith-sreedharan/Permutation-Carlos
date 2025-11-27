@@ -42,6 +42,7 @@ def get_profile(Authorization: Optional[str] = Header(None)):
         "created_at": user.get("created_at"),
         "score": user.get("score", 0),
         "streaks": user.get("streaks", 0),
+        "tier": user.get("tier", "starter")
     }
     return {"profile": profile}
 

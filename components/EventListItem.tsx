@@ -3,6 +3,8 @@ import type { EventWithPrediction } from '../types';
 
 interface EventListItemProps {
   event: EventWithPrediction;
+  isRecalculated?: boolean;
+  onClick?: () => void;
 }
 
 const getConfidenceColor = (confidence: number) => {
@@ -11,14 +13,27 @@ const getConfidenceColor = (confidence: number) => {
     return 'bg-bold-red';
 }
 
-const EventListItem: React.FC<EventListItemProps> = ({ event }) => {
+const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = false, onClick }) => {
   const { home_team, away_team, commence_time, top_prop_bet, prediction, sport_key } = event;
   const gameTime = new Date(commence_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).replace(' ', ' ') + ' EST';
 
   const confidencePercentage = prediction ? Math.round(prediction.confidence * 100) : 0;
   
   return (
-    <div className="bg-charcoal rounded-lg shadow-lg p-4 flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 md:space-x-4 transition-all duration-300 border border-transparent hover:border-electric-blue">
+    <div 
+      onClick={onClick}
+      className={`bg-charcoal rounded-lg shadow-lg p-4 flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 md:space-x-4 transition-all duration-300 border relative ${
+        isRecalculated ? 'border-neon-green shadow-neon-green/50 animate-pulse' : 'border-transparent hover:border-electric-blue'
+      } ${onClick ? 'cursor-pointer hover:scale-[1.01]' : ''}`}
+    >
+      {/* AI Recalculated Badge */}
+      {isRecalculated && (
+        <div className="absolute top-2 left-2 bg-neon-green text-charcoal text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1 animate-bounce z-10">
+          <span>🤖</span>
+          <span>AI RECALCULATED</span>
+        </div>
+      )}
+      
       <div className="flex items-center gap-4 w-full md:w-1/3">
         <span className="bg-electric-blue/20 text-electric-blue text-xs font-bold px-2 py-1 rounded-full">{sport_key}</span>
         <div>

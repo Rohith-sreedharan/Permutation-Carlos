@@ -1,6 +1,7 @@
 """
 Module 7: Reflection Loop (Self-Improving AI)
-Agentic component that computes ROI/CLV and suggests model improvements
+Agentic component that computes ROI/CLV/Brier/LogLoss and suggests model improvements
+Now integrated with advanced model evaluation engine
 """
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
@@ -15,13 +16,76 @@ class ReflectionLoop:
     
     Responsibilities:
     1. Analyze user_action events to compute actual ROI/CLV
-    2. Compare predicted edge vs actual outcomes
-    3. Programmatically suggest JSON parameter patches
-    4. Self-improve model filters and thresholds weekly
+    2. Integrate with ModelEvaluationEngine for Brier Score and Log Loss
+    3. Compare predicted edge vs actual outcomes
+    4. Programmatically suggest JSON parameter patches
+    5. Auto-apply or preview recalibration recommendations
+    6. Self-improve model filters and thresholds weekly
+    
+    NEW: Enhanced with Brier Score, Log Loss, and automated recalibration
     """
     
     def __init__(self):
         self.model_config_path = "/Users/rohithaditya/Downloads/Permutation-Carlos/backend/core/model_config.json"
+    
+    def run_weekly_reflection(self, auto_apply: bool = False) -> Dict[str, Any]:
+        """
+        Main entry point for weekly reflection loop
+        
+        This is what runs every Sunday @ 2 AM
+        
+        NEW: Now uses ModelEvaluationEngine for comprehensive analysis
+        """
+        from core.model_evaluation import model_evaluation_engine
+        
+        log_stage(
+            "reflection_loop",
+            "weekly_reflection_started",
+            input_payload={"auto_apply": auto_apply},
+            output_payload={}
+        )
+        
+        # Step 1: Generate comprehensive performance report
+        performance_report = model_evaluation_engine.generate_performance_report(days=7)
+        
+        # Step 2: Generate recalibration recommendations
+        recommendations = model_evaluation_engine.generate_recalibration_recommendations(
+            performance_report
+        )
+        
+        # Step 3: Apply or preview recommendations
+        recommendation_id = f"recal_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        
+        if auto_apply:
+            apply_result = model_evaluation_engine.apply_recalibration(
+                recommendation_id,
+                auto_apply=True
+            )
+        else:
+            apply_result = {
+                "status": "preview",
+                "message": "Review recommendations before applying"
+            }
+        
+        log_stage(
+            "reflection_loop",
+            "weekly_reflection_completed",
+            input_payload={"auto_apply": auto_apply},
+            output_payload={
+                "brier_score": performance_report.get("brier_score"),
+                "avg_clv": performance_report.get("avg_clv"),
+                "adjustments_count": len(recommendations.get("parameter_adjustments", [])),
+                "applied": auto_apply
+            }
+        )
+        
+        return {
+            "status": "completed",
+            "performance_report": performance_report,
+            "recommendations": recommendations,
+            "apply_result": apply_result,
+            "run_at": datetime.now(timezone.utc).isoformat()
+        }
     
     def compute_pick_performance(self, days: int = 7) -> Dict[str, Any]:
         """
@@ -235,49 +299,6 @@ class ReflectionLoop:
             "max_picks_per_day": 10,
             "kelly_fraction": 0.25,        # Quarter Kelly
             "markets": ["h2h", "spreads", "totals"]
-        }
-    
-    def run_weekly_reflection(self, auto_apply: bool = False) -> Dict[str, Any]:
-        """
-        Full reflection loop - run weekly
-        
-        This is the entry point for the self-improving system
-        """
-        log_stage("reflection_loop", "start", input_payload={"auto_apply": auto_apply})
-        
-        # Step 1: Compute performance metrics
-        performance = self.compute_pick_performance(days=7)
-        
-        # Step 2: Analyze user behavior
-        user_behavior = self.analyze_user_actions(days=7)
-        
-        # Step 3: Generate improvement patches
-        patches = self.generate_parameter_patches(performance)
-        
-        # Step 4: Apply patches (or preview)
-        result = self.apply_patches(patches, auto_apply=auto_apply)
-        
-        # Log complete reflection cycle
-        log_stage(
-            "reflection_loop",
-            "complete",
-            input_payload={
-                "performance": performance,
-                "user_behavior": user_behavior
-            },
-            output_payload={
-                "patches": len(patches),
-                "applied": auto_apply,
-                "result": result
-            }
-        )
-        
-        return {
-            "status": "ok",
-            "performance": performance,
-            "user_behavior": user_behavior,
-            "patches": result["changes"],
-            "auto_applied": auto_apply
         }
 
 

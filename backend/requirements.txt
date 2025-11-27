@@ -8,3 +8,5 @@ pydantic
 pydantic[email]
 python-multipart
 stripe
+numpy>=1.24.0
+redis>=5.0.0

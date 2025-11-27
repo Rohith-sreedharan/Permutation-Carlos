@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { getLeaderboard } from '../services/api';
 import type { User } from '../types';
 import LoadingSpinner from './LoadingSpinner';
+import CreatorProfile from './CreatorProfile';
 
 const Leaderboard: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCreator, setSelectedCreator] = useState<string | null>(null);
 
   useEffect(() => {
     const loadLeaderboard = async () => {
@@ -26,12 +28,28 @@ const Leaderboard: React.FC = () => {
     loadLeaderboard();
   }, []);
 
+  const handleTailParlay = (slipId: string) => {
+    console.log('Tailing slip:', slipId);
+    // TODO: Copy slip to parlay builder
+    // This will be implemented in future PR
+  };
+
   if (loading) {
     return <LoadingSpinner />;
   }
 
   if (error) {
     return <div className="text-center text-bold-red">{error}</div>;
+  }
+
+  if (selectedCreator) {
+    return (
+      <CreatorProfile 
+        username={selectedCreator}
+        onTailParlay={handleTailParlay}
+        onBack={() => setSelectedCreator(null)}
+      />
+    );
   }
 
   const getRankColor = (rank: number) => {
@@ -56,7 +74,11 @@ const Leaderboard: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-navy">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-navy/50">
+              <tr 
+                key={user.id} 
+                className="hover:bg-navy/50 cursor-pointer transition-colors"
+                onClick={() => setSelectedCreator(user.username)}
+              >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`text-lg font-bold ${getRankColor(user.rank)}`}>{user.rank}</span>
                 </td>

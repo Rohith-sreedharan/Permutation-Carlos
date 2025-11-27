@@ -19,8 +19,9 @@ class CommissionEarned(BaseModel):
     
     # Commission calculation
     basis: float = Field(..., description="Subscription amount used for commission (USD)")
-    commission_rate: float = Field(default=0.20, description="Commission rate (default 20%)")
+    commission_rate: float = Field(default=0.20, description="Commission rate (20-40% based on tier)")
     amount: float = Field(..., description="Commission amount in USD")
+    tier: Optional[str] = Field(default=None, description="Subscription tier of converted user")
     
     # Commission type
     commission_type: Literal["first_payment", "recurring", "bonus"] = Field(..., description="Commission trigger")

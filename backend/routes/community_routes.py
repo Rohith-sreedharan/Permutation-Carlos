@@ -10,6 +10,7 @@ import uuid
 from db.mongo import db
 from services.nlp_parser import nlp_parser
 from services.reputation_engine import reputation_engine
+from services.moderation_service import validate_content  # COMPLIANCE FILTER
 
 
 router = APIRouter(prefix="/api/community", tags=["Community"])
@@ -17,10 +18,10 @@ router = APIRouter(prefix="/api/community", tags=["Community"])
 
 class PostMessageRequest(BaseModel):
     """Post a message to community channel"""
-    channel_id: str
-    text: str
-    user_id: str
-    user_plan: Literal["free", "pro", "elite"]
+    thread_type: str  # 'daily', 'parlay', 'game'
+    game_id: Optional[str] = None  # Required for 'game' threads
+    message: str
+    user_id: Optional[str] = None  # Optional, will get from auth
 
 
 class SettlePickRequest(BaseModel):
@@ -32,81 +33,179 @@ class SettlePickRequest(BaseModel):
 @router.post("/message")
 async def post_message(request: Request, body: PostMessageRequest):
     """
-    Post a message to community channel
-    Automatically triggers NLP parsing for Pro/Elite users
+    Post a message to community channel with COMPLIANCE moderation
+    Automatically blocks prohibited betting language (Insights, Not Bets)
     """
+    from core.websocket_manager import manager
+    
+    # 🔒 COMPLIANCE MODERATION: Enforce "Insights, Not Bets" rule
+    is_compliant, error_msg, violations = validate_content(body.message)
+    
+    if not is_compliant:
+        raise HTTPException(
+            status_code=400,
+            detail=error_msg
+        )
+    
+    # Get user from token (if not provided)
+    user_id = body.user_id or "anonymous"
+    
     # Create message document
     message_id = str(uuid.uuid4())
     
     # Get user reputation for ELO
-    reputation = db["user_reputation"].find_one({"user_id": body.user_id})
-    user_elo = reputation.get("elo_score") if reputation else None
+    reputation = db["user_reputation"].find_one({"user_id": user_id})
+    user_elo = reputation.get("elo_score") if reputation else 1500
     
     message_doc = {
         "id": message_id,
-        "channel_id": body.channel_id,
-        "user_id": body.user_id,
-        "text": body.text,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "thread_type": body.thread_type,
+        "game_id": body.game_id,
+        "user_id": user_id,
+        "message": body.message,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "meta": {
             "ip": request.client.host if request.client else None,
             "ua": request.headers.get("user-agent")
         },
-        "user_plan": body.user_plan,
-        "user_elo": user_elo
+        "user_elo": user_elo,
+        "moderated": True,
+        "compliance_checked": True  # Mark as passing compliance
     }
     
     # Insert message
     db["community_messages"].insert_one(message_doc)
     
-    # Auto-parse for Pro/Elite users
+    # Broadcast to WebSocket subscribers
+    await manager.broadcast_to_channel("community", {
+        "type": "NEW_MESSAGE",
+        "payload": {
+            "id": message_id,
+            "thread_type": body.thread_type,
+            "game_id": body.game_id,
+            "user_id": user_id,
+            "message": body.message,
+            "timestamp": message_doc["timestamp"],
+            "user_elo": user_elo
+        }
+    })
+    
+    # Auto-parse for structured picks (future enhancement)
     parse_result = None
-    if body.user_plan in ["pro", "elite"]:
-        parse_result = nlp_parser.parse_message(
-            message_id=message_id,
-            text=body.text,
-            user_plan=body.user_plan,
-            user_elo=user_elo
-        )
+    # if user has premium plan:
+    #     parse_result = nlp_parser.parse_message(...)
     
     return {
         "status": "ok",
         "message_id": message_id,
-        "parsed": parse_result is not None,
-        "parse_result": parse_result
+        "message": body.message,
+        "timestamp": message_doc["timestamp"]
     }
+
+
+@router.post("/messages")
+async def post_message_simple(request: Request, body: dict):
+    """
+    Simplified message posting endpoint
+    Accepts: { "message": str, "channel": str }
+    """
+    from core.websocket_manager import manager
+    
+    message = body.get("message", "").strip()
+    channel = body.get("channel", "general")
+    
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    # SERVER-SIDE MODERATION
+    prohibited_terms = ['lock', 'guaranteed', '100%', 'cant lose', 'easy money', 'sure thing']
+    message_lower = message.lower()
+    
+    for term in prohibited_terms:
+        if term in message_lower:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Message contains prohibited language: '{term}'. Please rephrase."
+            )
+    
+    # Extract user from auth header (simplified)
+    auth_header = request.headers.get("authorization", "")
+    user_id = "anonymous"
+    if auth_header.startswith("Bearer user:"):
+        user_id = auth_header.split(":", 2)[1]
+    
+    message_id = str(uuid.uuid4())
+    message_doc = {
+        "id": message_id,
+        "channel": channel,
+        "user_id": user_id,
+        "message": message,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc)
+    }
+    
+    db["community_messages"].insert_one(message_doc)
+    
+    # Broadcast via WebSocket
+    try:
+        await manager.broadcast_to_channel("community", {
+            "type": "NEW_MESSAGE",
+            "payload": message_doc
+        })
+    except Exception:
+        pass  # WebSocket manager may not be initialized
+    
+    return {"status": "ok", "message_id": message_id}
 
 
 @router.get("/messages")
 async def get_messages(
-    channel_id: Optional[str] = None,
+    thread_type: Optional[str] = None,
+    game_id: Optional[str] = None,
     user_id: Optional[str] = None,
     limit: int = 50
 ):
     """
-    Get community messages
+    Get community messages by thread
+    
+    Args:
+        thread_type: 'daily', 'parlay', or 'game'
+        game_id: For game threads
+        user_id: Filter by user
+        limit: Max messages
     """
     query = {}
-    if channel_id:
-        query["channel_id"] = channel_id
+    if thread_type:
+        query["thread_type"] = thread_type
+    if game_id:
+        query["game_id"] = game_id
     if user_id:
         query["user_id"] = user_id
     
     messages = list(
         db["community_messages"]
         .find(query)
-        .sort("ts", -1)
+        .sort("timestamp", -1)
         .limit(limit)
     )
     
-    # Convert ObjectId
+    # Convert ObjectId and format
+    formatted = []
     for msg in messages:
-        msg["_id"] = str(msg["_id"])
+        formatted.append({
+            "id": msg["id"],
+            "user_id": msg["user_id"],
+            "message": msg["message"],
+            "timestamp": msg["timestamp"],
+            "thread_type": msg.get("thread_type"),
+            "game_id": msg.get("game_id"),
+            "user_elo": msg.get("user_elo", 1500)
+        })
     
     return {
         "status": "ok",
-        "count": len(messages),
-        "messages": messages
+        "count": len(formatted),
+        "messages": formatted
     }
 
 

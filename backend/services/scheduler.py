@@ -115,6 +115,145 @@ def run_reflection_loop():
         print(f"✗ Exception in reflection loop: {e}")
 
 
+def run_daily_brier_calculation():
+    """
+    Calculate Brier Scores for yesterday's completed games
+    Runs daily at 4 AM to evaluate model calibration
+    """
+    try:
+        from datetime import timedelta
+        print("📊 Running daily Brier Score calculation...")
+        
+        # Get yesterday's date range
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        
+        # Run reflection loop (it will analyze recent games)
+        result = reflection_loop.run_weekly_reflection(auto_apply=False)
+        
+        log_stage(
+            "daily_brier_calculation",
+            "success",
+            input_payload={"date": yesterday.strftime("%Y-%m-%d")},
+            output_payload=result
+        )
+        
+        print(f"✓ Brier Score calculation complete:")
+        print(f"  - Brier Score: {result.get('performance', {}).get('brier_score', 'N/A')}")
+        print(f"  - Log Loss: {result.get('performance', {}).get('log_loss', 'N/A')}")
+        
+    except Exception as e:
+        log_stage(
+            "daily_brier_calculation",
+            "exception",
+            input_payload={},
+            output_payload={"error": str(e)},
+            level="ERROR"
+        )
+        print(f"✗ Exception in Brier calculation: {e}")
+
+
+def poll_injury_updates():
+    """
+    Poll API-SPORTS for injury updates
+    Runs every 5 minutes to catch breaking injury news
+    """
+    try:
+        import requests
+        from core.websocket_manager import manager
+        import asyncio
+        
+        api_key = os.getenv("APISPORTS_KEY")
+        if not api_key:
+            print("⚠️ APISPORTS_KEY not configured, skipping injury polling")
+            return
+        
+        base_url = "https://v1.basketball.api-sports.io"
+        
+        # Poll NBA injuries
+        response = requests.get(
+            f"{base_url}/injuries",
+            headers={"x-rapidapi-key": api_key},
+            params={"league": "12", "season": "2024-2025"},  # NBA league ID
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            injuries = data.get("response", [])
+            
+            # Check for new injuries (compare with DB cache)
+            new_injuries = []
+            for injury in injuries:
+                player_name = injury.get("player", {}).get("name")
+                team = injury.get("team", {}).get("name")
+                injury_type = injury.get("type")
+                
+                # Check if this is a new injury
+                existing = db["injury_cache"].find_one({
+                    "player_name": player_name,
+                    "team": team
+                })
+                
+                if not existing:
+                    new_injuries.append({
+                        "player_name": player_name,
+                        "team": team,
+                        "injury_type": injury_type,
+                        "status": injury.get("status"),
+                        "detected_at": datetime.now(timezone.utc).isoformat()
+                    })
+                    
+                    # Cache injury
+                    db["injury_cache"].insert_one({
+                        "player_name": player_name,
+                        "team": team,
+                        "injury_type": injury_type,
+                        "cached_at": datetime.now(timezone.utc).isoformat()
+                    })
+            
+            # Broadcast new injuries via WebSocket
+            if new_injuries:
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(manager.broadcast_to_channel("events", {
+                        "type": "INJURY_UPDATE",
+                        "payload": {
+                            "count": len(new_injuries),
+                            "injuries": new_injuries
+                        }
+                    }))
+                except RuntimeError:
+                    # No event loop running, create new one
+                    asyncio.run(manager.broadcast_to_channel("events", {
+                        "type": "INJURY_UPDATE",
+                        "payload": {
+                            "count": len(new_injuries),
+                            "injuries": new_injuries
+                        }
+                    }))
+                
+                print(f"🏥 Detected {len(new_injuries)} new injuries, broadcasted via WebSocket")
+            
+            log_stage(
+                "injury_polling",
+                "success",
+                input_payload={"source": "api-sports"},
+                output_payload={"total_injuries": len(injuries), "new_injuries": len(new_injuries)}
+            )
+        else:
+            print(f"✗ Injury API error: {response.status_code}")
+            
+    except Exception as e:
+        log_stage(
+            "injury_polling",
+            "exception",
+            input_payload={},
+            output_payload={"error": str(e)},
+            level="ERROR"
+        )
+        print(f"✗ Exception polling injuries: {e}")
+
+
 def start_scheduler():
     """
     Start background scheduler with all jobs
@@ -137,7 +276,7 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 3: Poll MLB odds every 60 seconds
+    # Job 3: Poll MLB odds every 60 seconds (NEW - PHASE 7)
     scheduler.add_job(
         func=lambda: poll_odds_api("baseball_mlb", "h2h,spreads,totals"),
         trigger=IntervalTrigger(seconds=60),
@@ -146,7 +285,36 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 4: Run reflection loop weekly (Sundays at 2 AM)
+    # Job 4: Poll NHL odds every 60 seconds (NEW - PHASE 7)
+    scheduler.add_job(
+        func=lambda: poll_odds_api("icehockey_nhl", "h2h,spreads,totals"),
+        trigger=IntervalTrigger(seconds=60),
+        id="poll_nhl_odds",
+        name="Poll NHL Odds (60s)",
+        replace_existing=True
+    )
+    
+    # Job 5: Poll injury updates every 5 minutes
+    scheduler.add_job(
+        func=poll_injury_updates,
+        trigger=IntervalTrigger(minutes=5),
+        id="poll_injuries",
+        name="Poll Injury Updates (5m)",
+        replace_existing=True
+    )
+    
+    # Job 6: Run daily Brier Score calculation at 4 AM
+    scheduler.add_job(
+        func=run_daily_brier_calculation,
+        trigger="cron",
+        hour=4,
+        minute=0,
+        id="daily_brier",
+        name="Daily Brier Score Calculation (4 AM)",
+        replace_existing=True
+    )
+    
+    # Job 6: Run reflection loop weekly (Sundays at 2 AM)
     scheduler.add_job(
         func=run_reflection_loop,
         trigger="cron",
@@ -163,6 +331,8 @@ def start_scheduler():
     print("  - NBA odds polling (60s)")
     print("  - NFL odds polling (60s)")
     print("  - MLB odds polling (60s)")
+    print("  - Injury updates (5m)")
+    print("  - Daily Brier Score calculation (4 AM)")
     print("  - Weekly reflection loop (Sundays 2 AM)")
 
 
