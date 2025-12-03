@@ -1,8 +1,11 @@
 import os
+import sys
 from pymongo import MongoClient, UpdateOne
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.timezone import now_utc, now_est, parse_iso_to_est, format_est_date
 
 load_dotenv()
 
@@ -52,6 +55,15 @@ def ensure_indexes() -> None:
     db["community_messages"].create_index([("user_id", 1), ("ts", -1)])
     db["community_messages"].create_index([("parsed_intent", 1)])
     db["community_messages"].create_index([("ts", -1)])
+    db["community_messages"].create_index([("message_type", 1)])  # NEW: For bot messages
+    
+    # NEW: User Identity indexes
+    db["user_identity"].create_index("user_id", unique=True)
+    db["user_identity"].create_index([("xp", -1)])  # Leaderboard by XP
+    db["user_identity"].create_index([("rank", 1)])
+    db["user_identity"].create_index([("total_profit", -1)])  # Leaderboard by profit
+    db["user_identity"].create_index([("longest_streak", -1)])  # Leaderboard by streak
+    db["user_identity"].create_index([("winning_picks", -1)])  # Leaderboard by wins
     
     # Community Pick Submission indexes
     db["community_picks"].create_index([("user_id", 1)])
@@ -131,7 +143,7 @@ def upsert_events(collection: str, events: List[Dict[str, Any]]):
     ops = []
     for ev in events:
         ev = ev.copy()
-        ev.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+        ev.setdefault("created_at", now_utc().isoformat())
         event_id = ev.get("event_id") or ev.get("id")
         if not event_id:
             # skip malformed

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DecisionCommandCenter from './components/DecisionCommandCenter';  // Renamed from Dashboard
-import Community from './components/Community';
+import Community from './components/CommunityEnhanced';
 import Affiliates from './components/Affiliates';
 import Leaderboard from './components/Leaderboard';
 import Profile from './components/Profile';
@@ -17,7 +17,7 @@ import RiskAlert from './components/RiskAlert';
 import TrustLoop from './components/TrustLoop';  // NEW: Trust & Performance Loop
 import ParlayArchitect from './components/ParlayArchitect';  // PHASE 14: AI Parlay Architect
 import type { Page } from './types';
-import { getToken, removeToken } from './services/api';
+import { getToken, removeToken, verifyToken } from './services/api';
 import { useWebSocket } from './utils/useWebSocket';
 
 const App: React.FC = () => {
@@ -43,42 +43,60 @@ const App: React.FC = () => {
   const { subscribe, unsubscribe } = useWebSocket();
 
   useEffect(() => {
-    // Check for an existing token on initial load
-    const token = getToken();
-    if (token) {
-      setIsAuthenticated(true);
+    // SECURITY: Verify token with backend before granting access
+    const checkAuth = async () => {
+      const token = getToken();
+      let cleanup: (() => void) | undefined;
       
-      // Check if onboarding is complete
-      const onboardingComplete = localStorage.getItem('onboarding_complete');
-      if (!onboardingComplete) {
-        setCurrentPage('onboarding');
-      }
+      if (token) {
+        try {
+          // Verify token is valid and user exists in database
+          const user = await verifyToken();
+          
+          // Token is valid and user exists
+          setIsAuthenticated(true);
 
-      // Load user role from localStorage or API
-      const role = localStorage.getItem('user_role') as 'creator' | 'user' || 'user';
-      setUserRole(role);
+          // Check if onboarding is complete
+          const onboardingComplete = localStorage.getItem('onboarding_complete');
+          if (!onboardingComplete) {
+            setCurrentPage('onboarding');
+          }
 
-      // Subscribe to risk alerts WebSocket channel
-      const handleRiskAlert = (data: any) => {
-        if (data.type === 'TILT_DETECTED') {
-          const payload = data.payload || {};
-          setRiskAlert({
-            isOpen: true,
-            betCount: payload.bet_count || 3,
-            timeframe: payload.timeframe || '10 minutes',
-            unitSize: payload.unit_size || 100,
-            recommendedAction: payload.recommended_action || 'Take a 1-hour break and review your strategy.'
-          });
+          // Load user role from localStorage or API
+          const role = (localStorage.getItem('user_role') as 'creator' | 'user') || 'user';
+          setUserRole(role);
+
+          // Subscribe to risk alerts WebSocket channel
+          const handleRiskAlert = (data: any) => {
+            if (data.type === 'TILT_DETECTED') {
+              const payload = data.payload || {};
+              setRiskAlert({
+                isOpen: true,
+                betCount: payload.bet_count || 3,
+                timeframe: payload.timeframe || '10 minutes',
+                unitSize: payload.unit_size || 100,
+                recommendedAction: payload.recommended_action || 'Take a 1-hour break and review your strategy.'
+              });
+            }
+          };
+
+          subscribe('risk.alert', handleRiskAlert);
+          cleanup = () => {
+            unsubscribe('risk.alert', handleRiskAlert);
+          };
+        } catch (error) {
+          // Token is invalid, expired, or user doesn't exist
+          console.error('[Auth] Token verification failed:', error);
+          setIsAuthenticated(false);
+          removeToken();
         }
-      };
-
-      subscribe('risk.alert', handleRiskAlert);
-
-      return () => {
-        unsubscribe('risk.alert', handleRiskAlert);
-      };
-    }
-    setIsAuthCheckComplete(true);
+      }
+      
+      setIsAuthCheckComplete(true);
+      return cleanup;
+    };
+    
+    checkAuth();
   }, [subscribe, unsubscribe]);
 
   const handleLogout = () => {
@@ -88,6 +106,7 @@ const App: React.FC = () => {
   };
 
   const handleGameClick = (gameId: string) => {
+    console.log('[App] Game clicked:', gameId);
     setSelectedGameId(gameId);
     setCurrentPage('gameDetail');
   };

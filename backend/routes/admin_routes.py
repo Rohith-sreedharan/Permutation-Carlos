@@ -19,7 +19,7 @@ from services.verification_service import (
     get_accuracy_ledger
 )
 from db.mongo import db
-from config import SUPER_ADMIN_IDS, FOUNDER_CAP, FOUNDER_TIER_NAME
+from legacy_config import SUPER_ADMIN_IDS, FOUNDER_CAP, FOUNDER_TIER_NAME
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -334,7 +334,7 @@ async def get_revenue_analytics(authorization: Optional[str] = Header(None)):
     """
     _verify_super_admin(authorization)
     
-    from config import CREATOR_PAYOUT_PCT, PLATFORM_REVENUE_PCT
+    from legacy_config import CREATOR_PAYOUT_PCT, PLATFORM_REVENUE_PCT
     
     # This would query actual payment records in production
     return {

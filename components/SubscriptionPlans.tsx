@@ -174,14 +174,34 @@ const SubscriptionPlans: React.FC<SubscriptionPlansProps> = ({ currentTier, onSe
       </div>
 
       <div className="bg-charcoal rounded-xl p-6 border border-navy">
-        <h3 className="text-lg font-bold mb-4">Why Our Simulations Matter</h3>
-        <div className="grid md:grid-cols-3 gap-6">
+        <h3 className="text-lg font-bold mb-4">🔥 Simulation Power = Your Edge</h3>
+        <div className="grid md:grid-cols-4 gap-6">
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-electric-blue">100,000</div>
+            <div className="text-2xl font-bold text-gray-400">10K</div>
             <div className="text-sm text-light-gray">
-              Iterations per game (Sharps Room) - 10x more than competitors
+              Free Tier - Basic precision for casual bettors
             </div>
           </div>
+          <div className="space-y-2">
+            <div className="text-2xl font-bold text-blue-400">25K</div>
+            <div className="text-sm text-light-gray">
+              Starter ($19.99) - 2.5x more precise than free
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="text-2xl font-bold text-purple-400">50K</div>
+            <div className="text-sm text-light-gray">
+              Pro ($39.99) - Professional-grade analysis
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="text-2xl font-bold text-amber-400">75K</div>
+            <div className="text-sm text-light-gray">
+              Elite ($89) - Institutional-quality precision
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 pt-6 border-t border-navy grid md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <div className="text-2xl font-bold text-neon-green">&gt; 3%</div>
             <div className="text-sm text-light-gray">

@@ -6,6 +6,28 @@ from typing import Dict, Any
 
 
 SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
+    "free": {
+        "name": "Free",
+        "price_monthly": 0,
+        "description": "Free tier - basic simulations to get started",
+        "features": {
+            "access_monte_carlo": True,
+            "access_clv_tracker": False,
+            "access_advanced_dashboards": False,
+            "access_prop_mispricing": False,
+            "access_parlay_correlation": False,
+            "max_picks_per_day": 3,
+            "simulation_iterations": 10000,  # 10K iterations for FREE
+            "max_simulations_per_day": 2,  # Can only simulate 2 games per day
+            "support_level": "community"
+        },
+        "display_features": [
+            "2 game simulations per day",
+            "10K iteration Monte Carlo sims",
+            "Basic win probability analysis",
+            "Community access"
+        ]
+    },
     "starter": {
         "name": "Starter",
         "price_monthly": 29.99,

@@ -6,10 +6,11 @@ import type { Event as EventType } from '../types';
 
 interface ParlayLeg {
   event_id: string;
-  pick_type: string;
-  selection: string;
-  odds: number;
-  win_probability: number;
+  pick_type: string;  // "spread", "total", "moneyline"
+  selection: string;  // e.g., "Miami -5", "Over 215.5"
+  true_probability: number;  // Model probability (0-1 scale)
+  american_odds: number;  // e.g., -110
+  sport: string;  // e.g., "NBA"
   team_a?: string;
   team_b?: string;
   line?: number;
@@ -30,16 +31,53 @@ interface ParlayAnalysisResponse {
   same_game_parlay: boolean;
 }
 
+interface ParlayCalculation {
+  combined_probability: number;  // 0-1 scale
+  combined_probability_pct: number;  // Percentage
+  correlation_type: string;  // "positive" | "negative" | "neutral"
+  correlation_label: string;  // Human-readable
+  decimal_odds: number;
+  ev_percent: number;
+  ev_interpretation: string;  // "Positive" | "Neutral" | "Negative"
+  ev_label: string;  // "Strong Edge" | "Medium Edge" | etc.
+  volatility: string;  // "Low" | "Medium" | "High" | "Extreme"
+  stake_amount?: number;
+  potential_payout?: number;
+  potential_profit?: number;
+  leg_count: number;
+}
+
+interface StakeAnalysis {
+  hit_probability: number;  // Percentage (e.g., 4.1)
+  hit_probability_label: string;  // "Very Low" | "Low" | "Moderate" | "Good" | "High"
+  risk_level: string;  // "Low ✅" | "Medium ⚡" | "High 🔥" | "Extreme 🚨"
+  ev_interpretation: string;  // "Positive" | "Neutral" | "Negative"
+  context_message: string;  // Main interpretation
+  payout_context: string;  // Payout vs probability context
+  volatility_alignment: string;  // Risk alignment interpretation
+}
+
 const ParlayBuilder: React.FC = () => {
   const [events, setEvents] = useState<EventType[]>([]);
   const [legs, setLegs] = useState<ParlayLeg[]>([]);
-  const [analysis, setAnalysis] = useState<ParlayAnalysisResponse | null>(null);
+  const [parlayCalc, setParlayCalc] = useState<ParlayCalculation | null>(null);
+  const [stakeAnalysis, setStakeAnalysis] = useState<StakeAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'moneyline' | 'spreads' | 'totals'>('moneyline');
   const [stake, setStake] = useState(100);
   const [shareSuccess, setShareSuccess] = useState(false);
+
+  // Auto-calculate when legs or stake changes
+  useEffect(() => {
+    if (legs.length >= 2) {
+      calculateParlay();
+    } else {
+      setParlayCalc(null);
+      setStakeAnalysis(null);
+    }
+  }, [legs, stake]);
 
   useEffect(() => {
     loadEvents();
@@ -61,43 +99,89 @@ const ParlayBuilder: React.FC = () => {
     const event = events.find(e => e.id === eventId);
     if (!event) return;
 
-    // Simulate odds and probabilities (in production, fetch from API)
-    const odds = 1.85 + Math.random() * 0.3;
-    const winProb = 0.50 + Math.random() * 0.2;
+    // Extract true probability from simulation data (if available)
+    // In production, this would come from the event's simulation object
+    // For now, use reasonable defaults based on pick type
+    let trueProbability = 0.5;  // Default 50%
+    
+    // You can enhance this later to use actual simulation data
+    // const simulation = (event as any).simulation;
+    // if (simulation) { ... }
+
+    // Standard odds for demonstration (in production, fetch from odds API)
+    const americanOdds = -110;
 
     const newLeg: ParlayLeg = {
       event_id: eventId,
       pick_type: pickType,
       selection: selection,
-      odds: parseFloat(odds.toFixed(2)),
-      win_probability: parseFloat(winProb.toFixed(2)),
+      true_probability: trueProbability,
+      american_odds: americanOdds,
+      sport: event.sport_key || 'NBA',
       team_a: event.home_team,
       team_b: event.away_team
     };
 
     setLegs([...legs, newLeg]);
-    setAnalysis(null); // Clear previous analysis
   };
 
   const removeLeg = (index: number) => {
     const newLegs = legs.filter((_, i) => i !== index);
     setLegs(newLegs);
-    setAnalysis(null);
   };
 
-  // Share Button Handler (Blueprint Page 64: Creator Distribution Moat)
+  const calculateParlay = async () => {
+    if (legs.length < 2) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem('authToken');
+      
+      // Call NEW parlay calculator endpoint
+      const response = await fetch('http://localhost:8000/api/architect/calculate-parlay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          legs: legs,
+          stake_amount: stake
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to calculate parlay');
+      }
+
+      const data: ParlayCalculation = await response.json();
+      setParlayCalc(data);
+      
+      // Now calculate stake intelligence
+      await analyzeStake(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to calculate parlay');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Share Button Handler
   const handleShare = async () => {
-    if (!analysis) return;
+    if (!parlayCalc) return;
 
     const legsText = legs.map((leg, idx) => 
       `${idx + 1}. ${leg.team_a} vs ${leg.team_b} - ${leg.pick_type.toUpperCase()} ${leg.selection.toUpperCase()}`
     ).join('\n');
 
-    const evText = analysis.ev_percent > 0 ? `+${analysis.ev_percent.toFixed(1)}%` : `${analysis.ev_percent.toFixed(1)}%`;
-    const correlationEmoji = analysis.correlation_grade === 'HIGH' ? '🔴' : 
-                             analysis.correlation_grade === 'MEDIUM' ? '🟡' : '🟢';
+    const evText = parlayCalc.ev_percent > 0 ? `+${parlayCalc.ev_percent.toFixed(1)}%` : `${parlayCalc.ev_percent.toFixed(1)}%`;
+    const correlationEmoji = parlayCalc.correlation_type === 'positive' ? '🟢' : 
+                             parlayCalc.correlation_type === 'negative' ? '🔴' : '🟡';
 
-    const shareText = `🚀 Just built a ${legs.length}-leg parlay on #BeatVegas!\n\n${legsText}\n\n${correlationEmoji} Correlation: ${analysis.correlation_grade}\n💰 Expected Value: ${evText}\n🎯 Kelly Stake: $${analysis.recommended_stake.toFixed(0)}\n\nCheck the AI model: beatvegas.com`;
+    const shareText = `🚀 Just built a ${legs.length}-leg parlay on #BeatVegas!\n\n${legsText}\n\n${correlationEmoji} ${parlayCalc.correlation_label}\n💰 Expected Value: ${evText}\n🎲 Hit Probability: ${parlayCalc.combined_probability_pct.toFixed(1)}%\n\nCheck the AI model: beatvegas.com`;
 
     try {
       await navigator.clipboard.writeText(shareText);
@@ -109,50 +193,61 @@ const ParlayBuilder: React.FC = () => {
     }
   };
 
-  const analyzeParlay = async () => {
-    if (legs.length < 2) {
-      setError('Add at least 2 legs to analyze correlation');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
+  const analyzeStake = async (parlayData: ParlayCalculation) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:8000/api/parlay/build', {
+      
+      // Determine parlay confidence based on EV%
+      let parlayConfidence = 'MODERATE';
+      if (parlayData.ev_percent < -5) {
+        parlayConfidence = 'SPECULATIVE';
+      } else if (parlayData.ev_percent > 5) {
+        parlayConfidence = 'HIGH';
+      }
+      
+      const response = await fetch('http://localhost:8000/api/architect/analyze-stake', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ legs, stake }),
+        body: JSON.stringify({
+          stake_amount: stake,
+          parlay_confidence: parlayConfidence,
+          parlay_risk: parlayData.volatility,
+          leg_count: parlayData.leg_count,
+          combined_probability: parlayData.combined_probability,
+          total_odds: parlayData.decimal_odds,
+          potential_payout: parlayData.potential_payout || (stake * parlayData.decimal_odds),
+          ev_percent: parlayData.ev_percent
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to analyze parlay');
+      if (response.ok) {
+        const stakeData = await response.json();
+        setStakeAnalysis(stakeData);
       }
-
-      const data = await response.json();
-      setAnalysis(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to analyze parlay');
-      console.error(err);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error('Failed to analyze stake:', err);
     }
   };
 
-  // Traffic Light Colors - PHASE 7: Added CROSS_SPORT grade
-  const getCorrelationColor = (grade: string) => {
-    switch (grade) {
-      case 'HIGH': return { bg: 'bg-bold-red/20', border: 'border-bold-red', text: 'text-bold-red', icon: '🔴' };
-      case 'MEDIUM': return { bg: 'bg-yellow-500/20', border: 'border-yellow-500', text: 'text-yellow-500', icon: '🟡' };
-      case 'LOW': return { bg: 'bg-neon-green/20', border: 'border-neon-green', text: 'text-neon-green', icon: '🟢' };
-      case 'CROSS_SPORT': return { bg: 'bg-blue-500/20', border: 'border-blue-500', text: 'text-blue-500', icon: '🔵' };
-      case 'NEGATIVE': return { bg: 'bg-purple-600/20', border: 'border-purple-600', text: 'text-purple-600', icon: '🟣' };
-      default: return { bg: 'bg-light-gray/20', border: 'border-light-gray', text: 'text-light-gray', icon: '⚪' };
+  // Traffic Light Colors for Correlation
+  const getCorrelationColor = (type: string) => {
+    switch (type) {
+      case 'positive': return { bg: 'bg-green-500/20', border: 'border-green-500', text: 'text-green-500', icon: '🟢' };
+      case 'negative': return { bg: 'bg-red-500/20', border: 'border-red-500', text: 'text-red-500', icon: '🔴' };
+      case 'neutral': return { bg: 'bg-yellow-500/20', border: 'border-yellow-500', text: 'text-yellow-500', icon: '🟡' };
+      default: return { bg: 'bg-gray-500/20', border: 'border-gray-500', text: 'text-gray-500', icon: '⚪' };
     }
+  };
+
+  // Color-coded hit probability (requirement #5)
+  const getProbabilityColor = (prob: number) => {
+    if (prob < 5) return 'text-red-400';      // 0-5%: red
+    if (prob < 15) return 'text-yellow-400';  // 5-15%: yellow
+    if (prob < 25) return 'text-lime-400';    // 15-25%: greenish
+    return 'text-green-400';                   // 25%+: green
   };
 
   const getEVColor = (ev: number) => {
@@ -304,7 +399,7 @@ const ParlayBuilder: React.FC = () => {
                           {leg.team_a} vs {leg.team_b}
                         </div>
                         <div className="text-xs text-light-gray">
-                          {leg.pick_type.toUpperCase()} - {leg.selection.toUpperCase()} @ {leg.odds.toFixed(2)}
+                          {leg.pick_type.toUpperCase()} - {leg.selection.toUpperCase()} ({(leg.true_probability * 100).toFixed(1)}%)
                         </div>
                       </div>
                       <button
@@ -314,8 +409,8 @@ const ParlayBuilder: React.FC = () => {
                         ×
                       </button>
                     </div>
-                    {/* Visual Link Indicator for HIGH correlation (Blueprint Page 64) */}
-                    {idx < legs.length - 1 && analysis && analysis.correlation_grade === 'HIGH' && (
+                    {/* Visual Link Indicator for positive correlation */}
+                    {idx < legs.length - 1 && parlayCalc && parlayCalc.correlation_type === 'positive' && (
                       <div className="flex items-center justify-center my-1">
                         <div className="text-neon-green text-2xl animate-pulse" title="High correlation detected">
                           🔗
@@ -334,19 +429,22 @@ const ParlayBuilder: React.FC = () => {
                 <input
                   type="number"
                   value={stake}
-                  onChange={(e) => setStake(parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    setStake(parseFloat(e.target.value));
+                    setStakeAnalysis(null); // Clear previous analysis when stake changes
+                  }}
                   className="w-full bg-navy border border-navy rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-electric-blue focus:outline-none"
                 />
               </div>
             )}
 
-            {/* Analyze Button */}
+            {/* Analyze Button - Hidden (auto-calculates) */}
             <button
-              onClick={analyzeParlay}
+              onClick={calculateParlay}
               disabled={legs.length < 2 || loading}
               className="w-full bg-gradient-to-r from-electric-blue to-purple-600 text-white font-bold py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all"
             >
-              {loading ? 'Analyzing...' : legs.length < 2 ? 'Add 2+ Legs to Analyze' : 'Analyze Correlation'}
+              {loading ? 'Calculating...' : legs.length < 2 ? 'Add 2+ Legs to Analyze' : 'Recalculate Parlay'}
             </button>
 
             {/* Error Message */}
@@ -357,74 +455,182 @@ const ParlayBuilder: React.FC = () => {
             )}
 
             {/* Analysis Results */}
-            {analysis && (
+            {parlayCalc && (
               <div className="mt-6 space-y-4">
-                {/* Traffic Light Correlation Grade */}
-                <div className={`${getCorrelationColor(analysis.correlation_grade).bg} border-2 ${getCorrelationColor(analysis.correlation_grade).border} rounded-xl p-6 text-center`}>
-                  <div className="text-6xl mb-2">{getCorrelationColor(analysis.correlation_grade).icon}</div>
-                  <div className={`text-3xl font-bold font-teko ${getCorrelationColor(analysis.correlation_grade).text}`}>
-                    {analysis.correlation_grade} CORRELATION
-                  </div>
-                  <div className="text-white mt-2">{analysis.correlation_score.toFixed(2)}</div>
-                </div>
-
-                {/* Analysis Text */}
-                <div className="bg-navy/50 rounded-lg p-4">
-                  <p className="text-light-gray text-sm">{analysis.analysis}</p>
-                </div>
-
-                {/* Key Metrics */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-navy/50 rounded-lg p-4">
-                    <div className="text-light-gray text-xs uppercase mb-1">True Probability</div>
-                    <div className="text-white font-bold text-xl">
-                      {(analysis.combined_true_probability * 100).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="bg-navy/50 rounded-lg p-4">
-                    <div className="text-light-gray text-xs uppercase mb-1">Book Probability</div>
-                    <div className="text-white font-bold text-xl">
-                      {(analysis.implied_book_probability * 100).toFixed(1)}%
-                    </div>
-                  </div>
-                  <div className="bg-navy/50 rounded-lg p-4">
-                    <div className="text-light-gray text-xs uppercase mb-1">Expected Value</div>
-                    <div className={`font-bold text-xl ${getEVColor(analysis.ev_percent)}`}>
-                      {analysis.ev_percent > 0 ? '+' : ''}{analysis.ev_percent.toFixed(2)}%
-                    </div>
-                  </div>
-                  <div className="bg-navy/50 rounded-lg p-4">
-                    <div className="text-light-gray text-xs uppercase mb-1">Kelly Stake</div>
-                    <div className="text-neon-green font-bold text-xl">
-                      ${analysis.recommended_stake.toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                {/* LARGE RED EV WARNING BOX (Blueprint Page 64 requirement) */}
-                {analysis.EV_WARNING && (
-                  <div className="bg-gradient-to-r from-bold-red/30 to-bold-red/20 border-4 border-bold-red rounded-2xl p-6 shadow-2xl">
-                    <div className="flex items-center space-x-4 mb-4">
-                      <div className="text-6xl animate-pulse">⚠️</div>
-                      <div className="flex-1">
-                        <div className="text-bold-red font-black text-2xl mb-2 tracking-wide">NEGATIVE EV WARNING</div>
-                        <div className="text-white font-bold text-lg">These picks fight each other statistically</div>
+                {/* 🧠 STAKE INTELLIGENCE (CONTEXT ONLY) */}
+                {stakeAnalysis && (
+                  <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-xl p-5 border-2 border-purple-500/30">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h4 className="text-white font-bold text-base mb-1 flex items-center gap-2">
+                          🧠 Stake Intelligence
+                        </h4>
+                        <p className="text-light-gray text-xs mb-3">
+                          Context only — not betting advice
+                        </p>
                       </div>
                     </div>
-                    <div className="bg-black/40 rounded-lg p-4 border border-bold-red/50">
-                      <p className="text-light-gray text-sm leading-relaxed">
-                        <span className="font-semibold text-white">High correlation detected:</span> When one leg hits, it makes the other(s) less likely to win. 
-                        The book's odds don't account for this dependency, creating negative expected value. 
-                        <span className="text-bold-red font-bold block mt-2">💡 Recommendation: Split into separate straight bets.</span>
-                      </p>
+                    
+                    {/* Key Metrics Grid */}
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="bg-navy/50 rounded-lg p-3">
+                        <div className="text-light-gray text-xs mb-1">Hit Probability</div>
+                        <div className={`text-xl font-bold ${
+                          stakeAnalysis.hit_probability < 10 ? 'text-red-400' :
+                          stakeAnalysis.hit_probability < 20 ? 'text-yellow-400' :
+                          'text-green-400'
+                        }`}>
+                          {stakeAnalysis.hit_probability.toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-light-gray">{stakeAnalysis.hit_probability_label}</div>
+                      </div>
+                      
+                      <div className="bg-navy/50 rounded-lg p-3">
+                        <div className="text-light-gray text-xs mb-1">Risk Level</div>
+                        <div className="text-lg font-bold text-white">
+                          {stakeAnalysis.risk_level}
+                        </div>
+                      </div>
+                      
+                      <div className="bg-navy/50 rounded-lg p-3">
+                        <div className="text-light-gray text-xs mb-1">EV</div>
+                        <div className={`text-lg font-bold ${
+                          stakeAnalysis.ev_interpretation === 'Positive' ? 'text-green-400' :
+                          stakeAnalysis.ev_interpretation === 'Negative' ? 'text-red-400' :
+                          'text-yellow-400'
+                        }`}>
+                          {stakeAnalysis.ev_interpretation}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Context Messages */}
+                    <div className="space-y-2">
+                      <div className="bg-navy/30 rounded-lg p-3">
+                        <div className="text-xs text-light-gray mb-1">Context:</div>
+                        <div className="text-sm text-white">{stakeAnalysis.context_message}</div>
+                      </div>
+                      
+                      <div className="text-xs text-light-gray">
+                        {stakeAnalysis.payout_context}
+                      </div>
+                      
+                      <div className="text-xs text-light-gray italic">
+                        {stakeAnalysis.volatility_alignment}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Same-Game Parlay Badge */}
-                {analysis.same_game_parlay && (
-                  <div className="bg-electric-blue/20 border border-electric-blue rounded-lg p-3 text-center">
-                    <span className="text-electric-blue font-bold text-sm">📊 SAME-GAME PARLAY DETECTED</span>
+                {/* 📊 PARLAY METRICS (Real Calculator Data) */}
+                <div className="bg-gradient-to-br from-navy to-charcoal rounded-xl p-6 border-2 border-gold/30">
+                  <h3 className="text-gold font-bold text-lg mb-4 flex items-center gap-2">
+                    📊 Parlay Analysis
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    {/* Hit Probability - COLOR CODED */}
+                    <div className="bg-navy/50 rounded-lg p-4">
+                      <div className="text-light-gray text-xs uppercase mb-1">Win Probability</div>
+                      <div className={`font-bold text-2xl ${getProbabilityColor(parlayCalc.combined_probability_pct)}`}>
+                        {parlayCalc.combined_probability_pct.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-light-gray mt-1">
+                        ({parlayCalc.leg_count} legs)
+                      </div>
+                    </div>
+                    
+                    {/* Decimal Odds */}
+                    <div className="bg-navy/50 rounded-lg p-4">
+                      <div className="text-light-gray text-xs uppercase mb-1">Payout Odds</div>
+                      <div className="text-white font-bold text-2xl">
+                        {parlayCalc.decimal_odds.toFixed(2)}x
+                      </div>
+                      <div className="text-xs text-light-gray mt-1">
+                        {parlayCalc.potential_payout && `$${parlayCalc.potential_payout.toFixed(2)}`}
+                      </div>
+                    </div>
+                    
+                    {/* Expected Value */}
+                    <div className="bg-navy/50 rounded-lg p-4">
+                      <div className="text-light-gray text-xs uppercase mb-1">Expected Value</div>
+                      <div className={`font-bold text-xl ${getEVColor(parlayCalc.ev_percent)}`}>
+                        {parlayCalc.ev_percent > 0 ? '+' : ''}{parlayCalc.ev_percent.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-light-gray mt-1">
+                        {parlayCalc.ev_label}
+                      </div>
+                    </div>
+                    
+                    {/* Volatility */}
+                    <div className="bg-navy/50 rounded-lg p-4">
+                      <div className="text-light-gray text-xs uppercase mb-1">Volatility</div>
+                      <div className={`font-bold text-xl ${
+                        parlayCalc.volatility === 'Extreme' ? 'text-red-400' :
+                        parlayCalc.volatility === 'High' ? 'text-orange-400' :
+                        parlayCalc.volatility === 'Medium' ? 'text-yellow-400' :
+                        'text-green-400'
+                      }`}>
+                        {parlayCalc.volatility}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Correlation Badge */}
+                <div className={`${getCorrelationColor(parlayCalc.correlation_type).bg} border-2 ${getCorrelationColor(parlayCalc.correlation_type).border} rounded-xl p-6 text-center`}>
+                  <div className="text-5xl mb-2">{getCorrelationColor(parlayCalc.correlation_type).icon}</div>
+                  <div className={`text-2xl font-bold font-teko ${getCorrelationColor(parlayCalc.correlation_type).text}`}>
+                    {parlayCalc.correlation_label.toUpperCase()}
+                  </div>
+                  <div className="text-light-gray text-sm mt-2">
+                    {parlayCalc.correlation_type === 'positive' && 'Legs tend to hit together'}
+                    {parlayCalc.correlation_type === 'negative' && 'Legs work against each other'}
+                    {parlayCalc.correlation_type === 'neutral' && 'No significant correlation detected'}
+                  </div>
+                </div>
+
+                {/* Potential Profit Display */}
+                {parlayCalc.potential_profit && (
+                  <div className="bg-gradient-to-r from-neon-green/20 to-emerald-500/20 border-2 border-neon-green/50 rounded-xl p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-light-gray text-sm">Potential Profit</div>
+                        <div className="text-neon-green font-bold text-3xl font-teko">
+                          ${parlayCalc.potential_profit.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-light-gray text-sm">Total Payout</div>
+                        <div className="text-white font-bold text-xl">
+                          ${parlayCalc.potential_payout?.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* EV WARNING for negative EV parlays */}
+                {parlayCalc.ev_percent < -10 && (
+                  <div className="bg-gradient-to-r from-red-900/30 to-red-800/20 border-4 border-red-500 rounded-2xl p-6">
+                    <div className="flex items-center space-x-4 mb-3">
+                      <div className="text-5xl">⚠️</div>
+                      <div>
+                        <div className="text-red-400 font-black text-xl">NEGATIVE EV WARNING</div>
+                        <div className="text-white font-semibold">This parlay is mathematically disadvantageous</div>
+                      </div>
+                    </div>
+                    <div className="bg-black/40 rounded-lg p-4 border border-red-500/50">
+                      <p className="text-light-gray text-sm">
+                        <span className="font-semibold text-white">EV: {parlayCalc.ev_percent.toFixed(1)}%</span> — 
+                        The payout odds don't fairly compensate for the low hit probability. 
+                        {parlayCalc.correlation_type === 'negative' && (
+                          <span className="text-red-400 block mt-2">
+                            🚨 Legs correlate negatively, making this even less likely to hit.
+                          </span>
+                        )}
+                      </p>
+                    </div>
                   </div>
                 )}
 

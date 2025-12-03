@@ -108,14 +108,14 @@ const PropCard: React.FC<PropCardProps> = ({
     <div className="bg-charcoal rounded-lg border border-navy hover:border-electric-blue transition-all duration-300 overflow-hidden">
       {/* Main Card Content */}
       <div className="p-5">
-        {/* Top Row: Rank Badge + BeatVegas Edge Branding */}
+        {/* Top Row: Rank Badge + Model Analytics Branding */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center space-x-2">
             <div className="bg-electric-blue/20 text-electric-blue text-xs font-bold px-3 py-1 rounded-full">
               #{rank} PROP
             </div>
-            <div className="bg-gradient-to-r from-neon-green/20 to-electric-blue/20 text-white text-xs font-bold px-3 py-1 rounded-full border border-neon-green/30">
-              ⚡ BEATVEGAS EDGE™
+            <div className="bg-gradient-to-r from-electric-blue/20 to-purple-600/20 text-white text-xs font-bold px-3 py-1 rounded-full border border-electric-blue/30">
+              📊 MODEL ANALYTICS
             </div>
           </div>
           <button 
@@ -148,7 +148,7 @@ const PropCard: React.FC<PropCardProps> = ({
           <span className="text-sm font-semibold text-electric-blue">{prop.position}</span>
         </div>
 
-        {/* Intelligence Indicators: Confidence + Volatility + Model Edge */}
+        {/* Intelligence Indicators: Confidence + Volatility + Model Variance */}
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="text-center">
             <p className="text-[10px] text-light-gray uppercase mb-1">Confidence</p>
@@ -163,8 +163,8 @@ const PropCard: React.FC<PropCardProps> = ({
             </div>
           </div>
           <div className="text-center">
-            <p className="text-[10px] text-light-gray uppercase mb-1">Model Edge</p>
-            <div className="px-2 py-1 rounded border border-neon-green/30 bg-neon-green/10 text-neon-green text-xs font-bold">
+            <p className="text-[10px] text-light-gray uppercase mb-1">Model Variance</p>
+            <div className="px-2 py-1 rounded border border-electric-blue/30 bg-electric-blue/10 text-electric-blue text-xs font-bold">
               +{prop.expected_value.toFixed(1)}%
             </div>
           </div>
@@ -190,12 +190,13 @@ const PropCard: React.FC<PropCardProps> = ({
           </div>
         </div>
 
-        {/* Expected Value */}
+        {/* Model Variance Gap */}
         <div className="mb-3">
-          <p className="text-xs text-light-gray font-semibold mb-1">EXPECTED VALUE</p>
+          <p className="text-xs text-light-gray font-semibold mb-1">MODEL VARIANCE GAP</p>
           <p className={`text-2xl font-bold ${getEVColor(prop.expected_value)} font-teko`}>
             {evFormatted}
           </p>
+          <p className="text-[9px] text-light-gray mt-0.5">(Not betting value)</p>
         </div>
 
         {/* Mini Trend Chart */}
@@ -364,12 +365,12 @@ const PropCard: React.FC<PropCardProps> = ({
             </div>
           )}
 
-          {/* Decision Intelligence Footer */}
+          {/* Statistical Analysis Footer */}
           <div className="pt-4 border-t border-navy">
             <p className="text-xs text-light-gray italic text-center">
-              This analysis provides quantified edge for informed decision-making.
+              This platform provides statistical modeling only. No recommendations or betting instructions are provided.
               <br />
-              All projections are analytical insights, not guaranteed outcomes.
+              All projections are model outputs, not guaranteed outcomes.
             </p>
           </div>
         </div>

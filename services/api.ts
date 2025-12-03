@@ -85,58 +85,121 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
     return data;
 };
 
-
-// --- Odds Data ---
-export const fetchEvents = async (): Promise<Event[]> => {
+/**
+ * Verify if the current token is valid and user exists
+ * Returns user data if valid, throws error if invalid
+ */
+export const verifyToken = async (): Promise<User> => {
     const token = getToken();
     if (!token) {
-        console.warn('No auth token found - attempting to fetch events without authentication');
-        // Try without auth for testing
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/odds/`);
-            if (response.ok) {
-                const data = await response.json();
-                if (Array.isArray(data)) {
-                    return normalizeEvents(data);
-                }
-                if (data && Array.isArray((data as any).events)) {
-                    return normalizeEvents((data as any).events);
-                }
-            }
-        } catch (err) {
-            console.error('Failed to fetch without auth:', err);
+        throw new Error('No token found');
+    }
+    
+    try {
+        // Try to fetch current user data - this validates token and user existence
+        const response = await fetch(`${API_BASE_URL}/api/users/me`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+        
+        if (!response.ok) {
+            // Token is invalid or user doesn't exist
+            removeToken();
+            throw new Error('Invalid or expired token');
         }
-        throw new Error('No authentication token found. Please log in.');
+        
+        return response.json();
+    } catch (error) {
+        removeToken();
+        throw error;
     }
+};
 
-    const response = await fetch(`${API_BASE_URL}/api/odds/`, {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-        },
+
+// --- Odds Data ---
+// Fetches today's NBA events by default (EST), can be extended for other sports/dates
+// Fetch events from database (uses stored events with EST filtering)
+export const fetchEventsFromDB = async (
+    sportKey?: string,
+    date?: string,
+    upcomingOnly: boolean = true,
+    limit: number = 100
+): Promise<Event[]> => {
+    // Default to today's EST date if not provided
+    let targetDate = date;
+    if (!targetDate) {
+        const now = new Date();
+        // Get EST date string directly using Intl.DateTimeFormat
+        const formatter = new Intl.DateTimeFormat('en-CA', { 
+            timeZone: 'America/New_York',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        targetDate = formatter.format(now); // Returns "YYYY-MM-DD" format
+    }
+    
+    let url = `${API_BASE_URL}/api/odds/list?date=${encodeURIComponent(targetDate)}&upcoming_only=${upcomingOnly}&limit=${limit}`;
+    if (sportKey) {
+        url += `&sport=${encodeURIComponent(sportKey)}`;
+    }
+    
+    console.log('[fetchEventsFromDB] Calling:', url);
+    const res = await fetch(url);
+    console.log('[fetchEventsFromDB] Response status:', res.status);
+    console.log('[fetchEventsFromDB] Response status:', res.status);
+    if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
+    const data = await res.json();
+    console.log('[fetchEventsFromDB] Response data:', { 
+        isArray: Array.isArray(data), 
+        hasEvents: !!data?.events,
+        count: data?.count,
+        eventsLength: Array.isArray(data) ? data.length : (data?.events?.length ?? 0)
     });
+    const evs = Array.isArray(data) ? data : (data?.events ?? []);
+    console.log('[fetchEventsFromDB] Returning events:', evs.length);
+    return normalizeEvents(evs);
+};
 
-    if (response.status === 401) {
-       console.error('401 Unauthorized - Token may be expired or invalid');
-       console.log('Current token:', token?.substring(0, 20) + '...');
-       removeToken();
-       throw new Error('Session expired. Please log in again.');
+export const fetchEvents = async (
+    sportKey: string = 'basketball_nba',
+    date?: string,
+    regions: string = 'us,us2,eu,uk',
+    markets: string = 'h2h,spreads,totals',
+    dateBasis: string = 'est'
+): Promise<Event[]> => {
+    // Default to today's EST date if not provided
+    let targetDate = date;
+    if (!targetDate) {
+        const now = new Date();
+        // Convert to America/New_York (EST/EDT) date string
+        const estNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        targetDate = estNow.toISOString().slice(0, 10);
     }
+    const url = `${API_BASE_URL}/api/odds/realtime/by-date?sport=${encodeURIComponent(sportKey)}&date=${encodeURIComponent(targetDate)}&regions=${encodeURIComponent(regions)}&markets=${encodeURIComponent(markets)}&date_basis=${encodeURIComponent(dateBasis)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed realtime fetch: ${res.status}`);
+    const data = await res.json();
+    const evs = Array.isArray(data) ? data : (data?.events ?? []);
+    return normalizeEvents(evs);
+};
 
-    if (!response.ok) {
-        console.error(`Odds API error: ${response.status} ${response.statusText}`);
-        throw new Error('Failed to fetch live event data.');
-    }
-
-    const data = await response.json();
-    // Backend may return either an array or an object { count, events }
-    if (Array.isArray(data)) {
-        return normalizeEvents(data);
-    }
-    if (data && Array.isArray((data as any).events)) {
-        return normalizeEvents((data as any).events);
-    }
-    // Unexpected shape
-    throw new Error('Invalid response shape from events API');
+// Real-time by-date fetch (EST)
+export const fetchEventsByDateRealtime = async (
+    sportKey: string,
+    estDate: string,
+    regions: string = 'us,us2,eu,uk',
+    markets: string = 'h2h,spreads,totals'
+): Promise<Event[]> => {
+    const url = `${API_BASE_URL}/api/odds/realtime/by-date?sport=${encodeURIComponent(sportKey)}&date=${encodeURIComponent(estDate)}&regions=${encodeURIComponent(regions)}&markets=${encodeURIComponent(markets)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed realtime fetch: ${res.status}`);
+    const data = await res.json();
+    const evs = Array.isArray(data) ? data : (data?.events ?? []);
+    return normalizeEvents(evs);
 };
 
 // Helper to normalize event field names from backend

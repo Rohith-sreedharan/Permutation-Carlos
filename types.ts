@@ -1,5 +1,5 @@
 // FIX: Added 'leaderboard', 'profile', 'billing', 'earnings' to support more pages
-export type Page = 'dashboard' | 'community' | 'trust-loop' | 'architect' | 'affiliates' | 'leaderboard' | 'profile' | 'wallet' | 'billing' | 'earnings' | 'settings' | 'gameDetail' | 'onboarding';
+export type Page = 'dashboard' | 'community' | 'trust-loop' | 'architect' | 'daily-cards' | 'affiliates' | 'leaderboard' | 'profile' | 'wallet' | 'billing' | 'earnings' | 'settings' | 'gameDetail' | 'onboarding';
 
 export interface Bet {
   type: 'Moneyline' | 'Spread' | 'Total';
@@ -126,13 +126,123 @@ export interface MonteCarloSimulation {
     line: number;
     probability: number;
     ev: number;
+    edge?: number;
+    ai_projection?: number;
   }>;
   confidence_intervals?: {
     ci_68: [number, number];
     ci_95: [number, number];
     ci_99: [number, number];
   };
+  // Metadata
+  metadata?: {
+    user_tier?: string;
+    iterations_run?: number;
+    sim_count_used?: number;
+    variance?: number;
+    ci_95?: [number, number];
+    precision_level?: string;
+    confidence_interval_width?: number;
+    cached?: boolean;
+    simulation_created_at?: string;
+    generated_at?: string;
+  };
+  // Market context - enhanced with timestamp for backtesting
+  market_context?: {
+    total_line?: number;
+    spread?: number;
+    bookmaker_source?: string;
+    odds_timestamp?: string;
+    sim_result_delta?: number;
+    edge_percentage?: number;
+  };
+  // Pace and projections
+  pace_factor?: number;
+  projected_score?: number;
+  vegas_line?: number;
+  // Injury summary
+  injury_summary?: {
+    total_offensive_impact?: number;
+    total_defensive_impact?: number;
+    combined_net_impact?: number;
+    impact_description?: string;
+    key_injuries?: Array<{
+      player: string;
+      team: string;
+      position: string;
+      status: string;
+    }>;
+  };
   created_at: string;
+  // Sharp Analysis - Model vs Vegas
+  sharp_analysis?: {
+    total?: {
+      has_edge: boolean;
+      vegas_total: number;
+      model_total: number;
+      edge_points: number;
+      edge_direction: 'OVER' | 'UNDER';
+      sharp_side: 'OVER' | 'UNDER';
+      edge_grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
+      sharp_side_display: string;
+      sharp_side_reason?: string;
+      edge_reasoning?: {
+        primary_factor: string;
+        contributing_factors: string[];
+        model_reasoning: string;
+        market_positioning: string;
+        contrarian_indicator: boolean;
+        confidence_level: 'HIGH' | 'MEDIUM' | 'LOW';
+        // CRITICAL: Structured quantitative data for backtesting
+        structured_data?: {
+          injury_impact_points: number;
+          pace_adjustment_percent: number;
+          variance_sigma: number;
+          convergence_score: number;
+          median_sim_total: number;
+          vegas_total: number;
+          delta_vs_vegas: number;
+          contrarian: boolean;
+          confidence_numeric: number;
+          confidence_bucket: 'HIGH' | 'MEDIUM' | 'LOW';
+          primary_factor: string;
+          primary_factor_impact_pts: number;
+          factor_contributions: Array<{
+            factor: string;
+            impact_points: number;
+            contribution_pct: number;
+            note?: string;
+          }>;
+          residual_unexplained_pts: number;
+          risk_factors: Array<{
+            risk: string;
+            severity: 'HIGH' | 'MEDIUM' | 'LOW';
+            description: string;
+          }>;
+          overall_risk_level: 'HIGH' | 'MEDIUM' | 'LOW';
+          backtest_ready: boolean;
+          calibration_bucket: string;
+          edge_grade_numeric: number;
+        };
+      };
+    };
+    spread?: {
+      has_edge: boolean;
+      vegas_spread: number;
+      model_spread: number;
+      edge_points: number;
+      edge_direction: 'FAV' | 'DOG';
+      sharp_side: 'FAV' | 'DOG';
+      edge_grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
+      sharp_side_display: string;
+      sharp_side_reason?: string;
+    };
+    model_line_display?: string;
+    vegas_line_display?: string;
+    sharp_side_display?: string;
+    edge_points_display?: string;
+    disclaimer: string;
+  };
 }
 
 // Risk Profile & Decision Capital

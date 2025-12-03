@@ -66,6 +66,7 @@ class ParlayAgent:
     def _analyze_correlation(self, legs: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Analyze correlation between legs
+        PHASE 15: Added 1H vs Full Game correlation detection
         Returns: {grade, score, ev_warning, analysis, adjusted_prob}
         """
         if len(legs) < 2:
@@ -76,6 +77,57 @@ class ParlayAgent:
                 "analysis": "Single leg, no correlation",
                 "adjusted_prob": legs[0].get("win_probability", 0.5) if legs else 0.5
             }
+        
+        # PHASE 15: Check for 1H vs Full Game conflicts
+        period_picks = {}  # event_id -> {period: pick_type}
+        for leg in legs:
+            event_id = leg.get("event_id")
+            period = leg.get("period", "full")  # "1H", "2H", or "full"
+            pick_type = leg.get("pick_type", "")
+            
+            if event_id not in period_picks:
+                period_picks[event_id] = {}
+            period_picks[event_id][period] = pick_type
+        
+        # Detect 1H vs Full Game conflicts
+        for event_id, picks in period_picks.items():
+            if "1H" in picks and "full" in picks:
+                first_half_pick = picks["1H"]
+                full_game_pick = picks["full"]
+                
+                # Check for contradictions
+                if ("under" in first_half_pick.lower() and "over" in full_game_pick.lower()):
+                    return {
+                        "grade": "NEGATIVE",
+                        "score": -0.30,
+                        "ev_warning": True,
+                        "analysis": "⚠️ CONFLICT: 1H Under + Full Game Over = Negative Correlation (2H must explode)",
+                        "adjusted_prob": 0.25  # Penalize heavily
+                    }
+                elif ("over" in first_half_pick.lower() and "under" in full_game_pick.lower()):
+                    return {
+                        "grade": "NEGATIVE",
+                        "score": -0.30,
+                        "ev_warning": True,
+                        "analysis": "⚠️ CONFLICT: 1H Over + Full Game Under = Negative Correlation (2H must die)",
+                        "adjusted_prob": 0.25  # Penalize heavily
+                    }
+                elif ("over" in first_half_pick.lower() and "over" in full_game_pick.lower()):
+                    return {
+                        "grade": "HIGH",
+                        "score": 0.85,
+                        "ev_warning": False,
+                        "analysis": "🔗 SUPPORT: 1H Over + Full Game Over = High Correlation (consistent scoring)",
+                        "adjusted_prob": None  # Will be calculated below
+                    }
+                elif ("under" in first_half_pick.lower() and "under" in full_game_pick.lower()):
+                    return {
+                        "grade": "HIGH",
+                        "score": 0.85,
+                        "ev_warning": False,
+                        "analysis": "🔗 SUPPORT: 1H Under + Full Game Under = High Correlation (consistent defense)",
+                        "adjusted_prob": None  # Will be calculated below
+                    }
         
         # Check if same game parlay
         event_ids = [leg.get("event_id") for leg in legs]

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 // SVG Icons (replacing lucide-react)
 const CheckCircle = ({ className }: { className?: string }) => (
@@ -33,34 +33,69 @@ const Shield = ({ className }: { className?: string }) => (
 );
 
 interface TrustMetrics {
-  accuracy: number;
-  win_rate: number;
-  total_verified: number;
-  correct: number;
-  incorrect: number;
-  window_days: number;
+  overall?: {
+    '7day_accuracy': number;
+    '7day_record': string;
+    '7day_units': number;
+    '30day_roi': number;
+    '30day_units': number;
+    brier_score: number;
+  };
+  by_sport?: Record<string, {
+    accuracy: number;
+    roi: number;
+    units: number;
+    record: string;
+    total_predictions: number;
+  }>;
+  confidence_calibration?: {
+    high_confidence: { predicted: number; actual: number; count: number };
+    medium_confidence: { predicted: number; actual: number; count: number };
+    low_confidence: { predicted: number; actual: number; count: number };
+  };
+  recent_performance?: Array<{
+    event_id: string;
+    game: string;
+    sport: string;
+    prediction: string;
+    result: string;
+    units: number;
+    confidence: number;
+    graded_at: string;
+  }>;
+  yesterday?: {
+    record: string;
+    units: number;
+    accuracy: number;
+    message: string;
+  };
 }
 
-interface LedgerEntry {
-  creator_id: string;
-  creator_name: string;
-  forecast: string;
-  confidence: number;
-  result: string;
-  event: string;
-  verified_at: string;
+interface TrendData {
+  date: string;
+  accuracy: number;
+  units: number;
+  wins: number;
+  losses: number;
+}
+
+interface HistoryEntry {
+  event_id: string;
+  game: string;
   sport: string;
+  prediction: string;
+  result: string;
+  units: number;
+  confidence: number;
+  graded_at: string;
 }
 
 const TrustLoop: React.FC = () => {
-  const [selectedWindow, setSelectedWindow] = useState<7 | 30 | 90>(7);
-  const [metrics, setMetrics] = useState<Record<number, TrustMetrics>>({
-    7: { accuracy: 0, win_rate: 0, total_verified: 0, correct: 0, incorrect: 0, window_days: 7 },
-    30: { accuracy: 0, win_rate: 0, total_verified: 0, correct: 0, incorrect: 0, window_days: 30 },
-    90: { accuracy: 0, win_rate: 0, total_verified: 0, correct: 0, incorrect: 0, window_days: 90 },
-  });
-  const [publicLedger, setPublicLedger] = useState<LedgerEntry[]>([]);
+  const [metrics, setMetrics] = useState<TrustMetrics | null>(null);
+  const [trend, setTrend] = useState<TrendData[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSport, setSelectedSport] = useState<string>('all');
 
   useEffect(() => {
     loadTrustData();
@@ -73,39 +108,41 @@ const TrustLoop: React.FC = () => {
     try {
       setLoading(true);
 
-      // Fetch metrics for all windows
-      const windows = [7, 30, 90];
-      const metricsData: Record<number, TrustMetrics> = {};
-
-      for (const days of windows) {
-        const response = await fetch(`http://localhost:8000/api/verification/metrics?days=${days}`);
-        if (response.ok) {
-          metricsData[days] = await response.json();
-        }
+      // Fetch Phase 17 metrics (7-day accuracy, 30-day ROI, Brier Score, by_sport, yesterday)
+      const metricsResponse = await fetch('http://localhost:8000/api/trust/metrics');
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setMetrics(metricsData);
       }
 
-      setMetrics(metricsData);
+      // Fetch 7-day accuracy trend for sparkline
+      const trendResponse = await fetch('http://localhost:8000/api/trust/trend?days=7');
+      if (trendResponse.ok) {
+        const trendData = await trendResponse.json();
+        setTrend(trendData);
+      }
 
-      // Fetch public ledger
-      const ledgerResponse = await fetch('http://localhost:8000/api/verification/ledger');
-      if (ledgerResponse.ok) {
-        const ledgerData = await ledgerResponse.json();
-        setPublicLedger(ledgerData);
+      // Fetch recent graded predictions (last 20)
+      const historyResponse = await fetch('http://localhost:8000/api/trust/history?days=7&limit=20');
+      if (historyResponse.ok) {
+        const historyData = await historyResponse.json();
+        // API returns {count: X, predictions: [...]}
+        setHistory(Array.isArray(historyData) ? historyData : historyData.predictions || []);
       }
     } catch (error) {
-      console.error('Failed to load trust data:', error);
+      console.error('Failed to load Phase 17 trust data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const currentMetrics = metrics[selectedWindow];
-
-  const chartData = [
-    { name: '7 Days', accuracy: metrics[7].accuracy * 100, verified: metrics[7].total_verified },
-    { name: '30 Days', accuracy: metrics[30].accuracy * 100, verified: metrics[30].total_verified },
-    { name: '90 Days', accuracy: metrics[90].accuracy * 100, verified: metrics[90].total_verified },
-  ];
+  // Extract metrics safely
+  const accuracy7Day = metrics?.overall?.['7day_accuracy'] || 0;
+  const roi30Day = metrics?.overall?.['30day_roi'] || 0;
+  const brierScore = metrics?.overall?.brier_score || 0;
+  const record7Day = metrics?.overall?.['7day_record'] || '0-0';
+  const units7Day = metrics?.overall?.['7day_units'] || 0;
+  const yesterdayMessage = metrics?.yesterday?.message || 'No games graded yet';
 
   const getAccuracyColor = (accuracy: number) => {
     if (accuracy >= 0.60) return 'text-green-400';
@@ -143,135 +180,136 @@ const TrustLoop: React.FC = () => {
         </p>
       </div>
 
-      {/* Window Selector */}
-      <div className="flex gap-2">
-        {[7, 30, 90].map((days) => (
-          <button
-            key={days}
-            onClick={() => setSelectedWindow(days as 7 | 30 | 90)}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              selectedWindow === days
-                ? 'bg-purple-600 text-white'
-                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-            }`}
-          >
-            {days} Days
-          </button>
-        ))}
-      </div>
+      {/* Yesterday's Performance Hero */}
+      {metrics?.yesterday && (
+        <div className="bg-gradient-to-r from-green-900/20 to-emerald-900/20 rounded-lg p-6 border border-green-500/30">
+          <div className="flex items-center gap-3 mb-2">
+            <Award className="w-6 h-6 text-green-400" />
+            <h3 className="text-xl font-bold text-white">Yesterday's Performance</h3>
+          </div>
+          <p className="text-2xl font-bold text-green-400">{yesterdayMessage}</p>
+          <div className="text-sm text-gray-400 mt-2">
+            Record: {metrics.yesterday.record} | Units: {metrics.yesterday.units >= 0 ? '+' : ''}{metrics.yesterday.units.toFixed(2)} | Accuracy: {(metrics.yesterday.accuracy * 100).toFixed(1)}%
+          </div>
+        </div>
+      )}
+
+
 
       {/* Rolling Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className={`rounded-lg p-4 ${getAccuracyBgColor(currentMetrics.accuracy)} border border-purple-500/30`}>
-          <div className="text-gray-400 text-sm mb-1">Model Accuracy</div>
-          <div className={`text-3xl font-bold ${getAccuracyColor(currentMetrics.accuracy)}`}>
-            {(currentMetrics.accuracy * 100).toFixed(1)}%
+        <div className={`rounded-lg p-4 ${getAccuracyBgColor(accuracy7Day / 100)} border border-purple-500/30`}>
+          <div className="text-gray-400 text-sm mb-1">7-Day Accuracy</div>
+          <div className={`text-3xl font-bold ${getAccuracyColor(accuracy7Day / 100)}`}>
+            {accuracy7Day.toFixed(1)}%
           </div>
-          <div className="text-xs text-gray-500 mt-1">{selectedWindow}-day window</div>
+          <div className="text-xs text-gray-500 mt-1">Record: {record7Day}</div>
           <div className="text-xs text-gray-400 mt-2 leading-relaxed">
-            High-confidence forecasts resolved in the last {selectedWindow} days
+            Units: {units7Day >= 0 ? '+' : ''}{units7Day.toFixed(2)}
           </div>
         </div>
 
         <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-          <div className="text-gray-400 text-sm mb-1">Total Verified</div>
-          <div className="text-3xl font-bold text-white">{currentMetrics.total_verified}</div>
-          <div className="text-xs text-gray-500 mt-1">Forecasts resolved</div>
+          <div className="text-gray-400 text-sm mb-1">30-Day ROI</div>
+          <div className={`text-3xl font-bold ${roi30Day >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {roi30Day >= 0 ? '+' : ''}{roi30Day.toFixed(1)}%
+          </div>
+          <div className="text-xs text-gray-500 mt-1">Return on investment</div>
         </div>
 
         <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
-          <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
-            <CheckCircle className="w-4 h-4" />
-            Correct
-          </div>
-          <div className="text-3xl font-bold text-green-400">{currentMetrics.correct}</div>
-          <div className="text-xs text-gray-500 mt-1">
-            {currentMetrics.total_verified > 0
-              ? ((currentMetrics.correct / currentMetrics.total_verified) * 100).toFixed(1)
-              : 0}
-            % win rate
+          <div className="text-gray-400 text-sm mb-1">Brier Score</div>
+          <div className="text-3xl font-bold text-green-400">{brierScore.toFixed(3)}</div>
+          <div className="text-xs text-gray-500 mt-1">Calibration quality</div>
+          <div className="text-xs text-gray-400 mt-2 leading-relaxed">
+            Lower is better (0.0 = perfect)
           </div>
         </div>
 
-        <div className="bg-red-500/10 rounded-lg p-4 border border-red-500/30">
-          <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
-            <XCircle className="w-4 h-4" />
-            Incorrect
-          </div>
-          <div className="text-3xl font-bold text-red-400">{currentMetrics.incorrect}</div>
-          <div className="text-xs text-gray-500 mt-1">
-            {currentMetrics.total_verified > 0
-              ? ((currentMetrics.incorrect / currentMetrics.total_verified) * 100).toFixed(1)
-              : 0}
-            % miss rate
-          </div>
+        <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
+          <div className="text-gray-400 text-sm mb-1">Total Sports</div>
+          <div className="text-3xl font-bold text-blue-400">{Object.keys(metrics?.by_sport || {}).length}</div>
+          <div className="text-xs text-gray-500 mt-1">NBA, NFL, MLB, NHL, NCAAB, NCAAF</div>
         </div>
       </div>
 
-      {/* Accuracy Trend Chart */}
+      {/* 7-Day Accuracy Sparkline */}
       <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-        <h3 className="text-lg font-semibold text-white mb-4">Accuracy Trend</h3>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" opacity={0.5} />
-            <XAxis dataKey="name" stroke="#9CA3AF" />
-            <YAxis stroke="#9CA3AF" domain={[0, 100]} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
-              labelStyle={{ color: '#F3F4F6' }}
-            />
-            <Bar dataKey="accuracy" radius={[8, 8, 0, 0]}>
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={entry.accuracy >= 60 ? '#10B981' : entry.accuracy >= 55 ? '#F59E0B' : '#EF4444'}
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <h3 className="text-lg font-semibold text-white mb-4">7-Day Accuracy Trend</h3>
+        {trend.length > 0 ? (
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={trend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" opacity={0.5} />
+              <XAxis dataKey="date" stroke="#9CA3AF" />
+              <YAxis stroke="#9CA3AF" domain={[0, 100]} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
+                labelStyle={{ color: '#F3F4F6' }}
+              />
+              <Line type="monotone" dataKey="accuracy" stroke="#D4A64A" strokeWidth={3} dot={{ fill: '#D4A64A', r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="text-center py-8 text-gray-400">No trend data available yet</div>
+        )}
       </div>
 
-      {/* Public Ledger */}
+      {/* Recent Graded Predictions */}
       <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
         <div className="flex items-center gap-3 mb-4">
           <Shield className="w-6 h-6 text-purple-400" />
-          <h3 className="text-lg font-semibold text-white">Public Accuracy Ledger</h3>
+          <h3 className="text-lg font-semibold text-white">Recent Graded Predictions</h3>
         </div>
         <p className="text-sm text-gray-400 mb-4">
-          Top 10 most accurate high-confidence forecasts from the past 7 days
-          <span className="block text-xs text-gray-500 mt-1">⏰ Updates nightly after games resolve</span>
+          Last 20 graded predictions from the past 7 days
+          <span className="block text-xs text-gray-500 mt-1">⏰ Auto-graded daily at 4:15 AM EST</span>
         </p>
 
-        {publicLedger.length === 0 ? (
+        {history.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
-            No verified forecasts available yet. Check back after games complete.
+            No graded predictions available yet. Check back after games complete.
           </div>
         ) : (
           <div className="space-y-2">
-            {publicLedger.map((entry, index) => (
+            {history.map((entry, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between bg-gray-900/50 rounded-lg p-4 border border-gray-700 hover:border-purple-500/50 transition-colors"
+                className={`flex items-center justify-between rounded-lg p-4 border transition-colors ${
+                  entry.result === 'WIN'
+                    ? 'bg-green-900/20 border-green-500/30 hover:border-green-500/50'
+                    : entry.result === 'LOSS'
+                    ? 'bg-red-900/20 border-red-500/30 hover:border-red-500/50'
+                    : 'bg-gray-900/50 border-gray-700 hover:border-gray-500'
+                }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-600 text-white font-bold text-sm">
-                    #{index + 1}
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-700 text-white font-bold text-xs">
+                    {entry.sport}
                   </div>
                   <div>
-                    <div className="text-white font-semibold">{entry.creator_name}</div>
-                    <div className="text-sm text-gray-400">{entry.event}</div>
+                    <div className="text-white font-semibold">{entry.game}</div>
+                    <div className="text-sm text-gray-400">{entry.prediction}</div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <div className="text-white font-semibold">{entry.forecast}</div>
+                    <div className={`text-lg font-bold ${
+                      entry.result === 'WIN' ? 'text-green-400' : entry.result === 'LOSS' ? 'text-red-400' : 'text-gray-400'
+                    }`}>
+                      {entry.result}
+                    </div>
                     <div className="text-sm text-gray-400">
-                      {(entry.confidence * 100).toFixed(0)}% confidence
+                      {entry.units >= 0 ? '+' : ''}{entry.units.toFixed(2)} units | {(entry.confidence * 100).toFixed(0)}% confidence
                     </div>
                   </div>
-                  <CheckCircle className="w-6 h-6 text-green-400" />
+                  {entry.result === 'WIN' ? (
+                    <CheckCircle className="w-6 h-6 text-green-400" />
+                  ) : entry.result === 'LOSS' ? (
+                    <XCircle className="w-6 h-6 text-red-400" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-gray-600" />
+                  )}
                 </div>
               </div>
             ))}

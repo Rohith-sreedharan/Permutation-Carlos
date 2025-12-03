@@ -48,14 +48,15 @@ const SubscriptionSettings: React.FC = () => {
   }
 
   const tierInfo = {
-    STARTER: { name: 'Starter', color: 'from-gray-500 to-gray-600', price: 'Free' },
-    EXPLORER: { name: 'Explorer', color: 'from-blue-500 to-blue-600', price: '$19/mo' },
-    PRO: { name: 'Pro', color: 'from-purple-500 to-purple-600', price: '$39/mo' },
-    ELITE: { name: 'Elite', color: 'from-gold-500 to-gold-600', price: '$89/mo' }
+    starter: { name: 'Starter', color: 'from-gray-500 to-gray-600', price: 'Free' },
+    core: { name: 'Core', color: 'from-blue-500 to-blue-600', price: '$29/mo' },
+    pro: { name: 'Pro', color: 'from-purple-500 to-purple-600', price: '$49/mo' },
+    elite: { name: 'Elite', color: 'from-gold-500 to-gold-600', price: '$89/mo' },
+    founder: { name: 'Founder', color: 'from-gold-600 to-yellow-500', price: 'Lifetime' }
   };
 
-  const currentTier = subscription?.tier || 'STARTER';
-  const tierConfig = tierInfo[currentTier as keyof typeof tierInfo] || tierInfo.STARTER;
+  const currentTier = (subscription?.tier || 'starter').toLowerCase();
+  const tierConfig = tierInfo[currentTier as keyof typeof tierInfo] || tierInfo.starter;
 
   return (
     <div className="space-y-6">
@@ -72,7 +73,7 @@ const SubscriptionSettings: React.FC = () => {
             <h2 className="text-4xl font-bold text-white mt-2">{tierConfig.name}</h2>
             <p className="text-xl text-white/90 mt-1">{tierConfig.price}</p>
             
-            {subscription?.renewalDate && currentTier !== 'STARTER' && (
+            {subscription?.renewalDate && currentTier !== 'starter' && (
               <p className="text-sm text-white/70 mt-4">
                 Renews on {new Date(subscription.renewalDate).toLocaleDateString()}
               </p>
@@ -92,7 +93,7 @@ const SubscriptionSettings: React.FC = () => {
             >
               Manage Subscription
             </button>
-            {currentTier === 'STARTER' && (
+            {currentTier === 'starter' && (
               <button
                 onClick={() => window.location.href = '/upgrade'}
                 className="bg-electric-blue text-white font-semibold px-6 py-3 rounded-lg hover:bg-opacity-90 transition-colors"
@@ -134,13 +135,13 @@ const SubscriptionSettings: React.FC = () => {
       <div className="bg-charcoal rounded-lg shadow-lg p-6">
         <h3 className="text-xl font-bold text-white mb-4">Your Plan Includes</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {currentTier === 'STARTER' && (
+          {currentTier === 'starter' && (
             <>
               <div className="flex items-start space-x-3">
                 <span className="text-neon-green text-xl">✓</span>
                 <div>
-                  <p className="text-white font-semibold">2 Simulations/Day</p>
-                  <p className="text-sm text-light-gray">2,000 iterations per analysis</p>
+                  <p className="text-white font-semibold">Unlimited Simulations</p>
+                  <p className="text-sm text-light-gray">10,000 iterations per analysis</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
@@ -152,13 +153,13 @@ const SubscriptionSettings: React.FC = () => {
               </div>
             </>
           )}
-          {currentTier === 'EXPLORER' && (
+          {currentTier === 'core' && (
             <>
               <div className="flex items-start space-x-3">
                 <span className="text-neon-green text-xl">✓</span>
                 <div>
-                  <p className="text-white font-semibold">15 Simulations/Day</p>
-                  <p className="text-sm text-light-gray">10,000 iterations per analysis</p>
+                  <p className="text-white font-semibold">Unlimited Simulations</p>
+                  <p className="text-sm text-light-gray">25,000 iterations per analysis</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
@@ -177,13 +178,13 @@ const SubscriptionSettings: React.FC = () => {
               </div>
             </>
           )}
-          {currentTier === 'PRO' && (
+          {currentTier === 'pro' && (
             <>
               <div className="flex items-start space-x-3">
                 <span className="text-neon-green text-xl">✓</span>
                 <div>
-                  <p className="text-white font-semibold">60 Simulations/Day</p>
-                  <p className="text-sm text-light-gray">35,000 iterations per analysis</p>
+                  <p className="text-white font-semibold">Unlimited Simulations</p>
+                  <p className="text-sm text-light-gray">50,000 iterations per analysis</p>
                 </div>
               </div>
               <div className="flex items-start space-x-3">
@@ -209,12 +210,12 @@ const SubscriptionSettings: React.FC = () => {
               </div>
             </>
           )}
-          {currentTier === 'ELITE' && (
+          {currentTier === 'elite' && (
             <>
               <div className="flex items-start space-x-3">
                 <span className="text-neon-green text-xl">✓</span>
                 <div>
-                  <p className="text-white font-semibold">300 Simulations/Day</p>
+                  <p className="text-white font-semibold">Unlimited Simulations</p>
                   <p className="text-sm text-light-gray">100,000 iterations per analysis</p>
                 </div>
               </div>

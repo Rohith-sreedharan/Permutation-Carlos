@@ -245,8 +245,8 @@ const SharpsRoom: React.FC = () => {
             <XAxis dataKey="date" stroke="#7b8a9d" tick={{ fontSize: 12 }} />
             <YAxis stroke="#7b8a9d" tick={{ fontSize: 12 }} />
             <Tooltip 
-              contentStyle={{ backgroundColor: '#0f1419', border: '1px solid #00CFFF', borderRadius: '8px' }}
-              labelStyle={{ color: '#00CFFF' }}
+              contentStyle={{ backgroundColor: '#0f1419', border: '1px solid #D4A64A', borderRadius: '8px' }}
+              labelStyle={{ color: '#D4A64A' }}
               itemStyle={{ color: '#fff' }}
             />
             <Legend wrapperStyle={{ color: '#7b8a9d' }} />
@@ -254,9 +254,9 @@ const SharpsRoom: React.FC = () => {
             <Line 
               type="monotone" 
               dataKey="clv" 
-              stroke="#00CFFF" 
+              stroke="#D4A64A" 
               strokeWidth={2} 
-              dot={{ fill: '#00CFFF', r: 4 }} 
+              dot={{ fill: '#D4A64A', r: 4 }} 
               name="CLV (pts)"
             />
           </LineChart>

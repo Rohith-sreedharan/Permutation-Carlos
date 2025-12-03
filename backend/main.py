@@ -62,11 +62,15 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # Add A/B testing middleware
-from services.ab_testing import ab_test_middleware
-app.middleware("http")(ab_test_middleware)
+try:
+    from services.ab_testing import ab_test_middleware
+    app.middleware("http")(ab_test_middleware)
+except ImportError:
+    print("Warning: ab_testing service not available")
 
 # Import routers
 from routes.auth_routes import router as auth_router
+from routes.whoami_routes import router as whoami_router
 from routes.odds_routes import router as odds_router
 from routes.core_routes import router as core_router
 from routes.account_routes import router as account_router
@@ -90,14 +94,22 @@ from routes.verification_routes import router as verification_router
 from routes.decision_log_routes import router as decision_log_router
 from routes.waitlist_routes import router as waitlist_router
 from routes.architect_routes import router as architect_router
+from routes.trust_routes import router as trust_router
+from routes.daily_cards_routes import router as daily_cards_router
+from routes.analytics_routes import router as analytics_router
+from routes.clv_routes import router as clv_router
+from routes.recap_routes import router as recap_router
+from routes.community_enhanced_routes import router as community_enhanced_router
 
 app.include_router(auth_router)
+app.include_router(whoami_router)
 app.include_router(odds_router)
 app.include_router(core_router)
 app.include_router(account_router)
 app.include_router(ab_test_router)
 app.include_router(affiliate_router)
 app.include_router(community_router)
+app.include_router(community_enhanced_router)  # NEW: Enhanced community features
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)
@@ -112,9 +124,14 @@ app.include_router(subscription_router)
 app.include_router(risk_profile_router)
 app.include_router(admin_router)  # Super-admin routes
 app.include_router(verification_router)  # Public Trust Loop data
+app.include_router(trust_router)  # Phase 17: Automated Trust Metrics
 app.include_router(waitlist_router)  # V1 Launch waitlist
 app.include_router(decision_log_router)  # User decision tracking
 app.include_router(architect_router)  # AI Parlay Architect
+app.include_router(daily_cards_router)  # Daily Best Cards
+app.include_router(analytics_router)  # Phase 18: Numerical Accuracy
+app.include_router(clv_router)  # CLV Tracking & Performance
+app.include_router(recap_router)  # Post-Game Recap & Feedback Loop
 
 
 @app.websocket("/ws")

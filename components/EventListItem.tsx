@@ -43,8 +43,12 @@ const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = f
       </div>
       
       <div className="w-full md:w-1/3">
-        <p className="text-xs text-light-gray font-semibold">TOP PROP BET</p>
+        <div className="flex items-center gap-2 mb-1">
+          <p className="text-xs text-light-gray font-semibold">MODEL MISPRICING (NOT A BETTING PICK)</p>
+          <span className="cursor-help text-light-gray/60 hover:text-white text-xs" title="BeatVegas identifies statistical deviations between our simulation output and sportsbook odds. This is NOT a list of recommended bets.">ⓘ</span>
+        </div>
         <p className="text-sm font-bold text-white">{top_prop_bet}</p>
+        <p className="text-[10px] text-gray-500 italic mt-1">MODEL MISPRICING — NOT a betting recommendation.</p>
       </div>
       
       {prediction && (

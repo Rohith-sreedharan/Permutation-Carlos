@@ -5,7 +5,7 @@ Blocks prohibited betting language from creator submissions
 """
 import re
 from typing import Tuple, List, Optional
-from config import PROHIBITED_TERMS, APPROVED_TERMS, COMPLIANCE_ERROR_MSG
+from legacy_config import PROHIBITED_TERMS, APPROVED_TERMS, COMPLIANCE_ERROR_MSG
 
 
 class ModerationService:

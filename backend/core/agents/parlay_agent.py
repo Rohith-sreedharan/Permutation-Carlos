@@ -216,9 +216,16 @@ class ParlayAgent:
         - Opposing sides (e.g., over + team spread): Moderate correlation
         
         PHASE 7 ENHANCEMENT: Cross-Sport Parlay Support
+        PHASE 15 ENHANCEMENT: 1H vs Full Game Correlation Detection
         """
         if len(legs) < 2:
             return 0.0
+            
+        # PHASE 15: Check for 1H vs Full Game conflicts
+        first_half_conflict = self._detect_first_half_conflict(legs)
+        if first_half_conflict:
+            logger.warning(f"⚠️ 1H vs Full Game conflict detected: {first_half_conflict}")
+            return first_half_conflict['correlation']
             
         # Check if same game
         event_ids = [leg.get("event_id") for leg in legs]
@@ -236,6 +243,76 @@ class ParlayAgent:
         
         # Same sport, different games
         return self._calculate_cross_game_correlation(legs)
+    
+    def _detect_first_half_conflict(self, legs: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+        """
+        PHASE 15: Detect contradictory 1H vs Full Game picks
+        
+        Conflict Examples:
+        - 1H Under + Full Game Over = NEGATIVE CORRELATION (second half must be huge)
+        - 1H Over + Full Game Over = HIGH CORRELATION (both need high scoring)
+        
+        Returns:
+            Dict with conflict details if found, None otherwise
+        """
+        # Group legs by event_id and period
+        event_periods = {}
+        for leg in legs:
+            event_id = leg.get("event_id")
+            period = leg.get("period", "full")  # "1H", "2H", "full"
+            bet_type = leg.get("bet_type")
+            side = leg.get("side")  # "over", "under", "home", "away"
+            
+            if event_id not in event_periods:
+                event_periods[event_id] = []
+            
+            event_periods[event_id].append({
+                "period": period,
+                "bet_type": bet_type,
+                "side": side
+            })
+        
+        # Check for conflicts within same event
+        for event_id, periods_data in event_periods.items():
+            first_half_picks = [p for p in periods_data if p['period'] == '1H']
+            full_game_picks = [p for p in periods_data if p['period'] == 'full']
+            
+            if first_half_picks and full_game_picks:
+                # Analyze total conflicts
+                for fh_pick in first_half_picks:
+                    for fg_pick in full_game_picks:
+                        if fh_pick['bet_type'] == 'total' and fg_pick['bet_type'] == 'total':
+                            # 1H Under + Full Game Over = NEGATIVE CORRELATION
+                            if fh_pick['side'] == 'under' and fg_pick['side'] == 'over':
+                                return {
+                                    "type": "1H_FG_CONFLICT",
+                                    "event_id": event_id,
+                                    "correlation": -0.3,  # Negative correlation (hedging)
+                                    "message": "⚠️ 1H Under + Full Game Over = Negative Correlation",
+                                    "explanation": "This requires a low-scoring 1H followed by a high-scoring 2H"
+                                }
+                            
+                            # 1H Over + Full Game Over = HIGH CORRELATION
+                            elif fh_pick['side'] == 'over' and fg_pick['side'] == 'over':
+                                return {
+                                    "type": "1H_FG_SUPPORT",
+                                    "event_id": event_id,
+                                    "correlation": 0.75,  # High positive correlation
+                                    "message": "✅ 1H Over + Full Game Over = High Correlation",
+                                    "explanation": "Both require sustained high scoring throughout game"
+                                }
+                            
+                            # 1H Over + Full Game Under = CONFLICT
+                            elif fh_pick['side'] == 'over' and fg_pick['side'] == 'under':
+                                return {
+                                    "type": "1H_FG_CONFLICT",
+                                    "event_id": event_id,
+                                    "correlation": -0.4,  # Strong negative correlation
+                                    "message": "🔴 1H Over + Full Game Under = Major Conflict",
+                                    "explanation": "This requires high 1H scoring but low total (mathematically unlikely)"
+                                }
+        
+        return None
         
     def _calculate_cross_sport_correlation(
         self, 

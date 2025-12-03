@@ -88,6 +88,23 @@ def get_settings(Authorization: Optional[str] = Header(None)):
     return {"settings": settings}
 
 
+@router.get("/subscription")
+def get_subscription(user_id: str):
+    """Legacy endpoint for backward compatibility - redirects to /api/subscription/status"""
+    try:
+        user = _find_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        
+        return {
+            "tier": user.get("tier", "starter"),
+            "tier_level": user.get("tier", "starter"),  # Legacy field
+            "status": "active"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.put("/settings")
 def update_settings(payload: Dict[str, Any], Authorization: Optional[str] = Header(None)):
     user_id = _get_user_id_from_auth(Authorization)

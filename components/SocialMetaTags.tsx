@@ -31,7 +31,9 @@ const SocialMetaTags: React.FC<SocialMetaTagsProps> = ({ event, pageType = 'dash
       // Extract sport display name
       const sportMap: Record<string, string> = {
         'basketball_nba': 'NBA',
+        'basketball_ncaab': 'NCAAB',
         'americanfootball_nfl': 'NFL',
+        'americanfootball_ncaaf': 'NCAAF',
         'baseball_mlb': 'MLB',
         'icehockey_nhl': 'NHL'
       };

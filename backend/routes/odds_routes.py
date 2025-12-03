@@ -1,5 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.timezone import now_est, now_utc, parse_iso_to_est, format_est_date, get_est_date_today, EST_TZ, UTC_TZ
+from db.mongo import db
 from integrations.odds_api import fetch_sports, fetch_odds, normalize_event, OddsApiError
 from db.mongo import upsert_events, find_events
 
@@ -9,72 +16,258 @@ router = APIRouter(prefix="/api/odds", tags=["odds"])
 @router.get("/sports")
 def list_sports():
     """Return supported sports from The Odds API."""
-    try:
-        data = fetch_sports()
-    except OddsApiError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return {"count": len(data), "sports": data}
-
-
-@router.get("/fetch")
-def get_and_store_odds(sport: str = Query("basketball_nba"), region: str = Query("us"), markets: str = Query("h2h,spreads")):
-    """Fetch odds for a given sport and store (upsert) into MongoDB.
-
-    Returns: number of events processed and stored.
-    """
-    try:
-        raw = fetch_odds(sport=sport, region=region, markets=markets)
-    except OddsApiError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-    formatted = []
-    for ev in raw:
-        norm = normalize_event(ev)
-        formatted.append(norm)
-
-    count = upsert_events("events", formatted)
-    return {"fetched": len(formatted), "stored": count}
-
-
-@router.post("/sync")
-def sync_sports(sports: Optional[List[str]] = None, region: str = Query("us"), markets: str = Query("h2h,spreads")):
-    """Sync multiple sports. If `sports` not provided, will fetch `sports` list and iterate.
-
-    Example body: ["basketball_nba", "americanfootball_nfl"]
-    """
-    if not sports:
-        try:
-            sp = fetch_sports()
-        except OddsApiError as e:
-            raise HTTPException(status_code=502, detail=str(e))
-        sports = [s.get("key") for s in sp if s.get("key")]
-
-    total = {"fetched": 0, "stored": 0}
-    for s in sports:
-        try:
-            raw = fetch_odds(sport=s, region=region, markets=markets)
-        except OddsApiError:
-            continue
-        formatted = [normalize_event(ev) for ev in raw]
-        total["fetched"] += len(formatted)
-        total["stored"] += upsert_events("events", formatted)
-
-    return total
+    return fetch_sports()
 
 
 @router.get("/list")
-def list_events(limit: int = 50):
-    """Return recent events from DB."""
-    docs = find_events("events", filter=None, limit=limit)
-    return {"count": len(docs), "events": docs}
+def list_events(
+    date: Optional[str] = Query(None, description="Target EST date YYYY-MM-DD; defaults to today's EST"),
+    sport: Optional[str] = Query(None),
+    upcoming_only: bool = Query(True),
+    limit: int = Query(1000)  # Increased default limit
+):
+    """List events from database filtered by EST date."""
+    # Default date to today's EST if not provided
+    if not date:
+        date = get_est_date_today()
+    
+    # Build MongoDB query filter
+    mongo_filter = {"local_date_est": date}
+    if sport:
+        mongo_filter["sport_key"] = sport
+    
+    # Query database with filter for efficiency
+    docs = find_events("events", filter=mongo_filter, limit=limit)
+    now_utc_dt = now_utc()
+
+    out = []
+    for ev in docs:
+        commence_iso = ev.get("commence_time")
+        est_date = ev.get("local_date_est")
+        
+        # Recalculate EST date if missing
+        if not est_date:
+            try:
+                if commence_iso:
+                    dt_est = parse_iso_to_est(commence_iso)
+                    if dt_est:
+                        est_date = format_est_date(dt_est)
+                        ev["local_date_est"] = est_date
+            except Exception:
+                est_date = None
+        
+        # Upcoming filter
+        if upcoming_only and commence_iso:
+            try:
+                dt_est = parse_iso_to_est(commence_iso)
+                if dt_est and dt_est.astimezone(UTC_TZ) < now_utc_dt:
+                    continue
+            except Exception:
+                continue
+        
+        out.append(ev)
+    
+    return {"date": date, "sport": sport, "count": len(out), "events": out}
 
 
-@router.get("/")
-def root_events(limit: int = 50):
-    """Alias for root path - return recent events from DB.
+@router.get("/realtime/by-date")
+def realtime_events_by_date(
+    date: Optional[str] = Query(None, description="Target EST date YYYY-MM-DD; defaults to today's EST"),
+    sport: str = Query("basketball_nba"),
+    regions: str = Query("us"),
+    markets: str = Query("h2h,spreads,totals"),
+    upcoming_only: bool = Query(True),
+    diagnostic: bool = Query(False, description="Return debug payload with counts and ranges"),
+    date_basis: str = Query("est", description="Date basis: 'est' or 'utc' (default: est)"),
+):
+    """Fetch fresh odds from OddsAPI and filter by EST (default) or UTC calendar date in real time.
 
-    This allows clients to GET /api/odds/ (used by the frontend) and receive
-    the same payload as /api/odds/list.
+    Does not rely on stored DB fields; computes EST/UTC per response item. Use `diagnostic=true` to include debug info.
     """
-    docs = find_events("events", filter=None, limit=limit)
-    return {"count": len(docs), "events": docs}
+    # Default date to today's EST or UTC
+    if date_basis == "utc":
+        if not date:
+            date = now_utc().strftime("%Y-%m-%d")
+    else:
+        if not date:
+            date = get_est_date_today()
+
+    # Expand across multiple regions if provided as comma-separated list
+    region_list = [r.strip() for r in regions.split(",") if r.strip()]
+
+    aggregated_raw = []
+    errors: List[str] = []
+    for reg in region_list:
+        try:
+            raw = fetch_odds(sport=sport, region=reg, markets=markets)
+            aggregated_raw.extend(raw)
+        except OddsApiError as e:
+            errors.append(f"{reg}:{str(e)}")
+
+    now_utc_dt = now_utc()
+    out = []
+    # Diagnostic accumulators
+    total_events = len(aggregated_raw)
+    per_region_counts = {}
+    commence_ranges = {"min": "", "max": ""}  # ISO strings for diagnostics
+
+    for ev in aggregated_raw:
+        norm = normalize_event(ev)
+        ct = norm.get("commence_time")
+        reg = norm.get("region") or ev.get("region") or "unknown"
+        per_region_counts[reg] = per_region_counts.get(reg, 0) + 1
+        if not ct:
+            continue
+        try:
+            dt_est = parse_iso_to_est(ct)
+            if not dt_est:
+                continue
+            dt_utc = dt_est.astimezone(UTC_TZ)
+        except Exception:
+            continue
+        # Track commence ranges as ISO strings for type consistency
+        curr_min = commence_ranges["min"] or ""
+        curr_max = commence_ranges["max"] or ""
+        dt_iso = dt_utc.isoformat()
+        if not curr_min or dt_iso < curr_min:
+            commence_ranges["min"] = dt_iso
+        if not curr_max or dt_iso > curr_max:
+            commence_ranges["max"] = dt_iso
+
+        if upcoming_only and dt_utc < now_utc_dt:
+            continue
+
+        # Date filtering by EST or UTC
+        if date_basis == "utc":
+            filter_date = dt_utc.strftime("%Y-%m-%d")
+        else:
+            filter_date = format_est_date(dt_est)
+
+        if filter_date == date:
+            # Include both UTC and EST convenience fields
+            norm["local_date_utc"] = dt_utc.strftime("%Y-%m-%d")
+            norm["local_datetime_utc"] = dt_utc.isoformat()
+            norm["local_date_est"] = format_est_date(dt_est)
+            norm["local_datetime_est"] = dt_est.isoformat()
+            out.append(norm)
+
+    response = {"date": date, "sport": sport, "count": len(out), "events": out}
+    if diagnostic:
+        response["debug"] = {
+            "requested_regions": region_list,
+            "markets": markets.split(","),
+            "total_raw_events": total_events,
+            "per_region_counts": per_region_counts,
+            "commence_time_range_utc": commence_ranges,
+            "errors": errors,
+            "date_basis": date_basis,
+        }
+    return response
+
+
+@router.delete("/cleanup/expired")
+def cleanup_expired_events(days_past: int = 0):
+    """Remove events whose commence_time is earlier than current UTC minus `days_past` days.
+
+    Use days_past > 0 to retain a trailing window if needed for settlement analytics.
+    """
+    now_utc_dt = now_utc()
+    threshold = now_utc_dt
+    # Note: days_past parameter currently not implemented for simplicity
+    removed = 0
+    for ev in db["events"].find():
+        c = ev.get("commence_time")
+        if not c:
+            continue
+        try:
+            dt_est = parse_iso_to_est(c)
+            if dt_est and dt_est.astimezone(UTC_TZ) < threshold:
+                db["events"].delete_one({"_id": ev["_id"]})
+                removed += 1
+        except Exception:
+            continue
+    return {"removed": removed, "threshold": threshold.isoformat()}
+
+
+# Legacy endpoint - kept for backwards compatibility but deprecated
+@router.get("/realtime/by-date-utc")
+def realtime_events_by_date_utc(
+    date: Optional[str] = Query(None, description="Target UTC date YYYY-MM-DD; defaults to today's UTC"),
+    sport: str = Query("basketball_nba"),
+    regions: str = Query("us"),
+    markets: str = Query("h2h,spreads,totals"),
+    upcoming_only: bool = Query(True),
+    diagnostic: bool = Query(False, description="Return debug payload with counts and ranges"),
+):
+    """Legacy UTC-based endpoint. Use /api/odds/realtime/by-date instead with date_basis='utc'."""
+    if not date:
+        date = now_utc().strftime("%Y-%m-%d")
+
+    # Expand across multiple regions if provided as comma-separated list
+    region_list = [r.strip() for r in regions.split(",") if r.strip()]
+
+    aggregated_raw = []
+    errors: List[str] = []
+    for reg in region_list:
+        try:
+            raw = fetch_odds(sport=sport, region=reg, markets=markets)
+            aggregated_raw.extend(raw)
+        except OddsApiError as e:
+            errors.append(f"{reg}:{str(e)}")
+
+    now_utc_dt = now_utc()
+    out = []
+    # Diagnostic accumulators
+    total_events = len(aggregated_raw)
+    per_region_counts = {}
+    commence_ranges = {"min": "", "max": ""}  # ISO strings for diagnostics
+
+    for ev in aggregated_raw:
+        norm = normalize_event(ev)
+        ct = norm.get("commence_time")
+        reg = norm.get("region") or ev.get("region") or "unknown"
+        per_region_counts[reg] = per_region_counts.get(reg, 0) + 1
+        if not ct:
+            continue
+        try:
+            dt_est = parse_iso_to_est(ct)
+            if not dt_est:
+                continue
+            dt_utc = dt_est.astimezone(UTC_TZ)
+        except Exception:
+            continue
+        # Track commence ranges as ISO strings for type consistency
+        curr_min = commence_ranges["min"] or ""
+        curr_max = commence_ranges["max"] or ""
+        dt_iso = dt_utc.isoformat()
+        if not curr_min or dt_iso < curr_min:
+            commence_ranges["min"] = dt_iso
+        if not curr_max or dt_iso > curr_max:
+            commence_ranges["max"] = dt_iso
+
+        if upcoming_only and dt_utc < now_utc_dt:
+            continue
+
+        utc_date = dt_utc.strftime("%Y-%m-%d")
+        if utc_date == date:
+            # Include both UTC and EST convenience fields
+            norm["local_date_utc"] = utc_date
+            norm["local_datetime_utc"] = dt_utc.isoformat()
+            norm["local_date_est"] = format_est_date(dt_est)
+            norm["local_datetime_est"] = dt_est.isoformat()
+            out.append(norm)
+
+    response = {"date": date, "sport": sport, "count": len(out), "events": out}
+    if diagnostic:
+        response["debug"] = {
+            "requested_regions": region_list,
+            "markets": markets.split(","),
+            "total_raw_events": total_events,
+            "per_region_counts": per_region_counts,
+            "commence_time_range_utc": commence_ranges,
+            "errors": errors,
+        }
+    return response
+
+
+# Note: Removed backfill and distribution endpoints to enforce real-time behavior

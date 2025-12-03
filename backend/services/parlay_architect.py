@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from db.mongo import db
 from core.monte_carlo_engine import monte_carlo_engine
+from utils.mongo_helpers import sanitize_mongo_doc
 
 
 class ParlayArchitectService:
@@ -18,8 +19,26 @@ class ParlayArchitectService:
     """
     
     def __init__(self):
-        self.min_confidence = 0.55
         self.max_correlation = 0.3  # Reject parlays with >30% negative correlation
+        
+        # Tiered leg quality thresholds
+        self.tier_thresholds = {
+            "A": {  # Premium Confidence
+                "confidence": 0.60,
+                "ev": 5.0,
+                "stability": 40
+            },
+            "B": {  # Medium Confidence
+                "confidence": 0.52,
+                "ev": 1.0,
+                "stability": 20
+            },
+            "C": {  # Value Edge (Speculative)
+                "confidence": 0.48,
+                "ev": 0.0,
+                "stability": 10
+            }
+        }
     
     def generate_optimal_parlay(
         self,
@@ -62,19 +81,18 @@ class ParlayArchitectService:
             if not simulation:
                 # Auto-generate simulation if missing
                 from integrations.player_api import get_team_data_with_roster
+                from integrations.odds_api import extract_market_lines
                 team_a = get_team_data_with_roster(event["home_team"], sport_key, True)
                 team_b = get_team_data_with_roster(event["away_team"], sport_key, False)
+                
+                # Extract real market lines from bookmakers
+                market_context = extract_market_lines(event)
                 
                 simulation = monte_carlo_engine.run_simulation(
                     event_id=event["event_id"],
                     team_a=team_a,
                     team_b=team_b,
-                    market_context={
-                        "current_spread": 0,
-                        "total_line": 220,
-                        "public_betting_pct": 0.5,
-                        "sport_key": sport_key
-                    },
+                    market_context=market_context,
                     iterations=10000
                 )
             
@@ -83,60 +101,81 @@ class ParlayArchitectService:
             spread_edge = abs(win_prob - 0.5)
             over_prob = simulation.get("over_probability", 0.5)
             total_edge = abs(over_prob - 0.5)
-            confidence = simulation.get("confidence_score", 0.5)
-            volatility = simulation.get("volatility_index", "MODERATE")
             
-            # Score based on risk profile
-            if risk_profile == "high_confidence":
-                score = confidence * 100 + spread_edge * 50
-                min_conf = 0.65
-            elif risk_profile == "high_volatility":
-                score = spread_edge * 100 + (1.0 if volatility == "HIGH" else 0.5) * 30
-                min_conf = 0.45
-            else:  # balanced
-                score = confidence * 60 + spread_edge * 40
-                min_conf = 0.55
+            # Extract confidence from outcome or root level, with fallback
+            outcome = simulation.get("outcome", {})
+            raw_confidence = outcome.get("confidence", simulation.get("confidence_score", 0.65))
             
-            # Only include legs that meet minimum confidence
-            if confidence >= min_conf:
-                # Determine best bet type
-                if spread_edge > total_edge:
-                    bet_type = "spread"
-                    probability = win_prob
-                    line = f"{event['home_team']} -5.5" if win_prob > 0.5 else f"{event['away_team']} +5.5"
-                else:
-                    bet_type = "total"
-                    probability = over_prob
-                    avg_total = simulation.get("avg_total_score", 220)
-                    line = f"Over {avg_total:.1f}" if over_prob > 0.5 else f"Under {avg_total:.1f}"
-                
-                scored_legs.append({
-                    "event_id": event["event_id"],
-                    "event": f"{event['away_team']} @ {event['home_team']}",
-                    "sport": event["sport_key"],
-                    "commence_time": event["commence_time"],
-                    "bet_type": bet_type,
-                    "line": line,
-                    "probability": probability,
-                    "confidence": confidence,
-                    "ev": (probability - 0.5) * 100,
-                    "score": score,
-                    "volatility": volatility
-                })
+            # Normalize confidence to usable range
+            if raw_confidence < 0.30:
+                confidence = 0.40 + (raw_confidence / 0.30) * 0.15  # Map 0-0.30 to 0.40-0.55
+            else:
+                confidence = raw_confidence
+            
+            volatility = simulation.get("volatility", simulation.get("volatility_index", "MODERATE"))
+            stability = confidence * 100  # Convert to stability score
+            
+            # Determine best bet type FIRST to get probability
+            if spread_edge > total_edge:
+                bet_type = "spread"
+                probability = win_prob
+                line = f"{event['home_team']} -5.5" if win_prob > 0.5 else f"{event['away_team']} +5.5"
+            else:
+                bet_type = "total"
+                probability = over_prob
+                avg_total = simulation.get("avg_total_score", 220)
+                line = f"Over {avg_total:.1f}" if over_prob > 0.5 else f"Under {avg_total:.1f}"
+            
+            # Calculate EV percentage
+            ev = (probability - 0.5) * 100
+            
+            # Classify leg into quality tier
+            tier = self._classify_leg_tier(confidence, ev, stability)
+            
+            scored_legs.append({
+                "event_id": event["event_id"],
+                "event": f"{event['away_team']} @ {event['home_team']}",
+                "sport": event["sport_key"],
+                "commence_time": event["commence_time"],
+                "bet_type": bet_type,
+                "line": line,
+                "probability": probability,
+                "confidence": confidence,
+                "ev": ev,
+                "stability": stability,
+                "tier": tier,
+                "score": confidence * 60 + ev * 40,  # Combined scoring
+                "volatility": volatility
+            })
         
-        # Step 3: Sort by score and select top candidates
-        scored_legs.sort(key=lambda x: x["score"], reverse=True)
-        candidates = scored_legs[:leg_count * 3]  # Get 3x more than needed for diversity
+        # Step 3: Use tiered fallback system to select legs
+        selected_legs = self._select_legs_with_tiered_fallback(
+            scored_legs=scored_legs,
+            leg_count=leg_count,
+            risk_profile=risk_profile
+        )
         
-        if len(candidates) < leg_count:
-            raise ValueError(f"Insufficient high-quality legs. Found {len(candidates)}, need {leg_count}")
+        # Check if we have enough legs (minimum 2 for any parlay)
+        if len(selected_legs["legs"]) < 2:
+            raise ValueError(
+                f"⚠️ Unable to generate parlay - insufficient quality legs.\n\n"
+                f"📊 Results:\n"
+                f"   • Total events scanned: {len(events)}\n"
+                f"   • Tier A (Premium): {len([l for l in scored_legs if l['tier'] == 'A'])}\n"
+                f"   • Tier B (Medium): {len([l for l in scored_legs if l['tier'] == 'B'])}\n"
+                f"   • Tier C (Value): {len([l for l in scored_legs if l['tier'] == 'C'])}\n\n"
+                f"💡 Try:\n"
+                f"   • Switch to 'balanced' or 'high_volatility' risk profile\n"
+                f"   • Try a different sport\n"
+                f"   • Check back in 5-10 minutes for new simulations"
+            )
         
-        # Step 4: Build optimal chain with correlation check
-        selected_legs = self._build_correlated_chain(candidates, leg_count, risk_profile)
+        final_legs = selected_legs["legs"]
+        transparency_message = selected_legs.get("transparency_message")
         
         # Step 5: Calculate parlay metrics
         parlay_probability = 1.0
-        for leg in selected_legs:
+        for leg in final_legs:
             parlay_probability *= leg["probability"]
         
         # Calculate American odds from probability
@@ -151,28 +190,32 @@ class ParlayArchitectService:
         ev_percent = ((fair_odds_decimal / implied_odds_decimal) - 1) * 100
         
         # Correlation analysis
-        correlation_score = self._calculate_correlation(selected_legs)
+        correlation_score = self._calculate_correlation(final_legs)
         
         parlay_id = f"parlay_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{random.randint(1000, 9999)}"
         
         parlay_data = {
             "parlay_id": parlay_id,
             "sport": sport_key,
-            "leg_count": leg_count,
+            "leg_count": len(final_legs),
             "risk_profile": risk_profile,
-            "legs": selected_legs,
+            "legs": final_legs,
             "parlay_odds": american_odds,
             "parlay_probability": round(parlay_probability, 4),
             "expected_value": round(ev_percent, 2),
             "correlation_score": correlation_score,
             "correlation_impact": self._interpret_correlation(correlation_score),
-            "confidence_rating": self._calculate_parlay_confidence(selected_legs),
+            "confidence_rating": self._calculate_parlay_confidence(final_legs),
+            "transparency_message": transparency_message,  # User notification about tier fallback
             "created_at": datetime.now(timezone.utc).isoformat(),
             "user_tier": user_tier
         }
         
+        # Sanitize to remove any MongoDB ObjectId fields before storing/returning
+        parlay_data = sanitize_mongo_doc(parlay_data)
+        
         # Store in database
-        db.parlay_architect_generations.insert_one(parlay_data)
+        db.parlay_architect_generations.insert_one(parlay_data.copy())  # Copy to avoid _id injection
         
         return parlay_data
     
@@ -294,6 +337,150 @@ class ParlayArchitectService:
             return (american_odds / 100) + 1
         else:
             return (100 / abs(american_odds)) + 1
+    
+    def _classify_leg_tier(self, confidence: float, ev: float, stability: float) -> str:
+        """
+        Classify leg into quality tier (A, B, or C)
+        
+        Args:
+            confidence: Confidence score (0-1)
+            ev: Expected value percentage
+            stability: Stability score (0-100)
+        
+        Returns:
+            Tier classification: 'A', 'B', or 'C'
+        """
+        # Check Tier A (Premium Confidence)
+        if (confidence >= self.tier_thresholds["A"]["confidence"] and
+            ev >= self.tier_thresholds["A"]["ev"] and
+            stability >= self.tier_thresholds["A"]["stability"]):
+            return "A"
+        
+        # Check Tier B (Medium Confidence)
+        if (confidence >= self.tier_thresholds["B"]["confidence"] and
+            ev >= self.tier_thresholds["B"]["ev"] and
+            stability >= self.tier_thresholds["B"]["stability"]):
+            return "B"
+        
+        # Check Tier C (Value Edge)
+        if (confidence >= self.tier_thresholds["C"]["confidence"] and
+            ev >= self.tier_thresholds["C"]["ev"] and
+            stability >= self.tier_thresholds["C"]["stability"]):
+            return "C"
+        
+        # Below all thresholds - still classify as C but flag it
+        return "C"
+    
+    def _select_legs_with_tiered_fallback(
+        self,
+        scored_legs: List[Dict[str, Any]],
+        leg_count: int,
+        risk_profile: str
+    ) -> Dict[str, Any]:
+        """
+        Select legs using tiered fallback system
+        
+        Strategy:
+        1. Try to fill with Tier A legs first
+        2. If not enough, add Tier B legs
+        3. If still not enough (and high_volatility profile), add Tier C legs
+        4. If still not enough, reduce leg count
+        
+        Args:
+            scored_legs: All available legs with tier classifications
+            leg_count: Requested number of legs
+            risk_profile: User's risk profile
+        
+        Returns:
+            Dict with 'legs' and optional 'transparency_message'
+        """
+        # Separate legs by tier
+        tier_a_legs = [leg for leg in scored_legs if leg["tier"] == "A"]
+        tier_b_legs = [leg for leg in scored_legs if leg["tier"] == "B"]
+        tier_c_legs = [leg for leg in scored_legs if leg["tier"] == "C"]
+        
+        # Sort each tier by score
+        tier_a_legs.sort(key=lambda x: x["score"], reverse=True)
+        tier_b_legs.sort(key=lambda x: x["score"], reverse=True)
+        tier_c_legs.sort(key=lambda x: x["score"], reverse=True)
+        
+        selected = []
+        used_events = set()
+        transparency_message = None
+        tiers_used = {"A": 0, "B": 0, "C": 0}
+        
+        # Step 1: Fill with Tier A legs
+        for leg in tier_a_legs:
+            if len(selected) >= leg_count:
+                break
+            if leg["event_id"] not in used_events:
+                # Check correlation
+                if not selected or self._check_leg_correlation(leg, selected) <= self.max_correlation:
+                    selected.append(leg)
+                    used_events.add(leg["event_id"])
+                    tiers_used["A"] += 1
+        
+        # Step 2: If not enough, add Tier B legs (allowed for balanced and high_volatility)
+        if len(selected) < leg_count and risk_profile in ["balanced", "high_volatility"]:
+            for leg in tier_b_legs:
+                if len(selected) >= leg_count:
+                    break
+                if leg["event_id"] not in used_events:
+                    if not selected or self._check_leg_correlation(leg, selected) <= self.max_correlation:
+                        selected.append(leg)
+                        used_events.add(leg["event_id"])
+                        tiers_used["B"] += 1
+        
+        # Step 3: If STILL not enough, add Tier C legs (only for high_volatility, or as emergency fallback)
+        if len(selected) < leg_count:
+            # Allow Tier C for high_volatility OR as emergency fallback for other profiles
+            allow_tier_c = risk_profile == "high_volatility" or (len(selected) < 2 and len(tier_a_legs) == 0 and len(tier_b_legs) == 0)
+            
+            if allow_tier_c:
+                for leg in tier_c_legs:
+                    if len(selected) >= leg_count:
+                        break
+                    if leg["event_id"] not in used_events:
+                        if not selected or self._check_leg_correlation(leg, selected) <= self.max_correlation:
+                            selected.append(leg)
+                            used_events.add(leg["event_id"])
+                            tiers_used["C"] += 1
+        
+        # Step 4: Generate transparency message
+        if len(selected) < leg_count and len(selected) >= 2:
+            # Auto-reduce leg count
+            transparency_message = (
+                f"⚠️ Only {len(selected)} quality legs available today. "
+                f"Generated a {len(selected)}-leg parlay instead of {leg_count}-leg."
+            )
+        elif tiers_used["B"] > 0 or tiers_used["C"] > 0:
+            # Used fallback tiers
+            tier_breakdown = []
+            if tiers_used["A"] > 0:
+                tier_breakdown.append(f"{tiers_used['A']} Premium")
+            if tiers_used["B"] > 0:
+                tier_breakdown.append(f"{tiers_used['B']} Medium")
+            if tiers_used["C"] > 0:
+                tier_breakdown.append(f"{tiers_used['C']} Speculative")
+            
+            if risk_profile == "high_confidence" and tiers_used["C"] > 0:
+                # Special message for high_confidence using Tier C (emergency fallback)
+                transparency_message = (
+                    f"⚠️ No premium legs available. Emergency fallback activated. "
+                    f"Parlay includes: {', '.join(tier_breakdown)}. "
+                    f"💡 Recommend switching to 'balanced' or 'high_volatility' risk profile for better results."
+                )
+            else:
+                transparency_message = (
+                    f"⚠️ Not enough premium legs available. "
+                    f"Parlay includes: {', '.join(tier_breakdown)}."
+                )
+        
+        return {
+            "legs": selected,
+            "transparency_message": transparency_message,
+            "tier_breakdown": tiers_used
+        }
 
 
 # Singleton instance

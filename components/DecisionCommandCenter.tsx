@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchEvents, getPredictions } from '../services/api';
+import { fetchEventsFromDB, getPredictions } from '../services/api';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
 import EventListItem from './EventListItem';
@@ -39,7 +39,7 @@ const Activity = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const sports = ['All', 'NBA', 'NFL', 'MLB', 'NHL'];
+const sports = ['All', 'NBA', 'NCAAB', 'NFL', 'NCAAF', 'MLB', 'NHL'];
 type Layout = 'grid' | 'list';
 type DateFilter = 'today' | 'tomorrow' | 'this-week' | 'all';
 type TimeOrder = 'soonest' | 'latest';
@@ -81,8 +81,10 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
         setLoading(true);
       }
       setError(null);
+      
+      // Fetch from database with all sports and no date filter
       const [eventsData, predictionsData] = await Promise.all([
-        fetchEvents(),
+        fetchEventsFromDB(undefined, undefined, true, 200),
         getPredictions(),
       ]);
 
@@ -148,7 +150,9 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
 
   const sportKeyMap: Record<string, string> = {
     'NBA': 'basketball_nba',
+    'NCAAB': 'basketball_ncaab',
     'NFL': 'americanfootball_nfl',
+    'NCAAF': 'americanfootball_ncaaf',
     'MLB': 'baseball_mlb',
     'NHL': 'icehockey_nhl'
   };
@@ -166,25 +170,35 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
       );
     
     // Apply date filter
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-
     filtered = filtered.filter(event => {
-      const eventDate = new Date(event.commence_time);
+      // Use backend-provided EST date (already in EST from server)
+      const eventEstDate = event.local_date_est;
+      if (!eventEstDate) return false;
       
+      // Get today's date in EST timezone (for comparison)
+      const formatter = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const estToday = formatter.format(new Date());
+      
+      const tomorrowDate = new Date();
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+      const estTomorrow = formatter.format(tomorrowDate);
+      
+      const weekEndDate = new Date();
+      weekEndDate.setDate(weekEndDate.getDate() + 7);
+      const estWeekEnd = formatter.format(weekEndDate);
+
       switch (dateFilter) {
         case 'today':
-          return eventDate >= today && eventDate < tomorrow;
+          return eventEstDate === estToday;
         case 'tomorrow':
-          const dayAfter = new Date(tomorrow);
-          dayAfter.setDate(dayAfter.getDate() + 1);
-          return eventDate >= tomorrow && eventDate < dayAfter;
+          return eventEstDate === estTomorrow;
         case 'this-week':
-          return eventDate >= today && eventDate < weekEnd;
+          return eventEstDate >= estToday && eventEstDate < estWeekEnd;
         case 'all':
         default:
           return true;
@@ -408,7 +422,10 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
                   <EventCard 
                     key={event.id} 
                     event={event}
-                    onClick={() => onGameClick?.(event.id)}
+                    onClick={() => {
+                      console.log('[DecisionCommandCenter] Card clicked:', event.id, event);
+                      onGameClick?.(event.id);
+                    }}
                   />
                 ))}
               </div>

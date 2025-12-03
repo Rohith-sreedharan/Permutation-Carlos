@@ -9,7 +9,7 @@ from services.verification_service import (
     get_trust_metrics,
     get_accuracy_ledger
 )
-from config import PUBLIC_LEDGER_SIZE, TRUST_WINDOWS
+from legacy_config import PUBLIC_LEDGER_SIZE, TRUST_WINDOWS
 
 router = APIRouter(prefix="/api/verification", tags=["verification"])
 

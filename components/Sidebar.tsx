@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Page } from '../types';
+import SimulationPowerWidget from './SimulationPowerWidget';
+import UpgradeModal from './UpgradeModal';
 
 interface SidebarProps {
   currentPage: Page;
@@ -43,9 +45,20 @@ const NavLink: React.FC<{
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, onLogout, userRole = 'user' }) => {
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [currentTier, setCurrentTier] = useState('starter');
+
+  const handleSelectTier = async (tier: string) => {
+    // Redirect to billing page with selected tier
+    setCurrentPage('billing');
+    setShowUpgradeModal(false);
+    // You can pass tier selection state through URL params or context
+  };
+
   return (
-    <aside className="w-64 bg-charcoal p-4 flex-col space-y-2 sticky top-0 h-screen hidden sm:flex">
-      <div className="text-center py-4 flex flex-col items-center">
+    <>
+      <aside className="w-64 bg-charcoal p-4 flex-col space-y-2 sticky top-0 h-screen hidden sm:flex overflow-y-auto">
+        <div className="text-center py-4 flex flex-col items-center">
         <img 
           src="/logo.png" 
           alt="BeatVegas Logo" 
@@ -79,10 +92,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, onLogout
         </div>
       </nav>
 
+      {/* Simulation Power Widget */}
+      <div className="mt-4 mb-2">
+        <SimulationPowerWidget onUpgradeClick={() => setShowUpgradeModal(true)} />
+      </div>
+
       <div className="mt-auto">
         <NavLink onClick={onLogout} icon={<LogoutIcon />}>Logout</NavLink>
       </div>
     </aside>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        currentTier={currentTier}
+        onSelectTier={handleSelectTier}
+      />
+    </>
   );
 };
 

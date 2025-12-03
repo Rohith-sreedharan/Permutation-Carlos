@@ -1,12 +1,16 @@
 """
-Behavioral Feedback Loop - THE MOAT
+Behavioral Feedback Loop - THE MOAT + CLV Tracking
 Logs predictions vs outcomes and continuously improves the model
+
+PHASE 18 ADDITION: Closing Line Value (CLV) logging for model validation
 """
 import asyncio
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import statistics
+from core.numerical_accuracy import ClosingLineValue
+from core.post_game_recap import PredictionRecord, FeedbackLogger as RecapLogger
 
 logger = logging.getLogger(__name__)
 
@@ -337,3 +341,205 @@ class FeedbackLoop:
         except Exception as e:
             logger.error(f"Error generating performance report: {e}")
             return {"error": str(e)}
+    
+    async def log_clv_snapshot(
+        self,
+        event_id: str,
+        model_projection: float,
+        book_line_open: float,
+        lean: str,
+        prediction_type: str = 'total'
+    ) -> str:
+        """
+        PHASE 18: Log Closing Line Value (CLV) snapshot
+        
+        Snapshot taken at prediction time with:
+        - Model projection (e.g., 227.5 total points)
+        - Opening book line (e.g., 225.5)
+        - Our lean direction ('over', 'under', 'home', 'away')
+        
+        Later, when game starts, we log closing line to calculate CLV
+        
+        Args:
+            event_id: Event identifier
+            model_projection: Our model's projection
+            book_line_open: Bookmaker's opening line
+            lean: Our recommendation ('over', 'under', 'home', 'away')
+            prediction_type: 'total' | 'spread' | 'ml'
+            
+        Returns:
+            clv_id for later update
+        """
+        try:
+            db = self.db["beatvegas_db"]
+            
+            clv_record = {
+                "event_id": event_id,
+                "prediction_timestamp": datetime.now(timezone.utc),
+                "model_projection": model_projection,
+                "book_line_open": book_line_open,
+                "book_line_close": None,  # Update later
+                "lean": lean,
+                "prediction_type": prediction_type,
+                "clv_favorable": None,  # Calculate after close
+                "settled": False
+            }
+            
+            result = db.clv_snapshots.insert_one(clv_record)
+            clv_id = str(result.inserted_id)
+            
+            logger.info(f"📸 CLV Snapshot: {event_id} | Projection: {model_projection} | Open: {book_line_open} | Lean: {lean}")
+            
+            return clv_id
+            
+        except Exception as e:
+            logger.error(f"Error logging CLV snapshot: {e}")
+            return ""
+    
+    async def update_clv_closing(
+        self,
+        event_id: str,
+        book_line_close: float
+    ) -> bool:
+        """
+        PHASE 18: Update CLV with closing line
+        
+        Called when game is about to start (closing line is set)
+        Calculates if line moved in our favor
+        
+        Args:
+            event_id: Event identifier
+            book_line_close: Bookmaker's closing line
+            
+        Returns:
+            True if CLV was favorable
+        """
+        try:
+            db = self.db["beatvegas_db"]
+            
+            # Find open CLV snapshot
+            snapshot = db.clv_snapshots.find_one({
+                "event_id": event_id,
+                "settled": False
+            })
+            
+            if not snapshot:
+                logger.warning(f"No CLV snapshot found for event {event_id}")
+                return False
+            
+            # Use ClosingLineValue calculator
+            clv = ClosingLineValue(
+                event_id=event_id,
+                prediction_timestamp=snapshot["prediction_timestamp"],
+                model_projection=snapshot["model_projection"],
+                book_line_open=snapshot["book_line_open"],
+                book_line_close=None,
+                lean=snapshot["lean"]
+            )
+            
+            # Calculate CLV
+            clv_favorable = clv.calculate_clv(closing_line=book_line_close)
+            
+            # Update record
+            db.clv_snapshots.update_one(
+                {"_id": snapshot["_id"]},
+                {
+                    "$set": {
+                        "book_line_close": book_line_close,
+                        "clv_favorable": clv_favorable,
+                        "settled": True,
+                        "settled_at": datetime.now(timezone.utc)
+                    }
+                }
+            )
+            
+            status = "✅ FAVORABLE" if clv_favorable else "❌ UNFAVORABLE"
+            logger.info(f"🎯 CLV Updated: {event_id} | {snapshot['book_line_open']} → {book_line_close} | {status}")
+            
+            return clv_favorable
+            
+        except Exception as e:
+            logger.error(f"Error updating CLV closing: {e}")
+            return False
+    
+    async def get_clv_performance(
+        self,
+        days_back: int = 30
+    ) -> Dict[str, Any]:
+        """
+        PHASE 18: Get CLV performance metrics
+        
+        Target: >= 63% favorable CLV rate over time
+        This validates that our model is consistently beating the closing line
+        
+        Args:
+            days_back: Number of days to analyze
+            
+        Returns:
+            {
+                'total_clv_records': 247,
+                'clv_favorable_rate': 0.638,  # 63.8%
+                'target_rate': 0.63,
+                'meets_target': True,
+                'by_prediction_type': {...},
+                'recent_trend': [...]
+            }
+        """
+        try:
+            db = self.db["beatvegas_db"]
+            
+            # Get CLV records from last N days
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+            
+            records = list(db.clv_snapshots.find({
+                "settled": True,
+                "prediction_timestamp": {"$gte": cutoff_date}
+            }))
+            
+            if not records:
+                return {
+                    "total_clv_records": 0,
+                    "clv_favorable_rate": 0,
+                    "error": "No CLV data available"
+                }
+            
+            total_records = len(records)
+            favorable_count = sum(1 for r in records if r.get("clv_favorable") == True)
+            clv_rate = favorable_count / total_records
+            
+            # Breakdown by prediction type
+            by_type = {}
+            for pred_type in ['total', 'spread', 'ml']:
+                type_records = [r for r in records if r.get("prediction_type") == pred_type]
+                if type_records:
+                    type_favorable = sum(1 for r in type_records if r.get("clv_favorable") == True)
+                    by_type[pred_type] = {
+                        'count': len(type_records),
+                        'favorable_rate': type_favorable / len(type_records)
+                    }
+            
+            # Recent trend (last 7 days)
+            recent_records = [r for r in records 
+                            if r["prediction_timestamp"] >= (datetime.now(timezone.utc) - timedelta(days=7))]
+            recent_favorable = sum(1 for r in recent_records if r.get("clv_favorable") == True)
+            recent_rate = recent_favorable / len(recent_records) if recent_records else 0
+            
+            target_rate = 0.63
+            meets_target = clv_rate >= target_rate
+            
+            return {
+                'total_clv_records': total_records,
+                'clv_favorable_rate': round(clv_rate, 3),
+                'clv_favorable_count': favorable_count,
+                'target_rate': target_rate,
+                'meets_target': meets_target,
+                'by_prediction_type': by_type,
+                'recent_7day_rate': round(recent_rate, 3),
+                'days_analyzed': days_back,
+                'status': '✅ BEATING CLOSING LINE' if meets_target else '⚠️ BELOW TARGET'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting CLV performance: {e}")
+            return {"error": str(e)}
+

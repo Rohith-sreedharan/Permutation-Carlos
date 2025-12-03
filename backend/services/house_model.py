@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from core.monte_carlo_engine import MonteCarloEngine
 from db.mongo import db
-from config import SIM_TIER_INTERNAL, PRECISION_LABELS
+from legacy_config import SIM_TIER_INTERNAL, PRECISION_LABELS
 import uuid
 
 

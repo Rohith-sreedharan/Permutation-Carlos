@@ -6,7 +6,7 @@ Builds public ledger of accuracy for radical transparency
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from db.mongo import db
-from config import TRUST_WINDOWS, PUBLIC_LEDGER_SIZE, FORECAST_STATUS
+from legacy_config import TRUST_WINDOWS, PUBLIC_LEDGER_SIZE, FORECAST_STATUS
 import logging
 
 logger = logging.getLogger(__name__)

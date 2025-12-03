@@ -1,12 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchEvents, getPredictions } from '../services/api';
+import { fetchEvents, fetchEventsByDateRealtime, fetchEventsFromDB, getPredictions } from '../services/api';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
 import EventListItem from './EventListItem';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 
-const sports = ['All', 'NBA', 'NFL', 'MLB', 'NHL'];
+const sports = ['All', 'NBA', 'NCAAB', 'NFL', 'NCAAF', 'MLB', 'NHL'];
+
+// Map friendly sport names to API sport_key values
+const sportKeyMap: Record<string, string> = {
+  'NBA': 'basketball_nba',
+  'NCAAB': 'basketball_ncaab',
+  'NFL': 'americanfootball_nfl',
+  'NCAAF': 'americanfootball_ncaaf',
+  'MLB': 'baseball_mlb',
+  'NHL': 'icehockey_nhl',
+};
+
 type Layout = 'grid' | 'list';
 type DateFilter = 'today' | 'tomorrow' | 'this-week' | 'all';
 type TimeOrder = 'soonest' | 'latest';
@@ -28,6 +39,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
   const [timeOrder, setTimeOrder] = useState<TimeOrder>('soonest');
 
   const loadData = async (isPolling = false) => {
+    console.log('[Dashboard] loadData called, isPolling:', isPolling);
     try {
       if (isPolling) {
         setPolling(true);
@@ -35,10 +47,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
         setLoading(true);
       }
       setError(null);
-      const [eventsData, predictionsData] = await Promise.all([
-        fetchEvents(),
-        getPredictions(),
-      ]);
+      // Decide sportKey for realtime calls
+      const sportKey = activeSport === 'All' ? undefined : sportKeyMap[activeSport];
+
+      // Compute EST date string for current filter
+      const now = new Date();
+      const todayStr = toEstDateString(now);
+      const tomorrowStr = toEstDateString(new Date(now.getTime() + 24*60*60*1000));
+      const targetDate = dateFilter === 'today' ? todayStr
+                        : dateFilter === 'tomorrow' ? tomorrowStr
+                        : undefined;
+
+      // Use database fetch which supports all sports and EST filtering
+      console.log('[Dashboard] Fetching with:', { sportKey, targetDate, activeSport, dateFilter });
+      const eventsData = await fetchEventsFromDB(sportKey, targetDate, true, 200);
+      console.log('[Dashboard] Fetched events:', eventsData.length);
+
+      const predictionsData = await getPredictions();
 
       const predictionsMap = new Map<string, Prediction>();
       predictionsData.forEach((p) => predictionsMap.set(p.event_id, p));
@@ -48,14 +73,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
         prediction: predictionsMap.get(event.id),
       }));
 
+      console.log('[Dashboard] Merged data:', mergedData.length);
       setEventsWithPredictions(mergedData);
     } catch (err: any) {
+      console.error('[Dashboard] ERROR in loadData:', err);
+      console.error('[Dashboard] Error message:', err.message);
+      console.error('[Dashboard] Error stack:', err.stack);
       if (err.message.includes('No authentication token found') || err.message.includes('Session expired')) {
           onAuthError();
       } else {
           setError('Failed to fetch data. Please try again later.');
       }
-        console.error(err);
       } finally {
         if (isPolling) {
           setPolling(false);
@@ -66,37 +94,53 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
   };
 
   useEffect(() => {
+    console.log('[Dashboard] useEffect triggered - Initial mount or deps changed:', { activeSport, dateFilter, timeOrder });
     loadData(false);
-    
-    // Poll for updates every 2 minutes
     const pollingInterval = setInterval(() => {
       loadData(true);
     }, 120000);
-
     return () => clearInterval(pollingInterval);
-  }, []);
+  }, [activeSport, dateFilter, timeOrder]);
 
-  // Filter by date
+  // Helper: get YYYY-MM-DD for a date in UTC (remove EST per request)
+  const toEstDateString = (date: Date) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const d = parts.find(p => p.type === 'day')?.value;
+    return y && m && d ? `${y}-${m}-${d}` : '';
+  };
+
+  // Helper: event EST date from backend if available, else convert
+  const eventEstDate = (iso: string, fallbackEst?: string) => {
+    if (fallbackEst) return fallbackEst;
+    const dt = new Date(iso);
+    if (!Number.isFinite(dt.getTime())) return '';
+    return toEstDateString(dt);
+  };
+
+  // Filter by date in EST (America/New_York)
   const filterByDate = (events: EventWithPrediction[]) => {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+    const todayStr = toEstDateString(now);
+    const tomorrowStr = toEstDateString(new Date(now.getTime() + 24*60*60*1000));
+    const weekEndStr = toEstDateString(new Date(now.getTime() + 7*24*60*60*1000));
 
     return events.filter(event => {
-      const eventDate = new Date(event.commence_time);
-      
+      const est = eventEstDate(event.commence_time, (event as any).local_date_est);
+      if (!est) return false;
       switch (dateFilter) {
         case 'today':
-          return eventDate >= today && eventDate < tomorrow;
+          return est === todayStr;
         case 'tomorrow':
-          const dayAfter = new Date(tomorrow);
-          dayAfter.setDate(dayAfter.getDate() + 1);
-          return eventDate >= tomorrow && eventDate < dayAfter;
+          return est === tomorrowStr;
         case 'this-week':
-          return eventDate >= today && eventDate < weekEnd;
+          return est >= todayStr && est <= weekEndStr;
         case 'all':
         default:
           return true;
@@ -106,26 +150,60 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
 
   // Sort by time
   const sortByTime = (events: EventWithPrediction[]) => {
-    return [...events].sort((a, b) => {
-      const timeA = new Date(a.commence_time).getTime();
-      const timeB = new Date(b.commence_time).getTime();
-      return timeOrder === 'soonest' ? timeA - timeB : timeB - timeA;
-    });
+    return [...events]
+      // filter out invalid or missing dates to avoid NaN issues
+      .filter(e => {
+        const t = new Date(e.commence_time).getTime();
+        return Number.isFinite(t);
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.commence_time).getTime();
+        const timeB = new Date(b.commence_time).getTime();
+        return timeOrder === 'soonest' ? timeA - timeB : timeB - timeA;
+      });
   };
 
   const filteredEvents = useMemo(() => {
     let filtered = eventsWithPredictions
-      .filter(event => activeSport === 'All' || event.sport_key === activeSport)
+      .filter(event => {
+        if (activeSport === 'All') return true;
+        const sportKey = sportKeyMap[activeSport];
+        return event.sport_key === sportKey;
+      })
       .filter(event => 
         event.home_team.toLowerCase().includes(searchQuery.toLowerCase()) ||
         event.away_team.toLowerCase().includes(searchQuery.toLowerCase())
       );
     
-    filtered = filterByDate(filtered);
-    filtered = sortByTime(filtered);
-    
-    return filtered;
+    // Apply date filter
+    let dateFiltered = filterByDate(filtered);
+
+    // Smart fallback: if current date filter yields no games, show all upcoming
+    const usedFallback = dateFiltered.length === 0 && dateFilter !== 'all';
+    if (usedFallback) {
+      // Temporarily override date filter to 'all' for display
+      const allUpcoming = sortByTime([...filtered]);
+      // Attach a marker so UI can inform the user (via a synthetic flag)
+      // We won't modify the event objects; message rendered below.
+      return allUpcoming;
+    }
+
+    // Sort
+    dateFiltered = sortByTime(dateFiltered);
+    return dateFiltered;
   }, [eventsWithPredictions, activeSport, searchQuery, dateFilter, timeOrder]);
+
+  // Inline note when fallback is used (Today/Tomorrow had zero)
+  const showFallbackNote = useMemo(() => {
+    const initial = eventsWithPredictions
+      .filter(event => activeSport === 'All' || event.sport_key === sportKeyMap[activeSport])
+      .filter(event => 
+        event.home_team.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.away_team.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    const byDate = filterByDate(initial);
+    return byDate.length === 0 && dateFilter !== 'all';
+  }, [eventsWithPredictions, activeSport, searchQuery, dateFilter]);
 
   if (error) {
     return <div className="text-center text-bold-red p-8">{error}</div>;
@@ -193,6 +271,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
                 </button>
               ))}
             </div>
+            <span className="text-[11px] text-light-gray/70 ml-2">Times shown in UTC</span>
           </div>
 
           {/* Time Order Toggle */}
@@ -249,6 +328,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
 
       {loading ? <LoadingSpinner/> : (
         <>
+          {showFallbackNote && (
+            <div className="mb-3 text-xs text-light-gray/70">
+              No games for this date. Showing <span className="text-neon-green font-bold">All Upcoming</span>.
+            </div>
+          )}
           {filteredEvents.length === 0 ? (
             <div className="text-center py-16 bg-charcoal rounded-lg border border-navy">
               <div className="text-6xl mb-4">🎯</div>
