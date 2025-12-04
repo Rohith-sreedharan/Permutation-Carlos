@@ -12,16 +12,19 @@ Test Coverage:
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.monte_carlo_engine import MonteCarloEngine
-from core.sport_constants import (
+# Add backend to path
+backend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend')
+sys.path.insert(0, backend_path)
+
+from core.monte_carlo_engine import MonteCarloEngine  # type: ignore
+from core.sport_constants import (  # type: ignore
     get_position_groups,
     map_position_abbreviation,
     get_prop_markets_for_sport,
     POSITION_MAPS
 )
-from core.agents.parlay_agent import ParlayAgent
+from core.agents.parlay_agent import ParlayAgent  # type: ignore
 
 
 def test_1h_simulation_engine():

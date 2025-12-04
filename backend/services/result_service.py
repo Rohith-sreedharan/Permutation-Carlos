@@ -57,7 +57,7 @@ class ResultService:
         since = now_utc() - timedelta(hours=hours_back)
         
         # Find predictions that need grading
-        predictions = list(self.db['monte_carlo_simulations'].find({
+        predictions = list(self.db['monte_carlo_simulations'].find({  # type: ignore
             'created_at': {'$gte': since},
             'status': {'$in': ['pending', None]}  # Only grade ungraded predictions
         }))
@@ -82,7 +82,7 @@ class ResultService:
             
             if grade_result:
                 # Update database
-                self.db['monte_carlo_simulations'].update_one(
+                self.db['monte_carlo_simulations'].update_one(  # type: ignore
                     {'_id': pred['_id']},
                     {'$set': {
                         'status': grade_result['status'],
@@ -130,7 +130,7 @@ class ResultService:
         """
         try:
             # Check if we already have the score in events collection
-            event = self.db['events'].find_one({'event_id': event_id})
+            event = self.db['events'].find_one({'event_id': event_id})  # type: ignore
             
             if event and event.get('completed') and event.get('scores'):
                 scores = event['scores']
@@ -170,7 +170,7 @@ class ResultService:
                         away_score = scores[1].get('score', 0)
                         
                         # Update events collection with score
-                        self.db['events'].update_one(
+                        self.db['events'].update_one(  # type: ignore
                             {'event_id': event_id},
                             {'$set': {
                                 'completed': True,
@@ -299,7 +299,7 @@ class ResultService:
         event_id = prediction.get('event_id')
         
         # Find users who tracked this game
-        tracked_users = self.db['user_follows'].find({
+        tracked_users = self.db['user_follows'].find({  # type: ignore
             'event_id': event_id,
             'notification_enabled': True
         })
@@ -308,7 +308,7 @@ class ResultService:
             user_id = user_follow.get('user_id')
             
             # Queue notification
-            self.db['notification_queue'].insert_one({
+            self.db['notification_queue'].insert_one({  # type: ignore
                 'user_id': user_id,
                 'event_id': event_id,
                 'type': 'prediction_win',
@@ -337,14 +337,14 @@ class ResultService:
         """
         since = now_utc() - timedelta(days=days)
         
-        predictions = list(self.db['monte_carlo_simulations'].find({
+        predictions = list(self.db['monte_carlo_simulations'].find({  # type: ignore
             'graded_at': {'$gte': since},
             'status': {'$in': ['WIN', 'LOSS', 'PUSH']}
         }).sort('graded_at', -1).limit(limit))
         
         results = []
         for pred in predictions:
-            event = self.db['events'].find_one({'event_id': pred.get('event_id')})
+            event = self.db['events'].find_one({'event_id': pred.get('event_id')})  # type: ignore
             if not event:
                 continue
             

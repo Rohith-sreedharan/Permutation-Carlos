@@ -333,20 +333,39 @@ class MonteCarloEngine:
         
         # ===== SHARP SIDE ANALYSIS =====
         # Calculate model's projected spread (based on win probabilities and margin)
-        model_spread = avg_margin / iterations  # Positive = Team A favored, Negative = Team B favored
+        # model_spread = Team A score - Team B score
+        # Positive = Team A (home) favored, Negative = Team B (away) favored
+        model_spread = avg_margin / iterations
+        
+        # vegas_spread is from market_context (home team's perspective from odds API)
+        # Negative = home team favored, Positive = home team underdog
         vegas_spread = market_context.get('current_spread', 0.0)
         
-        # Determine favorite and underdog
-        if model_spread > 0:
+        # Determine favorite and underdog based on MODEL projection
+        if abs(model_spread) < 0.5:
+            # Pick'em game - no spread edge to calculate
             favorite_team = team_a.get("name", "Team A")
             underdog_team = team_b.get("name", "Team B")
-            model_spread_formatted = -abs(model_spread)  # Favorite perspective (negative)
-            vegas_spread_formatted = vegas_spread if vegas_spread < 0 else -vegas_spread
+            model_spread_formatted = model_spread
+            vegas_spread_formatted = vegas_spread
+        elif model_spread > 0:
+            # Team A (home) is favored by model
+            favorite_team = team_a.get("name", "Team A")
+            underdog_team = team_b.get("name", "Team B")
+            # Express as favorite's spread (negative)
+            model_spread_formatted = -abs(model_spread)
+            # Vegas spread should also be negative if home is favored
+            # If vegas_spread is positive, that means away team is favored by Vegas, keep it as-is
+            vegas_spread_formatted = vegas_spread
         else:
+            # Team B (away) is favored by model
             favorite_team = team_b.get("name", "Team B")
             underdog_team = team_a.get("name", "Team A")
+            # Express as favorite's spread (negative) 
             model_spread_formatted = -abs(model_spread)
-            vegas_spread_formatted = -vegas_spread if vegas_spread > 0 else vegas_spread
+            # Convert vegas_spread to away team's perspective
+            # If home team has +5, away team is favored at -5
+            vegas_spread_formatted = -vegas_spread
         
         # Calculate spread edge
         spread_analysis = calculate_spread_edge(

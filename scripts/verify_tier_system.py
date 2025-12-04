@@ -4,11 +4,15 @@ Tests tier-based simulation power and component integration
 """
 import asyncio
 import sys
-sys.path.insert(0, '/Users/rohithaditya/Downloads/Permutation-Carlos/backend')
+import os
 
-from config import SIMULATION_TIERS, PRECISION_LABELS, TIER_COLORS
-from core.monte_carlo_engine import MonteCarloEngine
-from integrations.player_api import get_team_data_with_roster
+# Add backend to path
+backend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend')
+sys.path.insert(0, backend_path)
+
+from config import SIMULATION_TIERS, PRECISION_LABELS, TIER_COLORS  # type: ignore
+from core.monte_carlo_engine import MonteCarloEngine  # type: ignore
+from integrations.player_api import get_team_data_with_roster  # type: ignore
 
 def verify_config():
     """Verify tier configuration"""

@@ -694,7 +694,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="bg-charcoal/50 p-3 rounded-lg border border-gold/20 relative group">
                     <div className="text-xs text-light-gray mb-1">Model Spread</div>
                     <div className="text-2xl font-bold text-electric-blue font-teko">
-                      {((simulation.team_a_win_probability || simulation.win_probability || 0.5) > 0.5 ? '-' : '+')}{Math.abs((simulation.projected_score || 220) - (simulation.vegas_line || 220)).toFixed(1)}
+                      {simulation?.sharp_analysis?.spread?.model_spread !== undefined 
+                        ? `${simulation.sharp_analysis.spread.model_spread >= 0 ? '+' : ''}${simulation.sharp_analysis.spread.model_spread.toFixed(1)}`
+                        : 'N/A'
+                      }
                     </div>
                     <div className="text-xs text-light-gray/60 mt-1">vs market</div>
                     {/* Critical Disclaimer Tooltip */}
@@ -890,6 +893,23 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       ({simulation.sharp_analysis.spread.edge_points?.toFixed(1)} pt edge)
                     </div>
                   </div>
+                  
+                  {/* Vegas vs Model Spread Comparison Grid */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="bg-navy/50 p-3 rounded">
+                      <div className="text-xs text-gray-400 mb-1">Vegas Spread</div>
+                      <div className="text-base font-bold text-white">
+                        {simulation.sharp_analysis.spread.vegas_spread >= 0 ? '+' : ''}{simulation.sharp_analysis.spread.vegas_spread?.toFixed(1)}
+                      </div>
+                    </div>
+                    <div className="bg-navy/50 p-3 rounded">
+                      <div className="text-xs text-gray-400 mb-1">BeatVegas Model</div>
+                      <div className="text-base font-bold text-purple-300">
+                        {simulation.sharp_analysis.spread.model_spread >= 0 ? '+' : ''}{simulation.sharp_analysis.spread.model_spread?.toFixed(1)}
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="text-sm text-gray-300 mt-2">
                     {simulation.sharp_analysis.spread.sharp_side_reason}
                   </div>
