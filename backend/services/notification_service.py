@@ -1,11 +1,13 @@
 """
 Notification Service
 Handles push notifications, real-time alerts, and notification management
+🛡️ TRUTH MODE v1.0: All pick notifications validated before sending
 """
 import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from db.mongo import client
+from middleware.truth_mode_enforcement import enforce_truth_mode_on_pick
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +164,48 @@ class NotificationService:
             priority="normal"
         )
         
+    def create_pick_notification(
+        self,
+        user_id: str,
+        event_id: str,
+        bet_type: str,
+        title: str,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+        priority: str = "normal"
+    ) -> Optional[str]:
+        """
+        Create notification for a pick - validates through Truth Mode first
+        Returns notification_id if valid, None if blocked
+        """
+        # Validate pick through Truth Mode
+        validation_result = enforce_truth_mode_on_pick(
+            event_id=event_id,
+            bet_type=bet_type
+        )
+        
+        if validation_result["status"] != "VALID":
+            logger.warning(
+                f"🛡️ [Truth Mode] Blocked pick notification for {event_id}: "
+                f"{validation_result.get('block_reasons', [])}"
+            )
+            return None
+        
+        # Pick validated - send notification
+        notification_data = data or {}
+        notification_data["truth_mode_validated"] = True
+        notification_data["confidence_score"] = validation_result.get("confidence_score", 0.0)
+        
+        return self.create_notification(
+            user_id=user_id,
+            notification_type="pick_alert",
+            title=title,
+            message=message,
+            event_id=event_id,
+            data=notification_data,
+            priority=priority
+        )
+    
     def broadcast_notification(
         self,
         notification_type: str,

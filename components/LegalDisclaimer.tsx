@@ -6,10 +6,10 @@ interface LegalDisclaimerProps {
 }
 
 /**
- * LegalDisclaimer - Standardized disclaimer component
+ * LegalDisclaimer - Institutional-grade interpretation notice
  * 
- * Official wording per V1 Production spec:
- * "MODEL MISPRICING — NOT a betting recommendation."
+ * Frames data as statistical model output, not betting advice
+ * Builds confidence while maintaining legal protection
  */
 export default function LegalDisclaimer({ 
   variant = 'full', 
@@ -18,23 +18,22 @@ export default function LegalDisclaimer({
   
   if (variant === 'compact') {
     return (
-      <div className={`text-[10px] text-gray-500 italic ${className}`}>
-        MODEL MISPRICING — NOT a betting recommendation.
+      <div className={`text-[10px] text-gray-400 italic ${className}`}>
+        Statistical output only. Not a betting recommendation.
       </div>
     );
   }
   
   return (
-    <div className={`bg-gray-900/50 border border-gray-700/50 rounded-lg p-4 ${className}`}>
+    <div className={`bg-gold/5 border border-gold/20 rounded-lg p-4 ${className}`}>
       <div className="flex items-start gap-3">
-        <span className="text-yellow-500 text-xl flex-shrink-0">⚠️</span>
+        <span className="text-gold text-lg flex-shrink-0">🔶</span>
         <div>
-          <div className="text-yellow-500 font-bold text-sm mb-2">
-            MODEL MISPRICING — NOT a betting recommendation
+          <div className="text-gold font-bold text-sm mb-2">
+            Institutional-Grade Interpretation Notice
           </div>
-          <div className="text-gray-400 text-xs leading-relaxed">
-            BeatVegas identifies statistical deviations between our simulation output and sportsbook odds.
-            No part of this output constitutes financial or betting advice.
+          <div className="text-light-gray text-xs leading-relaxed">
+            This platform provides statistical model outputs. Edges represent pricing discrepancies between our simulations and the sportsbook line — not guaranteed outcomes. Use these insights as part of your decision framework.
           </div>
         </div>
       </div>

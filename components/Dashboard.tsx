@@ -102,10 +102,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
     return () => clearInterval(pollingInterval);
   }, [activeSport, dateFilter, timeOrder]);
 
-  // Helper: get YYYY-MM-DD for a date in UTC (remove EST per request)
+  // Helper: get YYYY-MM-DD for a date in EST timezone
   const toEstDateString = (date: Date) => {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'UTC',
+      timeZone: 'America/New_York',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

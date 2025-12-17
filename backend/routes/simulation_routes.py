@@ -5,8 +5,12 @@ from pydantic import BaseModel
 from bson import ObjectId
 
 from core.monte_carlo_engine import MonteCarloEngine
+from core.safety_engine import SafetyEngine, PublicCopyFormatter
+from core.ncaaf_championship_regime import detect_ncaaf_context, NCAAFChampionshipRegimeController
+from core.truth_mode import truth_mode_validator, BlockReason
 from db.mongo import db
 from middleware.auth import get_current_user_optional, get_user_tier
+from services.post_game_grader import post_game_grader
 from legacy_config import (
     SIMULATION_TIERS, 
     PRECISION_LABELS, 
@@ -15,6 +19,74 @@ from legacy_config import (
 )
 
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
+
+
+def _apply_truth_mode_to_simulation(
+    simulation: Dict[str, Any],
+    event: Dict[str, Any],
+    event_id: str
+) -> Dict[str, Any]:
+    """
+    Apply Truth Mode validation to simulation sharp_side picks
+    Validates spread and total picks through zero-lies gates
+    """
+    # Validate spread pick if present
+    if "spread_analysis" in simulation and simulation["spread_analysis"]:
+        spread_data = simulation["spread_analysis"]
+        sharp_side = spread_data.get("sharp_side")
+        
+        if sharp_side:
+            # Validate spread pick
+            validation = truth_mode_validator.validate_pick(
+                event=event,
+                simulation=simulation,
+                bet_type="spread",
+                rcl_decision=simulation.get("rcl_decision")
+            )
+            
+            if not validation.is_valid:
+                # Block spread pick
+                spread_data["sharp_side"] = None
+                spread_data["has_edge"] = False
+                spread_data["truth_mode_blocked"] = True
+                spread_data["block_reasons"] = [r.value for r in validation.block_reasons]
+                spread_data["block_message"] = "Pick blocked by Truth Mode"
+                print(f"🛡️ [Truth Mode] Spread pick blocked for {event_id}: {validation.block_reasons}")
+            else:
+                spread_data["truth_mode_validated"] = True
+                spread_data["confidence_score"] = validation.confidence_score
+    
+    # Validate total pick if present
+    if "total_analysis" in simulation and simulation["total_analysis"]:
+        total_data = simulation["total_analysis"]
+        sharp_side = total_data.get("sharp_side")
+        
+        if sharp_side:
+            # Validate total pick
+            validation = truth_mode_validator.validate_pick(
+                event=event,
+                simulation=simulation,
+                bet_type="total",
+                rcl_decision=simulation.get("rcl_decision")
+            )
+            
+            if not validation.is_valid:
+                # Block total pick
+                total_data["sharp_side"] = None
+                total_data["has_edge"] = False
+                total_data["truth_mode_blocked"] = True
+                total_data["block_reasons"] = [r.value for r in validation.block_reasons]
+                total_data["block_message"] = "Pick blocked by Truth Mode"
+                print(f"🛡️ [Truth Mode] Total pick blocked for {event_id}: {validation.block_reasons}")
+            else:
+                total_data["truth_mode_validated"] = True
+                total_data["confidence_score"] = validation.confidence_score
+    
+    # Add Truth Mode metadata
+    simulation["truth_mode_enforced"] = True
+    simulation["truth_mode_version"] = "1.0"
+    
+    return simulation
 
 
 def _get_user_tier_from_auth(authorization: Optional[str]) -> str:
@@ -110,6 +182,11 @@ async def get_simulation(
             sort=[("created_at", -1)]
         )
         
+        # CRITICAL: Apply ensure_pick_state to eliminate UNKNOWN states from legacy data
+        if simulation:
+            from core.monte_carlo_engine import ensure_pick_state
+            simulation = ensure_pick_state(simulation)
+        
         # 🔄 CACHE INVALIDATION: Check if simulation is stale
         should_regenerate = False
         is_fresh_generation = False
@@ -184,6 +261,23 @@ async def get_simulation(
             # Extract real market lines from bookmakers
             market_context = extract_market_lines(event)
             
+            # Detect championship/postseason context for NCAAF
+            event_context = {}
+            regime_adjustments = {}
+            if "americanfootball_ncaaf" in sport_key or "americanfootball_college" in sport_key:
+                event_context = detect_ncaaf_context(
+                    event_name=f"{event.get('away_team', '')} @ {event.get('home_team', '')}",
+                    **event
+                )
+                print(f"🏈 NCAAF Context: {event_context}")
+                
+                # Apply NCAAF championship regime if needed
+                if event_context.get("is_championship") or event_context.get("is_postseason"):
+                    regime_controller = NCAAFChampionshipRegimeController()
+                    # Note: Full regime integration would require deeper engine changes
+                    # For now, we flag the context for safety evaluation
+                    print(f"⚠️ Championship/postseason regime detected")
+            
             try:
                 # Run simulation with real player rosters and real market lines
                 simulation = engine.run_simulation(
@@ -195,7 +289,34 @@ async def get_simulation(
                     mode=mode
                 )
                 
-                # Inject metadata
+                # ========== SAFETY ENGINE EVALUATION ==========
+                safety_engine = SafetyEngine()
+                
+                # Extract key values for safety check
+                model_total = simulation.get("avg_total_score") or simulation.get("avg_total") or 0
+                market_total = market_context.get("total_line") or 220  # Default if missing
+                variance = simulation.get("variance", 0)
+                confidence = simulation.get("confidence_score", 0) / 100  # Convert to 0-1
+                
+                # Evaluate safety
+                safety_result = safety_engine.evaluate_simulation(
+                    sport_key=sport_key,
+                    model_total=model_total,
+                    market_total=market_total,
+                    market_id=market_context.get("market_id"),
+                    is_postseason=event_context.get("is_postseason", False),
+                    is_championship=event_context.get("is_championship", False),
+                    weather_data=event.get("weather"),
+                    variance=variance,
+                    confidence=confidence,
+                    market_type="total"
+                )
+                
+                print(f"🛡️ Safety Evaluation: output_mode={safety_result['output_mode']}, "
+                      f"risk_score={safety_result['risk_score']:.2f}, "
+                      f"divergence={safety_result['divergence_score']:.1f}pts")
+                
+                # Inject metadata (including safety results)
                 simulation["metadata"] = {
                     "user_tier": user_tier,
                     "iterations_run": assigned_iterations,
@@ -205,8 +326,20 @@ async def get_simulation(
                     "variance": simulation.get("variance", 0),
                     "ci_95": simulation.get("confidence_intervals", {}).get("ci_95", [0, 0]),
                     "generated_at": datetime.now(timezone.utc).isoformat(),
-                    "cached": False
+                    "cached": False,
+                    # Safety engine results
+                    "output_mode": safety_result["output_mode"],
+                    "risk_level": safety_result["risk_level"],
+                    "risk_score": safety_result["risk_score"],
+                    "eligible_for_official_pick": safety_result["eligible_for_official_pick"],
+                    "divergence_score": safety_result["divergence_score"],
+                    "environment_type": safety_result["environment_type"],
                 }
+                
+                # Add safety warnings and badges to top-level
+                simulation["safety_warnings"] = safety_result["warnings"]
+                simulation["safety_badges"] = safety_result["badges"]
+                simulation["suppression_reasons"] = safety_result["suppression_reasons"]
                 
                 # Mark as fresh generation
                 is_fresh_generation = True
@@ -222,6 +355,10 @@ async def get_simulation(
         # Convert ObjectId to string
         if "_id" in simulation:
             simulation["_id"] = str(simulation["_id"])
+        
+        # ========== TRUTH MODE ENFORCEMENT ==========
+        # Validate sharp_side picks through Truth Mode gates
+        simulation = _apply_truth_mode_to_simulation(simulation, event, event_id)
         
         # 🎯 Override metadata with current user's tier (only if not freshly generated)
         if not is_fresh_generation:
@@ -507,3 +644,48 @@ async def debug_simulation(event_id: str):
             "win_prob_favors": "Team A" if team_a_wins > 0.5 else "Team B"
         }
     }
+
+
+@router.get("/grading/stats")
+async def get_grading_stats(
+    days_back: int = 7,
+    sport_key: Optional[str] = None
+):
+    """
+    Get post-game grading statistics
+    
+    Returns:
+        - Total games graded
+        - Model fault breakdown (normal variance, medium miss, big miss, RCL blocked)
+        - Average deltas
+        - Calibration weight distribution
+    """
+    try:
+        stats = post_game_grader.get_grading_stats(days_back=days_back, sport_key=sport_key)
+        return {
+            "success": True,
+            "data": stats,
+            "days_back": days_back,
+            "sport_key": sport_key
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve grading stats: {str(e)}")
+
+
+@router.post("/grading/run")
+async def run_grading(hours_back: int = 48):
+    """
+    Manually trigger grading for finished games
+    
+    Args:
+        hours_back: How many hours back to look for finished games (default: 48)
+    """
+    try:
+        summary = post_game_grader.grade_all_finished_games(hours_back=hours_back)
+        return {
+            "success": True,
+            "summary": summary,
+            "message": f"Graded {summary['graded']} games, skipped {summary['skipped']}, errors: {summary['errors']}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to run grading: {str(e)}")

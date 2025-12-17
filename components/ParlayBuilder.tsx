@@ -466,7 +466,7 @@ const ParlayBuilder: React.FC = () => {
                           🧠 Stake Intelligence
                         </h4>
                         <p className="text-light-gray text-xs mb-3">
-                          Context only — not betting advice
+                          Statistical output — Part of your framework
                         </p>
                       </div>
                     </div>

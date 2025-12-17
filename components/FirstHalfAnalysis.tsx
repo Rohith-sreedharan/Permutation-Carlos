@@ -159,6 +159,9 @@ const FirstHalfAnalysis: React.FC<FirstHalfAnalysisProps> = ({ eventId, simulati
               <div className="mt-3 text-xs text-yellow-400 bg-charcoal/50 rounded px-3 py-1.5 inline-block">
                 📊 No bookmaker 1H line available — showing model projection only
               </div>
+              <div className="mt-2 text-xs text-gold font-semibold bg-gold/10 border border-gold/30 rounded px-3 py-1.5 inline-block">
+                ⚠️ 1H model accuracy is reduced when no market anchor exists
+              </div>
               <div className="mt-2 text-xs text-electric-blue">
                 Projected CLV: +0.0 pts
               </div>
@@ -261,10 +264,10 @@ const FirstHalfAnalysis: React.FC<FirstHalfAnalysisProps> = ({ eventId, simulati
         </div>
       </div>
 
-      {/* Legal Disclaimer */}
-      <div className="mt-4 bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-3 text-center">
-        <p className="text-xs text-yellow-200/80">
-          ⚠️ This platform provides statistical modeling only. No recommendations or betting instructions are provided.
+      {/* Interpretation Notice */}
+      <div className="mt-4 bg-gold/5 border border-gold/20 rounded-lg p-3 text-center">
+        <p className="text-xs text-light-gray">
+          <span className="text-gold font-semibold">Statistical Model Output</span> — Use as part of your decision framework.
         </p>
       </div>
     </div>

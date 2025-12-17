@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import api from '../services/api';
+import api, { getSubscriptionStatus } from '../services/api';
 import { getTierConfig, getSimPowerMessage, shouldShowUpgradePrompt } from '../utils/simulationTiers';
 import UpgradeModal from './UpgradeModal';
 
@@ -48,30 +48,24 @@ const ParlayArchitect: React.FC = () => {
   const [eliteTokens, setEliteTokens] = useState<{is_elite: boolean, tokens_remaining: number, message: string} | null>(null);
   const [userTier, setUserTier] = useState<string>('starter');
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [includeHigherRisk, setIncludeHigherRisk] = useState(false);  // Risk toggle: allow LEAN legs
 
-  // Fetch elite token status and tier on mount
+  // Fetch user tier on mount using proper auth
   useEffect(() => {
-    const fetchTokens = async () => {
+    const fetchUserTier = async () => {
       try {
-        const userId = localStorage.getItem('user_id');
-        if (userId) {
-          const response = await api.get(`http://localhost:8000/api/architect/tokens?user_id=${userId}`);
-          setEliteTokens(response.data);
-          
-          // Fetch user tier using correct endpoint
-          const tierResponse = await api.get('/api/subscription/status', {
-            headers: {
-              'Authorization': `Bearer user:${userId}`
-            }
-          });
-          setUserTier((tierResponse.data.tier || 'starter').toLowerCase());
-        }
+        console.log('🔍 [ParlayArchitect] Fetching user tier...');
+        const response = await getSubscriptionStatus();
+        console.log('🎯 [ParlayArchitect] Subscription response:', response);
+        const tier = (response.tier || 'starter').toLowerCase();
+        console.log('✅ [ParlayArchitect] Setting userTier to:', tier);
+        setUserTier(tier);
       } catch (err) {
-        console.error('Failed to fetch elite tokens:', err);
+        console.error('❌ [ParlayArchitect] Failed to fetch tier:', err);
         setUserTier('starter'); // Default on error
       }
     };
-    fetchTokens();
+    fetchUserTier();
   }, []);
 
   const tierConfig = getTierConfig(userTier);
@@ -179,12 +173,13 @@ const ParlayArchitect: React.FC = () => {
   };
 
   const sportOptions = [
-    { value: 'basketball_nba', label: 'NBA Basketball' },
-    { value: 'basketball_ncaab', label: 'NCAA Basketball' },
-    { value: 'americanfootball_nfl', label: 'NFL Football' },
-    { value: 'americanfootball_ncaaf', label: 'NCAA Football' },
-    { value: 'baseball_mlb', label: 'MLB Baseball' },
-    { value: 'icehockey_nhl', label: 'NHL Hockey' }
+    { value: 'basketball_nba', label: 'NBA', shortLabel: 'NBA' },
+    { value: 'basketball_ncaab', label: 'NCAAB', shortLabel: 'NCAAB' },
+    { value: 'americanfootball_nfl', label: 'NFL', shortLabel: 'NFL' },
+    { value: 'americanfootball_ncaaf', label: 'NCAAF', shortLabel: 'NCAAF' },
+    { value: 'baseball_mlb', label: 'MLB', shortLabel: 'MLB' },
+    { value: 'icehockey_nhl', label: 'NHL', shortLabel: 'NHL' },
+    { value: 'all', label: 'Cross-Sport', shortLabel: 'Cross-Sport' }
   ];
 
   const riskProfiles = [
@@ -193,6 +188,41 @@ const ParlayArchitect: React.FC = () => {
     { value: 'high_volatility', label: 'High Volatility', desc: 'Moonshot parlays' }
   ];
 
+  // Helper: Check if parlay should be allowed based on pick_state filtering
+  const filterParlayLegs = (legs: Leg[]) => {
+    if (!Array.isArray(legs)) return { filtered: [], blocked: [], hasLeanLegs: false };
+    
+    const filtered: Leg[] = [];
+    const blocked: Leg[] = [];
+    let hasLeanLegs = false;
+    
+    for (const leg of legs) {
+      const pickState = (leg as any).pick_state || 'UNKNOWN';
+      
+      if (pickState === 'NO_PLAY') {
+        // NO_PLAY legs are NEVER allowed
+        blocked.push(leg);
+      } else if (pickState === 'LEAN') {
+        hasLeanLegs = true;
+        if (includeHigherRisk) {
+          // LEAN legs allowed when toggle is ON
+          filtered.push(leg);
+        } else {
+          // LEAN legs blocked when toggle is OFF
+          blocked.push(leg);
+        }
+      } else if (pickState === 'PICK') {
+        // PICK legs always allowed
+        filtered.push(leg);
+      } else {
+        // UNKNOWN state - block by default (should not happen)
+        blocked.push(leg);
+      }
+    }
+    
+    return { filtered, blocked, hasLeanLegs };
+  };
+  
   const generateParlay = async () => {
     setIsGenerating(true);
     setError(null);
@@ -202,17 +232,57 @@ const ParlayArchitect: React.FC = () => {
       // Get user_id from localStorage if available
       const userId = localStorage.getItem('user_id') || undefined;
 
+      // Detect cross-sport mode
+      const isMultiSport = sport === 'all';
+
       const response = await api.post('http://localhost:8000/api/architect/generate', {
         sport_key: sport,
         leg_count: legCount,
         risk_profile: riskProfile,
-        user_id: userId
+        user_id: userId,
+        multi_sport: isMultiSport  // Enable cross-sport composition
       });
 
       // Simulate scanning animation delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      setParlayData(response.data);
+      console.log('🔍 [Parlay Response]', response.data);
+      console.log('🔑 [User Tier]', userTier);
+      console.log('🔓 [Is Unlocked]', response.data.is_unlocked);
+      
+      // CLIENT-SIDE FILTERING: Apply pick_state filtering based on toggle
+      const originalLegs = response.data.legs || [];
+      const { filtered, blocked, hasLeanLegs } = filterParlayLegs(originalLegs);
+      
+      if (filtered.length < 2) {
+        // Not enough legs after filtering
+        if (!includeHigherRisk && blocked.length > 0) {
+          // User has toggle OFF and legs were blocked
+          setError(
+            `No parlay qualifies under Truth Mode today.\n\n` +
+            `${blocked.length} leg(s) are LEAN state (lower certainty).\n\n` +
+            `💡 Turn on "Include Higher Risk Legs" to see speculative parlays with LEAN legs.`
+          );
+        } else {
+          setError(
+            `No valid parlay available.\n\n` +
+            `Insufficient PICK-state legs for parlay construction.`
+          );
+        }
+        setParlayData(null);
+        return;
+      }
+      
+      // Update parlay with filtered legs
+      const filteredParlay = {
+        ...response.data,
+        legs: filtered,
+        leg_count: filtered.length,
+        has_lean_legs: hasLeanLegs && includeHigherRisk,
+        is_speculative: hasLeanLegs && includeHigherRisk
+      };
+      
+      setParlayData(filteredParlay);
     } catch (err: any) {
       // Handle error message from our custom api wrapper or fetch API
       const errorMessage = err.message || err.response?.data?.detail || 'Failed to generate parlay';
@@ -316,24 +386,38 @@ const ParlayArchitect: React.FC = () => {
       <div className="max-w-3xl mx-auto bg-charcoal rounded-xl p-8 border border-gold/20 mb-8">
         <h2 className="text-2xl font-bold text-gold mb-6">Configure Your Parlay</h2>
 
-        {/* Sport Selection */}
+        {/* Sport Selection - Tab Layout */}
         <div className="mb-6">
-          <label className="block text-lightGold mb-2 font-semibold">Sport</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <label className="block text-lightGold mb-3 font-semibold">Select Sport</label>
+          <div className="flex flex-wrap gap-2">
             {sportOptions.map(option => (
               <button
                 key={option.value}
                 onClick={() => setSport(option.value)}
-                className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                className={`px-6 py-2.5 rounded-lg font-bold transition-all ${
                   sport === option.value
-                    ? 'border-gold bg-gold/10 text-gold'
-                    : 'border-gold/30 bg-navy/50 text-lightGold hover:border-gold/60'
+                    ? 'bg-gold text-darkNavy shadow-lg shadow-gold/30'
+                    : 'bg-navy/50 text-lightGold border border-gold/30 hover:border-gold/60 hover:bg-navy/70'
                 }`}
               >
-                {option.label}
+                {option.shortLabel}
+                {option.value === 'all' && (
+                  <span className="ml-1.5 text-xs opacity-80">🌐</span>
+                )}
               </button>
             ))}
           </div>
+          {sport === 'all' && (
+            <div className="mt-3 p-3 bg-electric-blue/10 border border-electric-blue/30 rounded-lg">
+              <div className="text-electric-blue text-sm font-semibold flex items-center gap-2">
+                <span>🌐</span>
+                <span>Cross-Sport Mode: Combining legs from NFL, NBA, NHL, MLB, NCAAF, NCAAB</span>
+              </div>
+              <div className="text-lightGold/70 text-xs mt-1">
+                Cross-sport legs are treated as independent (0.0 correlation). Truth Mode governance applies to all legs.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Leg Count Slider */}
@@ -379,6 +463,26 @@ const ParlayArchitect: React.FC = () => {
           </div>
         </div>
 
+        {/* Risk Toggle: Include LEAN Legs */}
+        <div className="mb-6 p-4 bg-navy/30 border border-gold/20 rounded-lg">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeHigherRisk}
+              onChange={(e) => setIncludeHigherRisk(e.target.checked)}
+              className="w-5 h-5 accent-amber-500"
+            />
+            <div className="flex-1">
+              <div className="text-lightGold font-semibold mb-1">
+                Include Higher Risk Legs ⚠️
+              </div>
+              <div className="text-xs text-lightGold/70 leading-relaxed">
+                Default: PICK-state legs only (highest certainty). Toggle ON to allow LEAN-state legs (directional reads with lower certainty). NO_PLAY legs are never included.
+              </div>
+            </div>
+          </label>
+        </div>
+
         {/* Generate Button */}
         <button
           onClick={generateParlay}
@@ -418,6 +522,19 @@ const ParlayArchitect: React.FC = () => {
       {/* Parlay Result */}
       {parlayData && !isGenerating && (
         <div className="max-w-4xl mx-auto">
+          {/* Speculative Parlay Warning (LEAN legs included) */}
+          {parlayData.is_speculative && (
+            <div className="bg-amber-900/20 border border-amber-500/50 rounded-lg p-4 mb-4 flex items-center gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <div className="text-sm font-bold text-amber-400 mb-1">SPECULATIVE PARLAY – INCLUDES LEAN LEGS</div>
+                <div className="text-xs text-amber-400/80 leading-relaxed">
+                  This parlay contains one or more LEAN-state legs (directional reads with lower certainty). LEAN legs show directional lean but have unstable probability distributions. Consider as higher-risk speculative play.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Enhanced Scarcity Timer with Pulsing Animation */}
           {!parlayData.is_unlocked && (
             <div className="bg-gradient-to-r from-deepRed/20 to-orange-500/20 border border-deepRed/50 rounded-lg p-4 mb-4 flex items-center justify-between relative overflow-hidden">
@@ -839,13 +956,17 @@ const ParlayArchitect: React.FC = () => {
                   };
                   const tierBadge = getTierBadge(leg.tier);
                   
+                  // Get pick_state for this leg
+                  const pickState = (leg as any).pick_state || 'PICK';
+                  const isLeanLeg = pickState === 'LEAN';
+                  
                   return (
                     <div
                       key={idx}
-                      className="bg-navy/50 rounded-lg p-4 border border-gold/20"
+                      className={`bg-navy/50 rounded-lg p-4 border ${isLeanLeg ? 'border-amber-500/40' : 'border-gold/20'}`}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <div className="font-bold text-lightGold flex items-center gap-2">
+                        <div className="font-bold text-lightGold flex items-center gap-2 flex-wrap">
                           <span>Leg {idx + 1}:</span> <span>{leg.event}</span>
                           <span className="text-[11px] bg-charcoal px-2 py-0.5 rounded border border-gold/30">{leg.bet_type}</span>
                           <span className={`text-[10px] px-2 py-0.5 rounded border font-semibold ${tierBadge.color} cursor-help group relative`}
@@ -856,6 +977,16 @@ const ParlayArchitect: React.FC = () => {
                               {tierBadge.tooltip}
                             </span>
                           </span>
+                          {isLeanLeg && (
+                            <span className="text-[10px] px-2 py-0.5 rounded border border-amber-500/50 bg-amber-900/30 text-amber-400 font-semibold cursor-help group relative"
+                                  title="LEAN state: Directional read with lower certainty">
+                              ⚠️ LEAN
+                              {/* LEAN Tooltip */}
+                              <span className="absolute left-0 top-full mt-1 hidden group-hover:block z-10 w-64 bg-charcoal border border-amber-500/30 rounded-lg p-2 text-[10px] text-amber-400/90 font-normal normal-case">
+                                LEAN state: This leg shows directional lean but has unstable probability distribution. Considered higher risk.
+                              </span>
+                            </span>
+                          )}
                         </div>
                         <div className="text-gold font-mono">
                           {fmtPct(safeNumber(leg.probability, 0) * 100)}
@@ -999,83 +1130,84 @@ const ParlayArchitect: React.FC = () => {
                     </div>
                   ))}
 
-                  {/* Enhanced Premium Unlock CTA - 27-40% Conversion Boost */}
-                  <div className="mt-6 p-8 bg-gradient-to-br from-gold/20 to-deepRed/20 rounded-xl border-2 border-gold/50 text-center relative overflow-hidden">
-                    {/* Background accent */}
-                    <div className="absolute inset-0 bg-gradient-to-tr from-gold/5 to-transparent pointer-events-none"></div>
-                    
-                    <div className="relative z-10">
-                      <h3 className="text-2xl font-bold text-gold mb-2">
-                        UNLOCK FULL AI PARLAY + 50,000-SIMULATION REPORT
-                      </h3>
-                      <div className="text-sm text-lightGold/70 mb-5">
-                        (${((parlayData.unlock_price || 999) / 100).toFixed(2)})
-                      </div>
+                  {/* Enhanced Premium Unlock CTA - Only show for non-elite/founder/internal users */}
+                  {!['elite', 'founder', 'internal'].includes(userTier.toLowerCase()) && (
+                    <div className="mt-6 p-8 bg-gradient-to-br from-gold/20 to-deepRed/20 rounded-xl border-2 border-gold/50 text-center relative overflow-hidden">
+                      {/* Background accent */}
+                      <div className="absolute inset-0 bg-gradient-to-tr from-gold/5 to-transparent pointer-events-none"></div>
                       
-                      {/* Enhanced Value List - Emphasize 50K Simulations */}
-                      <div className="bg-charcoal/50 rounded-lg p-5 mb-5 border border-gold/20">
-                        <div className="text-sm font-semibold text-lightGold mb-3">FULL ACCESS INCLUDES:</div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left text-sm text-lightGold/90">
-                          <div className="flex items-center gap-2">
-                            <span className="text-electric-blue text-lg">✔</span>
-                            <span><strong>Leg-by-leg win %</strong> (per leg breakdown)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-electric-blue text-lg">✔</span>
-                            <span><strong>EV calculation</strong> (edge analysis)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-electric-blue text-lg">✔</span>
-                            <span><strong>Correlation map</strong> (leg interactions)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-electric-blue text-lg">✔</span>
-                            <span><strong>Risk profile breakdown</strong> (volatility)</span>
-                          </div>
-                          <div className="flex items-center gap-2 md:col-span-2">
-                            <span className="text-gold text-lg">✔</span>
-                            <span><strong className="text-gold">Full 50K simulation data</strong> (complete Monte Carlo report)</span>
+                      <div className="relative z-10">
+                        <h3 className="text-2xl font-bold text-gold mb-2">
+                          UNLOCK FULL AI PARLAY + 50,000-SIMULATION REPORT
+                        </h3>
+                        <div className="text-sm text-lightGold/70 mb-5">
+                          (${((parlayData.unlock_price || 999) / 100).toFixed(2)})
+                        </div>
+                        
+                        {/* Enhanced Value List - Emphasize 50K Simulations */}
+                        <div className="bg-charcoal/50 rounded-lg p-5 mb-5 border border-gold/20">
+                          <div className="text-sm font-semibold text-lightGold mb-3">FULL ACCESS INCLUDES:</div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left text-sm text-lightGold/90">
+                            <div className="flex items-center gap-2">
+                              <span className="text-electric-blue text-lg">✔</span>
+                              <span><strong>Leg-by-leg win %</strong> (per leg breakdown)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-electric-blue text-lg">✔</span>
+                              <span><strong>EV calculation</strong> (edge analysis)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-electric-blue text-lg">✔</span>
+                              <span><strong>Correlation map</strong> (leg interactions)</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-electric-blue text-lg">✔</span>
+                              <span><strong>Risk profile breakdown</strong> (volatility)</span>
+                            </div>
+                            <div className="flex items-center gap-2 md:col-span-2">
+                              <span className="text-gold text-lg">✔</span>
+                              <span><strong className="text-gold">Full 50K simulation data</strong> (complete Monte Carlo report)</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <button
-                        onClick={unlockParlay}
-                        className="group relative px-10 py-4 bg-gradient-to-r from-gold to-lightGold text-darkNavy font-bold text-lg rounded-lg hover:shadow-2xl hover:shadow-gold/50 transition-all transform hover:scale-105"
-                      >
-                        <span className="relative z-10">
-                          UNLOCK PARLAY NOW — ${((parlayData.unlock_price || 999) / 100).toFixed(2)}
-                        </span>
-                        <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                      </button>
+                        <button
+                          onClick={unlockParlay}
+                          className="group relative px-10 py-4 bg-gradient-to-r from-gold to-lightGold text-darkNavy font-bold text-lg rounded-lg hover:shadow-2xl hover:shadow-gold/50 transition-all transform hover:scale-105"
+                        >
+                          <span className="relative z-10">
+                            UNLOCK PARLAY NOW — ${((parlayData.unlock_price || 999) / 100).toFixed(2)}
+                          </span>
+                          <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        </button>
 
-                      {/* Tooltip explaining it's not picks */}
-                      <div className="mt-4 text-xs text-lightGold/60 hover:text-lightGold/90 transition-colors cursor-help group relative inline-block">
-                        <span className="border-b border-dotted border-lightGold/40">
-                          Why unlock? ⓘ
-                        </span>
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-20 w-72 bg-charcoal border-2 border-gold/30 rounded-lg p-4 text-xs text-lightGold">
-                          <div className="font-bold text-gold mb-2">This is NOT a pick service</div>
-                          <div className="text-lightGold/90">
-                            These are probability-based simulations using Monte Carlo analysis, 
-                            correlation modeling, and statistical edge detection. 
-                            We provide analytical tools—not betting recommendations.
+                        {/* Tooltip explaining it's not picks */}
+                        <div className="mt-4 text-xs text-lightGold/60 hover:text-lightGold/90 transition-colors cursor-help group relative inline-block">
+                          <span className="border-b border-dotted border-lightGold/40">
+                            Why unlock? ⓘ
+                          </span>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-20 w-72 bg-charcoal border-2 border-gold/30 rounded-lg p-4 text-xs text-lightGold">
+                            <div className="font-bold text-gold mb-2">This is NOT a pick service</div>
+                            <div className="text-lightGold/90">
+                              These are probability-based simulations using Monte Carlo analysis, 
+                              correlation modeling, and statistical edge detection. 
+                              We provide analytical tools—not betting recommendations.
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </>
               )}
             </div>
           </div>
 
-          {/* Compliance Disclaimer */}
-          <div className="bg-navy/30 rounded-lg p-4 border border-gold/10 text-center text-xs text-lightGold/70">
+          {/* Institutional Interpretation Notice */}
+          <div className="bg-gold/5 rounded-lg p-4 border border-gold/20 text-center text-xs text-light-gray">
             <p>
-              <strong className="text-gold">Compliance Notice:</strong> We are not selling picks. 
-              This is a simulation-validated probability structure for analytical purposes only. 
-              Always gamble responsibly.
+              <strong className="text-gold">Institutional-Grade Analysis:</strong> Statistical probability structures for analytical framework. 
+              Parlay compositions represent correlated outcome modeling, not betting recommendations.
             </p>
           </div>
         </div>

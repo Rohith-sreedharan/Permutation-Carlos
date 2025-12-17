@@ -100,6 +100,8 @@ from routes.analytics_routes import router as analytics_router
 from routes.clv_routes import router as clv_router
 from routes.recap_routes import router as recap_router
 from routes.community_enhanced_routes import router as community_enhanced_router
+from routes.truth_mode_routes import router as truth_mode_router
+from routes.debug_routes import router as debug_router
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -132,6 +134,8 @@ app.include_router(daily_cards_router)  # Daily Best Cards
 app.include_router(analytics_router)  # Phase 18: Numerical Accuracy
 app.include_router(clv_router)  # CLV Tracking & Performance
 app.include_router(recap_router)  # Post-Game Recap & Feedback Loop
+app.include_router(truth_mode_router)  # Truth Mode v1.0: Zero-Lies Enforcement
+app.include_router(debug_router)  # Debug endpoints for pick state diagnostics
 
 
 @app.websocket("/ws")

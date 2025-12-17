@@ -17,6 +17,12 @@ from db.mongo import db
 from services.logger import log_stage
 from core.sport_strategies import SportStrategyFactory
 from core.sport_constants import map_position_abbreviation
+from core.calibration_engine import CalibrationEngine
+from core.calibration_logger import CalibrationLogger
+from core.market_line_integrity import MarketLineIntegrityVerifier, MarketLineIntegrityError
+from core.decomposition_logger import DecompositionLogger
+from core.pick_state_machine import PickStateMachine, PickState
+from core.version_tracker import get_version_tracker
 from core.numerical_accuracy import (
     SimulationOutput,
     OverUnderAnalysis,
@@ -33,11 +39,104 @@ from core.sharp_analysis import (
     calculate_total_edge,
     format_for_api,
     explain_edge_reasoning,
-    STANDARD_DISCLAIMER
+    STANDARD_DISCLAIMER,
+    TotalAnalysis
 )
 from core.feedback_loop import store_prediction
+from core.reality_check_layer import get_public_total_projection
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_pick_state(simulation: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    CRITICAL: Ensure every simulation has explicit pick_state
+    READINESS GATE: Check if required inputs exist before classification
+    
+    Required inputs:
+    - market_line (fresh)
+    - confidence_score
+    - variance
+    
+    If missing → PENDING_INPUTS (internal only, not user-facing NO_PLAY)
+    """
+    pick_state = simulation.get('pick_state', 'UNKNOWN')
+    
+    # READINESS GATE: Check if required inputs exist
+    missing_inputs = []
+    
+    # Check market line
+    market_line = simulation.get('total_line') or simulation.get('market_context', {}).get('total_line')
+    if not market_line:
+        missing_inputs.append('NO_MARKET_LINE')
+    
+    # Check confidence score
+    if simulation.get('confidence_score', 0) == 0:
+        missing_inputs.append('CONFIDENCE_NOT_COMPUTED')
+    
+    # Check variance
+    if not simulation.get('variance_total'):
+        missing_inputs.append('VARIANCE_NOT_COMPUTED')
+    
+    # If ANY inputs missing → PENDING_INPUTS (not NO_PLAY)
+    if missing_inputs and (pick_state == 'UNKNOWN' or pick_state is None):
+        simulation['pick_state'] = 'PENDING_INPUTS'
+        simulation['can_publish'] = False
+        simulation['can_parlay'] = False
+        simulation['state_machine_reasons'] = missing_inputs
+        
+        logger.info(
+            f"⏳ Simulation {simulation.get('event_id', 'unknown')} → PENDING_INPUTS: {', '.join(missing_inputs)}"
+        )
+        return simulation
+    
+    # If pick_state is still UNKNOWN but inputs exist, this is a legacy sim
+    if pick_state == 'UNKNOWN' or pick_state is None:
+        # Check if this is a bootstrap situation (no calibration data)
+        calibration_status = simulation.get('calibration', {}).get('calibration_status', 'INITIALIZED')
+        bootstrap_mode = (calibration_status == 'UNINITIALIZED')
+        
+        reasons = []
+        if not simulation.get('calibration_result'):
+            reasons.append('CALIBRATION_NOT_RUN')
+        if not reasons:
+            reasons.append('LEGACY_SIMULATION_NO_STATE')
+        
+        # Force NO_PLAY classification for legacy data
+        simulation['pick_state'] = 'NO_PLAY'
+        simulation['can_publish'] = False
+        simulation['can_parlay'] = False
+        simulation['state_machine_reasons'] = reasons
+        
+        if not bootstrap_mode:
+            logger.warning(
+                f"⚠️ Simulation {simulation.get('event_id', 'unknown')} had UNKNOWN state - "
+                f"forced to NO_PLAY: {', '.join(reasons)}"
+            )
+    
+    # CRITICAL: Ensure state_machine_reasons is never empty for NO_PLAY/LEAN/PENDING_INPUTS
+    # This is the final safeguard for reason code propagation
+    if pick_state in ['NO_PLAY', 'LEAN', 'PENDING_INPUTS']:
+        reasons = simulation.get('state_machine_reasons', [])
+        if not reasons or reasons == []:
+            # Extract reasons from calibration if available
+            cal_result = simulation.get('calibration', {})
+            cal_block_reasons = cal_result.get('block_reasons', [])
+            
+            if cal_block_reasons:
+                simulation['state_machine_reasons'] = cal_block_reasons
+            elif pick_state == 'NO_PLAY':
+                simulation['state_machine_reasons'] = ['NO_REASON_PROVIDED_ERROR']
+            elif pick_state == 'PENDING_INPUTS':
+                simulation['state_machine_reasons'] = ['AWAITING_DATA']
+            else:  # LEAN
+                simulation['state_machine_reasons'] = ['LEAN_STATE_NO_PARLAY']
+            
+            logger.warning(
+                f"⚠️ {pick_state} state without reasons - added: {simulation['state_machine_reasons']}"
+            )
+    
+    return simulation
 
 
 class MonteCarloEngine:
@@ -68,6 +167,15 @@ class MonteCarloEngine:
         self.max_iterations = 100000
         self.strategy_factory = SportStrategyFactory()
         self.clv_predictions = []  # Store CLV predictions for validation
+        
+        # System-wide calibration architecture
+        self.calibration_engine = CalibrationEngine()
+        self.calibration_logger = CalibrationLogger()
+        
+        # FINAL SAFETY SYSTEM (launch-blocking components)
+        self.market_verifier = MarketLineIntegrityVerifier()
+        self.decomposition_logger = DecompositionLogger()
+        self.version_tracker = get_version_tracker()
         
         # PHASE 15: First Half physics multipliers
         self.FIRST_HALF_CONFIG = {
@@ -118,6 +226,33 @@ class MonteCarloEngine:
         
         # Get sport-specific strategy
         sport_key = market_context.get('sport_key', 'basketball_nba')
+        
+        # ===== MARKET LINE INTEGRITY VERIFICATION (HARD BLOCK) =====
+        # CRITICAL: Verify market line before any simulation (spec #5)
+        try:
+            self.market_verifier.verify_market_context(
+                event_id=event_id,
+                sport_key=sport_key,
+                market_context=market_context,
+                market_type=mode if mode in ["first_half", "second_half"] else "full_game"
+            )
+            logger.info(f"✅ Market line integrity verified: {event_id}")
+        except MarketLineIntegrityError as e:
+            logger.error(f"❌ HARD BLOCK: Market line integrity failed for {event_id}: {e}")
+            raise  # Hard block - no simulation without valid market line
+        
+        # Enforce NO MARKET = NO PICK for derivative markets (spec #6)
+        if mode in ["first_half", "second_half"]:
+            try:
+                self.market_verifier.enforce_no_market_no_pick(
+                    market_context=market_context,
+                    market_type=mode
+                )
+                logger.info(f"✅ Derivative market check passed: {mode}")
+            except MarketLineIntegrityError as e:
+                logger.error(f"❌ NO MARKET = NO PICK: Cannot publish {mode} without bookmaker line")
+                raise  # Hard block - no publishing without market anchor
+        
         strategy = self.strategy_factory.get_strategy(sport_key)
         
         # Extract team data
@@ -283,6 +418,68 @@ class MonteCarloEngine:
             volatility_label = "HIGH"
             volatility_score = "High"
         
+        # ===== DECOMPOSITION LOGGING (ROOT-CAUSE TRACKING) =====
+        # CRITICAL: Log game-level scoring components to detect double-counting
+        try:
+            # Extract decomposition data from results (sport-specific)
+            decomposition_data = {}
+            
+            if "football" in sport_key:
+                # Football: drives, PPD, TD rate, FG rate
+                decomposition_data = {
+                    "drives_per_team": results.get("avg_drives_per_team", 11.2),
+                    "points_per_drive": results.get("avg_points_per_drive", 1.95),
+                    "td_rate": results.get("td_rate", 0.22),
+                    "fg_rate": results.get("fg_rate", 0.17),
+                    "turnover_rate": results.get("turnover_rate", 0.13)
+                }
+            elif "basketball" in sport_key:
+                # Basketball: possessions, PPP, pace
+                decomposition_data = {
+                    "possessions_per_team": results.get("possessions_per_team", 100.0),
+                    "points_per_possession": results.get("points_per_possession", 1.12),
+                    "pace": results.get("pace", 100.0)
+                }
+            elif sport_key == "baseball_mlb":
+                decomposition_data = {
+                    "runs_per_inning": results.get("runs_per_inning", 0.50)
+                }
+            elif sport_key == "icehockey_nhl":
+                decomposition_data = {
+                    "goals_per_period": results.get("goals_per_period", 1.0)
+                }
+            
+            # Calculate actual metrics from simulation if not provided by strategy
+            if "football" in sport_key and "avg_drives_per_team" not in results:
+                # Estimate from totals (fallback)
+                avg_total = np.mean(totals_array)
+                decomposition_data["drives_per_team"] = avg_total / 2.0 / 1.95  # Approximate
+                decomposition_data["points_per_drive"] = avg_total / 2.0 / decomposition_data["drives_per_team"]
+            
+            if "basketball" in sport_key and "possessions_per_team" not in results:
+                # Estimate from totals
+                avg_total = np.mean(totals_array)
+                decomposition_data["possessions_per_team"] = avg_total / 2.24  # Approximate
+                decomposition_data["points_per_possession"] = avg_total / 2.0 / decomposition_data["possessions_per_team"]
+            
+            # Log decomposition
+            simulation_id = f"sim_{event_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            self.decomposition_logger.log_decomposition(
+                game_id=event_id,
+                sport=sport_key,
+                simulation_id=simulation_id,
+                team_a_name=team_a.get("name", "Team A"),
+                team_b_name=team_b.get("name", "Team B"),
+                decomposition_data=decomposition_data,
+                model_total=float(np.median(totals_array)),
+                vegas_total=market_context.get('total_line', 0.0),
+                timestamp=datetime.now(timezone.utc)
+            )
+            logger.info(f"✅ Decomposition logged: {event_id}")
+        except Exception as e:
+            logger.error(f"Failed to log decomposition: {e}")
+            # Don't fail simulation if logging fails
+        
         # Calculate projected totals from simulation data (NUMERICAL ACCURACY ENFORCED)
         totals_array = np.array(results["totals"])
         median_total = float(np.median(totals_array))
@@ -329,7 +526,76 @@ class MonteCarloEngine:
             median_value=median_total
         )
         
+        # 🔴 ANTI-OVER BIAS: Apply divergence penalty to confidence
+        # Large divergences from market should reduce conviction
+        if bookmaker_total_line and abs(median_total - bookmaker_total_line) > 3.5:
+            divergence = abs(median_total - bookmaker_total_line)
+            excess_divergence = divergence - 3.5
+            divergence_penalty = min(25, excess_divergence * 3.0)  # Max 25 point penalty
+            
+            original_confidence = confidence_score
+            confidence_score = max(30, confidence_score - divergence_penalty)
+            
+            logger.warning(
+                f"🔴 Market Divergence Penalty: {median_total:.1f} vs market {bookmaker_total_line:.1f} "
+                f"(+{divergence:.1f} pts) → Confidence: {original_confidence} → {confidence_score}"
+            )
+        
         logger.info(f"Confidence: {confidence_score}/100 (Tier: {tier_config['label']}, Variance: {variance_total:.1f})")
+        
+        # ===== REALITY CHECK LAYER (RCL) =====
+        # Apply sanity checks to prevent inflated/unrealistic totals BEFORE edge calculation
+        simulation_id = f"sim_{event_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+        
+        # Determine league code and regulation minutes
+        sport_key = market_context.get("sport_key", "basketball_nba")
+        league_code = self._get_league_code(sport_key)
+        regulation_minutes = self._get_regulation_minutes(sport_key)
+        
+        # Check if live context is available
+        live_context = None
+        if market_context.get("is_live") or market_context.get("current_total_points") is not None:
+            live_context = {
+                "current_total_points": market_context.get("current_total_points"),
+                "elapsed_minutes": market_context.get("elapsed_minutes")
+            }
+        
+        # Apply RCL - get sanity-checked total
+        try:
+            rcl_result = get_public_total_projection(
+                sim_stats={
+                    "median_total": median_total,
+                    "mean_total": mean_total,
+                    "total_line": bookmaker_total_line
+                },
+                league_code=league_code,
+                live_context=live_context,
+                simulation_id=simulation_id,
+                event_id=event_id,
+                regulation_minutes=regulation_minutes
+            )
+            
+            # Use RCL-validated total
+            rcl_total = rcl_result["model_total"]
+            rcl_passed = rcl_result["rcl_ok"]
+            rcl_reason = rcl_result["rcl_reason"]
+            
+            logger.info(
+                f"RCL: {median_total:.1f} → {rcl_total:.1f} "
+                f"({'✅ PASSED' if rcl_passed else '🚫 FAILED'}: {rcl_reason})"
+            )
+            
+        except Exception as e:
+            logger.error(f"RCL failed, using raw total: {e}")
+            rcl_total = median_total
+            rcl_passed = True
+            rcl_reason = "RCL_ERROR"
+            rcl_result = {
+                "model_total": median_total,
+                "rcl_ok": True,
+                "rcl_reason": "RCL_ERROR",
+                "edge_eligible": True
+            }
         
         # ===== SHARP SIDE ANALYSIS =====
         # Calculate model's projected spread (based on win probabilities and margin)
@@ -373,15 +639,34 @@ class MonteCarloEngine:
             model_spread=model_spread_formatted,
             favorite_team=favorite_team,
             underdog_team=underdog_team,
-            threshold=2.0
+            threshold=3.0,
+            confidence_score=confidence_score,
+            variance=variance_total
         )
         
         # Calculate total edge
         total_analysis = calculate_total_edge(
             vegas_total=bookmaker_total_line,
-            model_total=median_total,
-            threshold=3.0
+            model_total=rcl_total,  # Use RCL-validated total
+            threshold=3.0,
+            confidence_score=confidence_score,
+            variance=variance_total
         )
+        
+        # Block edge if RCL failed
+        if not rcl_passed:
+            logger.warning(f"🚫 Blocking total edge due to RCL failure: {rcl_reason}")
+            # Reconstruct total_analysis with blocked edge (has_edge is read-only)
+            total_analysis = TotalAnalysis(
+                vegas_total=total_analysis.vegas_total,
+                model_total=total_analysis.model_total,
+                edge_points=0.0,
+                edge_direction="NEUTRAL",
+                sharp_side=None,
+                sharp_side_reason=f"RCL_BLOCKED: {rcl_reason}",
+                edge_grade="F",
+                edge_strength="NEUTRAL"
+            )
         
         # Format for API
         spread_edge_api = format_for_api(spread_analysis)
@@ -390,7 +675,7 @@ class MonteCarloEngine:
         # Generate detailed reasoning for edge explanations
         total_reasoning = explain_edge_reasoning(
             market_type='total',
-            model_value=median_total,
+            model_value=rcl_total,  # Use RCL-validated total
             vegas_value=bookmaker_total_line,
             edge_points=total_analysis.edge_points,
             simulation_context={
@@ -400,12 +685,149 @@ class MonteCarloEngine:
                 'confidence_score': confidence_score,
                 'team_a_projection': results["team_a_total"] / iterations,
                 'team_b_projection': results["team_b_total"] / iterations,
+                'rcl_passed': rcl_passed,
+                'rcl_reason': rcl_reason,
             }
         )
         
         logger.info(f"Sharp Analysis - Spread: {spread_analysis.sharp_side or 'No Edge'}, Total: {total_analysis.sharp_side or 'No Edge'}")
         if total_analysis.has_edge:
             logger.info(f"Edge Reasoning: {total_reasoning['primary_factor']} - {len(total_reasoning['contributing_factors'])} factors identified")
+        
+        # ===== SYSTEM-WIDE CALIBRATION ENGINE (5 CONSTRAINT LAYERS) =====
+        # Apply institutional-grade calibration checks to prevent structural bias
+        sport_key = market_context.get("sport_key", "basketball_nba")
+        
+        # Calculate data quality score from injury uncertainty (0.0 to 1.0 scale)
+        injury_impact_total = sum(abs(inj.get("impact_points", 0)) for inj in injury_impact)
+        data_quality_score = max(0.0, 1.0 - min(1.0, injury_impact_total * 0.02))  # 2% per impact point
+        injury_uncertainty_pct = (1.0 - data_quality_score) * 100
+        
+        # Extract raw probability and edge from over/under analysis
+        p_raw = over_probability if total_analysis.edge_direction == 'OVER' else under_probability
+        edge_raw = abs(total_analysis.edge_points) if total_analysis.has_edge else 0.0
+        
+        # Validate pick through 5-layer constraint system
+        calibration_result = self.calibration_engine.validate_pick(
+            sport_key=sport_key,
+            model_total=rcl_total,
+            vegas_total=bookmaker_total_line,
+            std_total=np.std(totals_array),
+            p_raw=p_raw,
+            edge_raw=edge_raw,
+            data_quality_score=data_quality_score,
+            injury_uncertainty=injury_uncertainty_pct
+        )
+        
+        # Log calibration decision
+        logger.info(
+            f"🎯 Calibration: {calibration_result['publish']} - "
+            f"p_raw={p_raw:.1%} → p_adj={calibration_result['p_adjusted']:.1%}, "
+            f"edge={edge_raw:.1f} → {calibration_result['edge_adjusted']:.1f}, "
+            f"{calibration_result['confidence_label']} (z={calibration_result['z_variance']:.2f})"
+        )
+        
+        if not calibration_result['publish']:
+            logger.warning(
+                f"🚫 BLOCKED by calibration: {', '.join(calibration_result['block_reasons'])}"
+            )
+        
+        # Update total_analysis with calibration-adjusted values
+        if calibration_result['publish']:
+            # Adjust probabilities and edge based on calibration
+            if total_analysis.edge_direction == 'OVER':
+                over_probability = calibration_result['p_adjusted']
+                under_probability = 1.0 - over_probability
+            else:
+                under_probability = calibration_result['p_adjusted']
+                over_probability = 1.0 - under_probability
+            
+            # Update edge points
+            if total_analysis.has_edge:
+                total_analysis.edge_points = calibration_result['edge_adjusted'] * (
+                    1 if total_analysis.edge_direction == 'OVER' else -1
+                )
+        else:
+            # Block the pick - reconstruct total_analysis (has_edge is read-only)
+            total_analysis = TotalAnalysis(
+                vegas_total=total_analysis.vegas_total,
+                model_total=total_analysis.model_total,
+                edge_points=0.0,
+                edge_direction="NEUTRAL",
+                sharp_side=None,
+                sharp_side_reason=f"CALIBRATION_BLOCKED: {', '.join(calibration_result['block_reasons'])}",
+                edge_grade="F",
+                edge_strength="NEUTRAL"
+            )
+        
+        # ===== READINESS GATE =====
+        # Check if required inputs exist BEFORE classification
+        # Prevents premature NO_PLAY stamps on games awaiting data
+        missing_inputs = []
+        if not bookmaker_total_line:
+            missing_inputs.append('NO_MARKET_LINE')
+        if confidence_score == 0:
+            missing_inputs.append('CONFIDENCE_NOT_COMPUTED')
+        if variance_total == 0:
+            missing_inputs.append('VARIANCE_NOT_COMPUTED')
+        
+        # ===== PICK STATE MACHINE (PICK / LEAN / NO_PLAY) =====
+        # Classify pick state with parlay eligibility enforcement
+        # CRITICAL: Every game must have explicit state - NO UNKNOWN allowed
+        
+        if missing_inputs:
+            # Inputs not ready - set PENDING_INPUTS (internal only)
+            pick_classification = PickClassification(
+                state=PickState.PENDING_INPUTS,
+                can_publish=False,
+                can_parlay=False,
+                confidence_tier="NONE",
+                reasons=missing_inputs,
+                thresholds_met={}
+            )
+            logger.info(f"⏳ [{sport_key}] {event_id[:20]} → PENDING_INPUTS: {', '.join(missing_inputs)}")
+        else:
+            # All inputs ready - proceed with classification
+            try:
+                pick_classification = PickStateMachine.classify_pick(
+                    sport_key=sport_key,
+                    probability=calibration_result['p_adjusted'],
+                    edge=abs(calibration_result['edge_adjusted']),
+                    confidence_score=confidence_score,
+                    variance_z=calibration_result['z_variance'],
+                    market_deviation=abs(rcl_total - bookmaker_total_line),
+                    calibration_publish=calibration_result['publish'],
+                    data_quality_score=data_quality_score,
+                    calibration_block_reasons=calibration_result.get('block_reasons', []),
+                    bootstrap_mode=calibration_result.get('bootstrap_mode', False)
+                )
+            except Exception as e:
+                # FAILSAFE: If pick state machine fails, force NO_PLAY with reason
+                logger.error(f"Pick state machine error: {e}")
+                pick_classification = PickClassification(
+                    state=PickState.NO_PLAY,
+                    can_publish=False,
+                    can_parlay=False,
+                    confidence_tier="NONE",
+                    reasons=[f"STATE_MACHINE_ERROR: {str(e)}"],
+                    thresholds_met={}
+                )
+        
+        logger.info(
+            f"🎯 Pick State: {pick_classification.state.value} "
+            f"(Publish: {pick_classification.can_publish}, Parlay: {pick_classification.can_parlay}, "
+            f"Tier: {pick_classification.confidence_tier})"
+        )
+        
+        # Log state machine decision
+        if pick_classification.state == PickState.NO_PLAY:
+            logger.warning(
+                f"🚫 Pick blocked by state machine: {', '.join(pick_classification.reasons)}"
+            )
+        elif pick_classification.state == PickState.LEAN:
+            logger.info(
+                f"⚠️  LEAN pick: Publishable but NOT parlay-eligible - {', '.join(pick_classification.reasons)}"
+            )
         
         # Build validated simulation output (enforces data integrity)
         simulation_output = SimulationOutput(
@@ -425,7 +847,7 @@ class MonteCarloEngine:
         simulation_output.validate()
         
         simulation_result = {
-            "simulation_id": f"sim_{event_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+            "simulation_id": simulation_id,
             "event_id": event_id,
             "iterations": iterations,
             "mode": mode,
@@ -441,11 +863,56 @@ class MonteCarloEngine:
             "upset_probability": round(upset_probability, 4),
             
             # Projected totals (MUST come from simulation)
-            "median_total": round(median_total, 2),  # PRIMARY projected total
+            "median_total": round(median_total, 2),  # RAW projected total (pre-RCL)
             "mean_total": round(mean_total, 2),
-            "avg_total": round(mean_total, 2),  # Legacy alias
-            "avg_total_score": round(mean_total, 2),  # TypeScript compatibility
-            "projected_score": round(median_total, 2),  # Use MEDIAN for projection (more stable)
+            "avg_total": round(rcl_total, 2),  # RCL-validated total (public-facing)
+            "avg_total_score": round(rcl_total, 2),  # TypeScript compatibility (RCL-validated)
+            "projected_score": round(rcl_total, 2),  # Use RCL-validated total for projection
+            
+            # RCL metadata
+            "rcl_total": round(rcl_total, 2),
+            "rcl_passed": rcl_passed,
+            "rcl_reason": rcl_reason,
+            "rcl_raw_total": round(median_total, 2),  # Store original for debugging
+            
+            # Calibration metadata (5-layer constraint system)
+            "calibration": {
+                "publish": calibration_result['publish'],
+                "p_raw": round(p_raw, 4),
+                "p_adjusted": round(calibration_result['p_adjusted'], 4),
+                "edge_raw": round(edge_raw, 2),
+                "edge_adjusted": round(calibration_result['edge_adjusted'], 2),
+                "confidence_label": calibration_result['confidence_label'],
+                "z_variance": round(calibration_result['z_variance'], 2),
+                "elite_override": calibration_result['elite_override'],
+                "block_reasons": calibration_result['block_reasons'],
+                "applied_penalties": calibration_result['applied_penalties'],
+                "calibration_status": calibration_result.get('calibration_status', 'INITIALIZED'),
+                "bootstrap_mode": calibration_result.get('bootstrap_mode', False)
+            },
+            
+            # Pick state machine (PICK/LEAN/NO_PLAY)
+            # CRITICAL: These fields provide complete audit trail for every classification
+            "pick_state": pick_classification.state.value,
+            "can_publish": pick_classification.can_publish,
+            "can_parlay": pick_classification.can_parlay,
+            "confidence_tier": pick_classification.confidence_tier,
+            "state_machine_reasons": pick_classification.reasons,  # Stored in MongoDB for sim_audit
+            "thresholds_met": pick_classification.thresholds_met,  # Detailed threshold breakdown
+            
+            # Pick classification metadata (for complete traceability)
+            "pick_classification": {
+                "state": pick_classification.state.value,
+                "reasons": pick_classification.reasons,
+                "confidence_tier": pick_classification.confidence_tier,
+                "thresholds_met": pick_classification.thresholds_met
+            },
+            
+            # Version control and traceability
+            "version": self.version_tracker.get_version_metadata(
+                dampening_triggers=calibration_result.get('block_reasons', []),
+                feature_flags={}
+            ),
             
             "avg_team_a_score": round(results["team_a_total"] / iterations, 2),
             "avg_team_b_score": round(results["team_b_total"] / iterations, 2),
@@ -517,7 +984,10 @@ class MonteCarloEngine:
                 },
                 "total": {
                     "vegas_total": bookmaker_total_line,
-                    "model_total": median_total,
+                    "model_total": rcl_total,  # Use RCL-validated total
+                    "raw_model_total": median_total,  # Include raw for debugging
+                    "rcl_passed": rcl_passed,
+                    "rcl_reason": rcl_reason,
                     "sharp_side": total_analysis.sharp_side,
                     "edge_points": total_analysis.edge_points,
                     "edge_direction": total_analysis.edge_direction,
@@ -589,7 +1059,10 @@ class MonteCarloEngine:
                     away_team=team_b.get("name", "Team B"),
                     market_type="total",
                     predicted_outcome={
-                        "prediction_value": median_total,
+                        "prediction_value": rcl_total,  # Use RCL-validated total
+                        "raw_prediction_value": median_total,  # Store raw for debugging
+                        "rcl_passed": rcl_passed,
+                        "rcl_reason": rcl_reason,
                         "win_probability": over_probability if total_analysis.edge_direction == 'OVER' else under_probability,
                         "sharp_side": total_analysis.sharp_side,
                         "edge_points": total_analysis.edge_points,
@@ -607,6 +1080,34 @@ class MonteCarloEngine:
         except Exception as e:
             logger.warning(f"Failed to store prediction for feedback loop: {str(e)}")
         
+        # ===== CALIBRATION AUDIT LOGGING =====
+        # Log every pick decision for daily calibration tracking
+        try:
+            self.calibration_logger.log_pick_audit(
+                game_id=event_id,
+                sport=sport_key,
+                vegas_line=bookmaker_total_line,
+                model_line=rcl_total,
+                raw_model_line=median_total,
+                std_total=np.std(totals_array),
+                p_raw=p_raw,
+                p_adjusted=calibration_result['p_adjusted'],
+                edge_raw=edge_raw,
+                edge_adjusted=calibration_result['edge_adjusted'],
+                publish_decision=calibration_result['publish'],
+                block_reasons=calibration_result['block_reasons'],
+                confidence_score=confidence_score,
+                data_quality=data_quality_score * 100,  # Convert to 0-100 scale
+                market_type="total",
+                sharp_side=total_analysis.sharp_side,
+                edge_direction=total_analysis.edge_direction,
+                pick_state=pick_classification.state.value,
+                state_machine_reasons=pick_classification.reasons
+            )
+            logger.info(f"✅ Logged pick audit: {event_id} → {pick_classification.state.value} ({', '.join(pick_classification.reasons)})")
+        except Exception as e:
+            logger.error(f"Failed to log calibration audit: {str(e)}")
+        
         log_stage(
             "monte_carlo_engine",
             "simulation_completed",
@@ -619,6 +1120,10 @@ class MonteCarloEngine:
                 "volatility": simulation_result["volatility_index"]
             }
         )
+        
+        # ===== ENFORCE NO UNKNOWN STATES =====
+        # CRITICAL: Every simulation MUST have explicit pick_state (spec #8)
+        simulation_result = ensure_pick_state(simulation_result)
         
         return simulation_result
     
@@ -841,6 +1346,10 @@ class MonteCarloEngine:
             input_payload={"event_id": event_id, "period": period},
             output_payload={"projected_total": simulation_result["projected_total"]}
         )
+        
+        # ===== ENFORCE NO UNKNOWN STATES =====
+        # CRITICAL: Every simulation MUST have explicit pick_state (spec #8)
+        simulation_result = ensure_pick_state(simulation_result)
         
         return simulation_result
     
@@ -1143,6 +1652,34 @@ class MonteCarloEngine:
         confidence = max(0.30, min(0.95, confidence))
         
         return float(round(confidence, 3))
+    
+    def _get_league_code(self, sport_key: str) -> str:
+        """Map sport_key to league code for RCL"""
+        mapping = {
+            "basketball_nba": "NBA",
+            "basketball_ncaab": "NCAAB",
+            "basketball_wnba": "WNBA",
+            "americanfootball_nfl": "NFL",
+            "americanfootball_ncaaf": "NCAAF",
+            "icehockey_nhl": "NHL",
+            "baseball_mlb": "MLB",
+        }
+        return mapping.get(sport_key, sport_key.upper())
+    
+    def _get_regulation_minutes(self, sport_key: str) -> float:
+        """Get regulation time for sport"""
+        if "nba" in sport_key.lower() or "wnba" in sport_key.lower():
+            return 48.0
+        elif "ncaab" in sport_key.lower():
+            return 40.0
+        elif "nfl" in sport_key.lower() or "ncaaf" in sport_key.lower():
+            return 60.0
+        elif "nhl" in sport_key.lower():
+            return 60.0
+        elif "mlb" in sport_key.lower():
+            return 9.0  # innings
+        else:
+            return 40.0  # default
     
     def detect_prop_mispricings(
         self,

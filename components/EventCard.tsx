@@ -13,6 +13,14 @@ const getConfidenceColor = (confidence: number) => {
     return 'bg-bold-red';
 }
 
+// UI TRUST LAYER: Suppress extreme certainty for non-PICK states
+const shouldSuppressDisplay = (event: EventWithPrediction): boolean => {
+  const pickState = (event as any).pick_state;
+  const confidence = event.prediction?.confidence || 0;
+  
+  return pickState !== 'PICK' || confidence < 0.20;
+};
+
 const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, onClick }) => {
   const {
     home_team,
@@ -26,11 +34,12 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
   const gameTime = new Date(commence_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).replace(' ', ' ') + ' EST';
 
   const confidencePercentage = prediction ? Math.round(prediction.confidence * 100) : 0;
+  const suppressCertainty = shouldSuppressDisplay(event);
   
   return (
     <div 
       onClick={onClick}
-      className={`bg-charcoal rounded-lg shadow-lg p-5 flex flex-col space-y-4 relative transition-all duration-300 border ${
+      className={`bg-charcoal rounded-lg shadow-lg p-4 flex flex-col space-y-3 relative transition-all duration-300 border ${
         isRecalculated ? 'border-neon-green shadow-neon-green/50 animate-pulse' : 'border-transparent hover:border-electric-blue'
       } ${onClick ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
     >
@@ -104,13 +113,17 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
       {prediction && (
         <div className="pt-2">
           <p className="text-xs text-light-gray font-semibold mb-1">AI CONFIDENCE</p>
-          <div className="w-full bg-navy rounded-full h-3 relative">
-            <div
-              className={`h-3 rounded-full ${getConfidenceColor(prediction.confidence)}`}
-              style={{ width: `${confidencePercentage}%` }}
-            ></div>
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-navy">{confidencePercentage}%</span>
-          </div>
+          {suppressCertainty && (confidencePercentage > 75 || confidencePercentage < 25) ? (
+            <div className="text-xs text-amber-400 italic">⚠️ Directional lean only — unstable distribution</div>
+          ) : (
+            <div className="w-full bg-navy rounded-full h-3 relative">
+              <div
+                className={`h-3 rounded-full ${getConfidenceColor(prediction.confidence)}`}
+                style={{ width: `${confidencePercentage}%` }}
+              ></div>
+              <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-navy">{confidencePercentage}%</span>
+            </div>
+          )}
         </div>
       )}
     </div>

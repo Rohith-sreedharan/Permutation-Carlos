@@ -13,11 +13,20 @@ const getConfidenceColor = (confidence: number) => {
     return 'bg-bold-red';
 }
 
+// UI TRUST LAYER: Suppress extreme certainty for non-PICK states
+const shouldSuppressDisplay = (event: EventWithPrediction): boolean => {
+  const pickState = (event as any).pick_state;
+  const confidence = event.prediction?.confidence || 0;
+  
+  return pickState !== 'PICK' || confidence < 0.20;
+};
+
 const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = false, onClick }) => {
   const { home_team, away_team, commence_time, top_prop_bet, prediction, sport_key } = event;
   const gameTime = new Date(commence_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).replace(' ', ' ') + ' EST';
 
   const confidencePercentage = prediction ? Math.round(prediction.confidence * 100) : 0;
+  const suppressCertainty = shouldSuppressDisplay(event);
   
   return (
     <div 
@@ -55,14 +64,22 @@ const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = f
         <div className="w-full md:w-1/3">
           <div className="flex justify-between items-center mb-1">
             <p className="text-xs text-light-gray font-semibold">AI CONFIDENCE</p>
-            <span className="text-sm font-bold text-white">{confidencePercentage}%</span>
+            {suppressCertainty && (confidencePercentage > 75 || confidencePercentage < 25) ? (
+              <span className="text-xs text-amber-400 italic">Unstable</span>
+            ) : (
+              <span className="text-sm font-bold text-white">{confidencePercentage}%</span>
+            )}
           </div>
-          <div className="w-full bg-navy rounded-full h-2.5">
-            <div
-              className={`h-2.5 rounded-full ${getConfidenceColor(prediction.confidence)}`}
-              style={{ width: `${confidencePercentage}%` }}
-            ></div>
-          </div>
+          {suppressCertainty && (confidencePercentage > 75 || confidencePercentage < 25) ? (
+            <div className="text-[10px] text-amber-400/90 italic">⚠️ Directional lean — unstable distribution</div>
+          ) : (
+            <div className="w-full bg-navy rounded-full h-2.5">
+              <div
+                className={`h-2.5 rounded-full ${getConfidenceColor(prediction.confidence)}`}
+                style={{ width: `${confidencePercentage}%` }}
+              ></div>
+            </div>
+          )}
         </div>
       )}
     </div>

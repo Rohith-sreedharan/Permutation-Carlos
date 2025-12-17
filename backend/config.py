@@ -7,18 +7,18 @@ Master constants for simulation tiers, revenue splits, and compliance
 # SIMULATION TIER CONSTANTS - "Compute as a Service"
 # ============================================================================
 #
-# SPEC REQUIREMENT (Section 1): Public Engine MUST use 100,000 simulations
-# per game. Never fallback below 100K. Hard error if 100K fails.
+# Tiered pricing model with differentiated compute power
+# Higher tiers get more Monte Carlo iterations = higher precision forecasts
 #
 
-# Public Tier Limits - ALL TIERS USE 100K FOR SINGLE GAME ANALYSIS
-SIM_TIER_FREE = 100000       # Free tier - 100K iterations (spec requirement)
-SIM_TIER_STARTER = 100000    # Starter tier - 100K iterations (spec requirement)
-SIM_TIER_CORE = 100000       # Core tier - 100K iterations (spec requirement)
-SIM_TIER_PRO = 100000        # Pro tier - 100K iterations (spec requirement)
-SIM_TIER_ELITE = 100000      # Elite tier - 100K iterations (spec requirement)
-SIM_TIER_SHARPS_ROOM = 100000  # Sharps Room tier - 100K iterations (spec requirement)
-SIM_TIER_FOUNDER = 100000    # Founder tier - 100K iterations (spec requirement)
+# Public Tier Limits - Differentiated compute power by subscription level
+SIM_TIER_FREE = 10000        # Free tier - 10K iterations (limited precision)
+SIM_TIER_STARTER = 25000     # Starter tier - 25K iterations (entry precision)
+SIM_TIER_CORE = 35000        # Core tier - 35K iterations (core precision)
+SIM_TIER_PRO = 50000         # Pro tier - 50K iterations (pro precision)
+SIM_TIER_ELITE = 100000      # Elite tier - 100K iterations (elite precision)
+SIM_TIER_SHARPS_ROOM = 100000  # Sharps Room tier - 100K iterations (max public tier)
+SIM_TIER_FOUNDER = 100000    # Founder tier - 100K iterations (founding member)
 
 # Internal "House Edge" Tier - Calibration Engine (NOT user facing)
 SIM_TIER_INTERNAL = 1000000  # 1M+ simulations for Reflexive Learning Loop
@@ -38,7 +38,11 @@ SIMULATION_TIERS = {
 
 # Precision Level Labels (for frontend display)
 PRECISION_LABELS = {
-    100000: "INSTITUTIONAL",         # 100K iterations (all public tiers)
+    10000: "BASIC",                  # 10K iterations (free tier)
+    25000: "STANDARD",               # 25K iterations (starter)
+    35000: "ENHANCED",               # 35K iterations (core)
+    50000: "PROFESSIONAL",           # 50K iterations (pro)
+    100000: "INSTITUTIONAL",         # 100K iterations (elite/sharps/founder)
     SIM_TIER_INTERNAL: "HOUSE_EDGE", # 1M+ internal calibration
 }
 

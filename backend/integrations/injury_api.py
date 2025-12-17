@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 from bs4 import BeautifulSoup
 import logging
 from datetime import datetime
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,7 @@ ESPN_INJURY_URLS = {
 
 # CollegeFootballData API
 CFB_BASE_URL = "https://api.collegefootballdata.com"
-CFB_API_KEY = None  # Set in .env file if available (free tier: 1000 req/day)
-CFB_API_KEY = None  # Set in .env file if available (free tier: 1000 req/day)
+CFB_API_KEY = os.getenv('CFB_API_KEY')  # Load from .env file (free tier: 1000 req/day)
 
 
 def fetch_espn_injuries(sport_key: str) -> List[Dict[str, Any]]:
@@ -263,14 +263,12 @@ def fetch_cfb_roster(team: str, year: int = 2025) -> List[Dict[str, Any]]:
             'User-Agent': 'Permutation-Carlos/1.0'
         }
         
-        # Add API key if available (get from environment)
-        import os
-        cfb_key = os.getenv('CFB_API_KEY') or CFB_API_KEY
-        if not cfb_key:
+        # Use API key from environment
+        if not CFB_API_KEY:
             logger.error("❌ CFB_API_KEY not configured. Get your free API key from https://collegefootballdata.com/key")
             raise ValueError("CFB_API_KEY required for CollegeFootballData API. Sign up at https://collegefootballdata.com/")
         
-        headers['Authorization'] = f'Bearer {cfb_key}'
+        headers['Authorization'] = f'Bearer {CFB_API_KEY}'
         
         response = requests.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()

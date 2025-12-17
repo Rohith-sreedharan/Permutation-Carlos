@@ -41,6 +41,34 @@ interface GameDetailProps {
   onBack: () => void;
 }
 
+// UI TRUST LAYER: Suppress extreme certainty for non-PICK states
+const shouldSuppressCertainty = (simulation: MonteCarloSimulation | null): boolean => {
+  if (!simulation) return true;
+  
+  const pickState = simulation.pick_state || 'UNKNOWN';
+  const confidence = (simulation.confidence_score || 0.65) * 100;
+  
+  // Suppress if NOT a PICK or confidence < 20
+  return pickState !== 'PICK' || confidence < 20;
+};
+
+const getUncertaintyLabel = (simulation: MonteCarloSimulation | null): string => {
+  if (!simulation) return 'Insufficient data';
+  
+  const pickState = simulation.pick_state || 'UNKNOWN';
+  const confidence = (simulation.confidence_score || 0.65) * 100;
+  
+  if (pickState === 'NO_PLAY') {
+    return 'No statistical edge — unstable distribution';
+  } else if (pickState === 'LEAN') {
+    return 'Directional lean only — unstable distribution';
+  } else if (confidence < 20) {
+    return 'Extreme variance — model convergence failure';
+  }
+  
+  return 'Analysis available';
+};
+
 const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [simulation, setSimulation] = useState<MonteCarloSimulation | null>(null);
   const [firstHalfSimulation, setFirstHalfSimulation] = useState<any | null>(null);
@@ -535,7 +563,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       <div className="mb-3 animate-fade-in">
         <SimulationBadge 
           tier={(simulation?.metadata?.user_tier || 'free') as TierName} 
-          simulationCount={simulation?.metadata?.sim_count_used || simulation?.iterations || 100000}
+          simulationCount={simulation?.metadata?.sim_count_used || simulation?.metadata?.iterations_run || simulation?.iterations}
           variance={simulation?.metadata?.variance || simulation?.variance}
           ci95={simulation?.metadata?.ci_95 || simulation?.confidence_intervals?.ci_95}
           showUpgradeHint={simulation?.metadata?.user_tier === 'free'}
@@ -544,23 +572,42 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       {/* KEY DRIVERS BOX - Critical Context */}
       {simulation && (
-        <div className="mb-6 bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-xl p-5">
-          <div className="flex items-start">
-            <span className="text-3xl mr-3">🔑</span>
+        <div className="mb-6 bg-gradient-to-br from-purple-900/20 to-blue-900/20 border-2 border-purple-500/40 rounded-xl p-4 shadow-lg shadow-purple-500/5">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+                <span className="text-2xl">🔑</span>
+              </div>
+            </div>
             <div className="flex-1">
-              <h3 className="text-purple-300 font-bold text-lg mb-2">Key Drivers</h3>
-              <div className="text-light-gray text-sm space-y-1">
+              <h3 className="text-purple-300 font-bold text-base mb-3 flex items-center gap-2">
+                Key Drivers
+                <span className="text-xs text-purple-400/60 font-normal">Critical factors shaping this game</span>
+              </h3>
+              <div className="text-light-gray text-sm space-y-2">
                 {simulation.injury_impact && simulation.injury_impact.length > 0 && (
-                  <div>• 🔴 <span className="text-bold-red font-semibold">Injuries:</span> {simulation.injury_impact.length} players impacted ({simulation.injury_impact.reduce((sum: number, inj: any) => sum + Math.abs(inj.impact_points), 0).toFixed(1)} pts total effect)</div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg flex-shrink-0">🏥</span>
+                    <div><span className="text-bold-red font-semibold">Injuries:</span> {simulation.injury_impact.length} players impacted ({simulation.injury_impact.reduce((sum: number, inj: any) => sum + Math.abs(inj.impact_points), 0).toFixed(1)} pts total effect)</div>
+                  </div>
                 )}
                 {simulation.pace_factor && simulation.pace_factor !== 1.0 && (
-                  <div>• 🔵 <span className="text-electric-blue font-semibold">Tempo:</span> {simulation.pace_factor > 1 ? 'Fast-paced' : 'Slow-paced'} game expected ({((simulation.pace_factor - 1) * 100).toFixed(1)}% {simulation.pace_factor > 1 ? 'above' : 'below'} average)</div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg flex-shrink-0">⚡</span>
+                    <div><span className="text-electric-blue font-semibold">Tempo:</span> {simulation.pace_factor > 1 ? 'Fast-paced' : 'Slow-paced'} game expected ({((simulation.pace_factor - 1) * 100).toFixed(1)}% {simulation.pace_factor > 1 ? 'above' : 'below'} average)</div>
+                  </div>
                 )}
                 {simulation.outcome?.confidence && (
-                  <div>• 🟡 <span className="text-gold font-semibold">Stability:</span> {getConfidenceTier((simulation.outcome.confidence || 0.65) * 100).label} ({((simulation.outcome.confidence || 0.65) * 100).toFixed(0)}% simulation convergence)</div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg flex-shrink-0">📊</span>
+                    <div><span className="text-gold font-semibold">Stability:</span> {getConfidenceTier((simulation.outcome.confidence || 0.65) * 100).label} ({((simulation.outcome.confidence || 0.65) * 100).toFixed(0)}% simulation convergence)</div>
+                  </div>
                 )}
                 {simulation.metadata?.iterations_run && (
-                  <div>• 🧪 <span className="text-neon-green font-semibold">Simulation Depth:</span> {(simulation.metadata.iterations_run / 1000).toFixed(0)}K {simulation.metadata.user_tier === 'elite' ? 'Elite' : simulation.metadata.user_tier === 'pro' ? 'Pro' : 'Starter'} tier analysis</div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg flex-shrink-0">🧬</span>
+                    <div><span className="text-neon-green font-semibold">Analysis Depth:</span> {(simulation.metadata.iterations_run / 1000).toFixed(0)}K Monte Carlo simulations</div>
+                  </div>
                 )}
               </div>
             </div>
@@ -700,10 +747,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       }
                     </div>
                     <div className="text-xs text-light-gray/60 mt-1">vs market</div>
-                    {/* Critical Disclaimer Tooltip */}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 p-3 bg-bold-red/95 border-2 border-bold-red rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
-                      <p className="text-xs text-white font-semibold leading-relaxed">
-                        ⚠️ This is model vs book deviation, NOT a betting pick. Do not bet based on this number alone.
+                    {/* Model Interpretation Tooltip */}
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 p-3 bg-navy/95 border border-gold/30 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
+                      <p className="text-xs text-light-gray font-semibold leading-relaxed">
+                        🔶 Model-market pricing discrepancy. Part of your decision framework.
                       </p>
                     </div>
                   </div>
@@ -727,14 +774,17 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
                 
-                {/* Edge Validation Warnings */}
+                {/* Edge Context Notes */}
                 {edgeValidation.failed_rules.length > 0 && (
-                  <div className="mt-3 p-3 bg-bold-red/10 border border-bold-red/30 rounded-lg">
-                    <div className="text-xs font-bold text-bold-red mb-2">⚠️ Edge Quality Warnings:</div>
+                  <div className="mt-3 p-3 bg-gold/5 border border-gold/30 rounded-lg">
+                    <div className="text-xs font-bold text-gold mb-2 flex items-center gap-2">
+                      <span>🔶</span>
+                      <span>Edge Context Notes:</span>
+                    </div>
                     <ul className="text-xs text-light-gray space-y-1">
                       {edgeValidation.failed_rules.map((rule, idx) => (
                         <li key={idx} className="flex items-start gap-2">
-                          <span className="text-bold-red">•</span>
+                          <span className="text-gold">•</span>
                           <span>{rule}</span>
                         </li>
                       ))}
@@ -778,11 +828,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             <div className="flex-1">
               <h3 className="text-2xl font-bold text-purple-300 mb-2 font-teko">SHARP SIDE DETECTED</h3>
               
-              {/* CRITICAL DISCLAIMER */}
-              <div className="mb-4 p-3 bg-bold-red/20 border-2 border-bold-red/60 rounded-lg">
-                <p className="text-xs text-bold-red font-bold flex items-center gap-2">
-                  <span className="text-base">⚠️</span>
-                  <span>Sharp Side = model mispricing detection, NOT a betting recommendation. This platform provides statistical analysis only.</span>
+              {/* INSTITUTIONAL INTERPRETATION NOTICE */}
+              <div className="mb-4 p-3 bg-gold/10 border border-gold/30 rounded-lg">
+                <p className="text-xs text-gold/90 font-semibold flex items-center gap-2">
+                  <span className="text-base">🔶</span>
+                  <span>Model-Market Discrepancy Indicator — Statistical output only.</span>
                 </p>
               </div>
               
@@ -806,7 +856,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="text-right">
                       <div className="text-xs text-gray-400">Edge</div>
                       <div className="text-lg font-bold text-purple-300">
-                        {simulation.sharp_analysis.total.edge_points?.toFixed(1)} pts
+                        {shouldSuppressCertainty(simulation) && (simulation.sharp_analysis.total.edge_points || 0) > 10 ? (
+                          <span className="text-sm text-amber-400">Unstable</span>
+                        ) : (
+                          <>{simulation.sharp_analysis.total.edge_points?.toFixed(1)} pts</>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -969,7 +1023,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       {/* Key Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 animate-slide-up">
         {/* Win Probability */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border ${
+        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border ${
           winProb > 0.65 ? 'border-neon-green/40 shadow-lg shadow-neon-green/10' :
           winProb < 0.45 ? 'border-bold-red/40 shadow-lg shadow-bold-red/10' :
           'border-gold/20'
@@ -988,11 +1042,18 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             winProb < 0.45 ? 'text-bold-red' :
             'text-white'
           }`}>
-            {(winProb * 100).toFixed(1)}%
+            {shouldSuppressCertainty(simulation) && (winProb > 0.75 || winProb < 0.25) ? (
+              <span className="text-2xl text-amber-400">Unstable</span>
+            ) : (
+              <>{(winProb * 100).toFixed(1)}%</>
+            )}
           </div>
           <div className="text-xs text-light-gray mt-2">{event.home_team}</div>
-          {winProb > 0.65 && (
+          {winProb > 0.65 && !shouldSuppressCertainty(simulation) && (
             <div className="text-xs text-neon-green/80 mt-2">Strong edge detected</div>
+          )}
+          {shouldSuppressCertainty(simulation) && (winProb > 0.75 || winProb < 0.25) && (
+            <div className="text-xs text-amber-400/90 mt-2">{getUncertaintyLabel(simulation)}</div>
           )}
           {winProb < 0.45 && (
             <div className="text-xs text-bold-red/80 mt-2">Underdog scenario</div>
@@ -1011,7 +1072,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Over/Under Total */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border relative group ${
+        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
           overProb > 55 ? 'border-neon-green/40' :
           underProb > 55 ? 'border-bold-red/40' :
           'border-gray-400/20'
@@ -1024,15 +1085,21 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             {totalLine.toFixed(1)}
           </div>
           <div className="flex items-center justify-between mt-2 text-xs">
-            <span className={overProb > 55 ? 'text-neon-green font-bold' : 'text-light-gray'}>
-              O: {overProb.toFixed(1)}%
-            </span>
-            <span className="text-gold">|</span>
-            <span className={underProb > 55 ? 'text-electric-blue font-bold' : 'text-light-gray'}>
-              U: {underProb.toFixed(1)}%
-            </span>
+            {shouldSuppressCertainty(simulation) && (overProb > 70 || underProb > 70) ? (
+              <span className="text-amber-400/90 text-[10px]">{getUncertaintyLabel(simulation)}</span>
+            ) : (
+              <>
+                <span className={overProb > 55 ? 'text-neon-green font-bold' : 'text-light-gray'}>
+                  O: {overProb.toFixed(1)}%
+                </span>
+                <span className="text-gold">|</span>
+                <span className={underProb > 55 ? 'text-electric-blue font-bold' : 'text-light-gray'}>
+                  U: {underProb.toFixed(1)}%
+                </span>
+              </>
+            )}
           </div>
-          {overProb > 55 && (
+          {overProb > 55 && !shouldSuppressCertainty(simulation) && (
             <>
               <div className="mt-2 text-xs text-neon-green/80">📈 Model leans Over</div>
               {(() => {
@@ -1040,8 +1107,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                                   simulation.volatility_score || 'MODERATE';
                 if (volatility === 'HIGH') {
                   return (
-                    <div className="mt-1 text-xs text-bold-red font-semibold">
-                      ⚠️ High volatility reduces reliability
+                    <div className="mt-1 text-xs text-gold font-semibold">
+                      🔶 High variance environment
                     </div>
                   );
                 }
@@ -1057,8 +1124,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                                   simulation.volatility_score || 'MODERATE';
                 if (volatility === 'HIGH') {
                   return (
-                    <div className="mt-1 text-xs text-bold-red font-semibold">
-                      ⚠️ High volatility reduces reliability
+                    <div className="mt-1 text-xs text-gold font-semibold">
+                      🔶 High variance environment
                     </div>
                   );
                 }
@@ -1066,12 +1133,20 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               })()}
             </>
           )}
-          {Math.abs(overProb - 50) < 5 && (
-            <div className="mt-2 text-xs text-gold/80">⚖️ Neutral projection</div>
+          {Math.abs(overProb - 50) < 5 && overProb <= 55 && underProb <= 55 && (
+            <div className="mt-2 text-xs text-gold/80">⚖️ Balanced projection</div>
           )}
           <div className="text-xs text-white/50 mt-2">
             {(() => {
               const edgePoints = Math.abs((simulation.projected_score || totalLine) - totalLine);
+              
+              // TRUST LAYER: Suppress extreme edges for LEAN/NO_PLAY
+              if (shouldSuppressCertainty(simulation) && edgePoints > 10) {
+                return (
+                  <span className="text-amber-400/80">⚠️ {getUncertaintyLabel(simulation)}</span>
+                );
+              }
+              
               // If difference < 3 points, it's within noise - no statistical edge
               if (edgePoints < 3.0) {
                 return (
@@ -1094,7 +1169,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Confidence Score */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border relative group ${
+        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
           (simulation.confidence_score || 0.65) * 100 >= 85 ? 'border-purple-500/40 shadow-lg shadow-purple-500/10' :
           (simulation.confidence_score || 0.65) * 100 >= 70 ? 'border-gold/40' :
           'border-gold/20'
@@ -1116,6 +1191,16 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               
               // Don't show green "high confidence" text for D/F tiers
               const isLowConfidence = normalizedScore < 55;
+              
+              // TRUST LAYER: Suppress confidence display for LEAN/NO_PLAY
+              if (shouldSuppressCertainty(simulation)) {
+                return (
+                  <>
+                    <div className="text-sm text-amber-400/90">⚠️ {getUncertaintyLabel(simulation)}</div>
+                  </>
+                );
+              }
+              
               return (
                 <>
                   <div className="text-sm text-light-gray mr-2">Confidence:</div>
@@ -1195,7 +1280,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Volatility Index */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border ${
+        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border ${
           getVolatilityColor(volatilityIndex).includes('neon-green') ? 'border-neon-green/20' : 
           getVolatilityColor(volatilityIndex).includes('bold-red') ? 'border-bold-red/40 shadow-lg shadow-bold-red/20' : 'border-yellow-500/20'
         } relative group`}>
@@ -1209,13 +1294,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </div>
           <div className="text-xs text-light-gray mt-2">Variance: {varianceValue.toFixed(2)}</div>
           <div className={`text-xs mt-1 font-semibold ${
-            getVolatilityLabel(volatilityIndex) === 'HIGH' ? 'text-bold-red' :
+            getVolatilityLabel(volatilityIndex) === 'HIGH' ? 'text-vibrant-yellow' :
             getVolatilityLabel(volatilityIndex) === 'LOW' ? 'text-neon-green/80' :
-            'text-white/50'
+            'text-light-gray/60'
           }`}>
-            {getVolatilityLabel(volatilityIndex) === 'HIGH' ? '⚠️ Reduce unit sizing — high variance game' :
+            {getVolatilityLabel(volatilityIndex) === 'HIGH' ? '🔶 High variance environment — wider outcome distribution' :
              getVolatilityLabel(volatilityIndex) === 'LOW' ? 'Stable scoring expected. Predictable outcome range.' :
-             'Moderate variance. Standard deviation expected.'}
+             ''}
           </div>
           {/* Tooltip */}
           <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-72 p-4 bg-charcoal/95 border border-gold/40 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10 backdrop-blur-sm">
@@ -1223,15 +1308,15 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               Volatility measures game outcome variability. HIGH volatility suggests wider scoring range and increased upset potential. LOW volatility indicates predictable, stable scoring.
             </p>
             {getVolatilityLabel(volatilityIndex) === 'HIGH' && (
-              <p className="text-xs text-bold-red font-semibold mt-2 pt-2 border-t border-bold-red/30">
-                ⚠️ HIGH variance impact: Consider reducing unit sizing by 25-50%. Wider confidence intervals mean higher bust risk even with statistical edge.
+              <p className="text-xs text-gold font-semibold mt-2 pt-2 border-t border-gold/30">
+                🔶 High variance environment: Wider confidence intervals reflect increased outcome distribution. Consider position sizing within your framework.
               </p>
             )}
           </div>
         </div>
 
         {/* Injury Impact */}
-        <div className="bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border border-deep-red/20">
+        <div className="bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border border-deep-red/20">
           <h3 className="text-light-gray text-xs uppercase mb-2">Injury Impact</h3>
           {(() => {
             const sportLabels = getSportLabels(event?.sport_key || '');
@@ -1253,78 +1338,189 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
       </div>
 
-      {/* BEATVEGAS READ BLOCK - Required analytical summary */}
-      {simulation && (
-        <div className="mb-6 bg-gradient-to-br from-electric-blue/10 to-purple-900/10 border border-electric-blue/30 rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="text-2xl">🎯</div>
-            <h3 className="text-xl font-bold text-white font-teko">BEATVEGAS SIMULATION READ</h3>
-          </div>
+      {/* FINAL UNIFIED SUMMARY - Single source of truth for all interpretation */}
+      {simulation && (() => {
+        const rawScore = simulation.confidence_score || 0.65;
+        const normalizedScore = rawScore > 10 ? Math.min(100, Math.round((rawScore / 6000) * 100)) : Math.round(rawScore * 100);
+        const volatility = getVolatilityLabel(volatilityIndex);
+        const isHighVolatility = volatility === 'HIGH';
+        const isLowConfidence = normalizedScore < 60;
+        
+        // Spread interpretation with VALUE SIDE clarity
+        const spreadEdge = Math.abs(winProb - 0.5);
+        const marketSpread = simulation.spread || 0; // Negative = home favored, Positive = away favored
+        const modelImpliedSpread = (winProb - 0.5) * 20; // Convert win prob to spread
+        const spreadDeviation = Math.abs(modelImpliedSpread - marketSpread);
+        
+        // UNIVERSAL RULE (ALL SPORTS): 
+        // If volatility > 300 OR confidence < 60 → All spread leans default to NEUTRAL
+        // EXCEPTION: Edge > 6 pts AND confidence ≥ 70 → Override (extreme edge with consensus)
+        const hasExceptionalEdge = spreadDeviation >= 6.0 && normalizedScore >= 70 && varianceValue < 400;
+        const forceNeutralSpread = (varianceValue > 300 || normalizedScore < 60) && !hasExceptionalEdge;
+        
+        // CRITICAL LOGIC: Identify favorite/underdog and determine value
+        // Negative spread = home is favorite, Positive spread = away is favorite
+        let valueSide = '';
+        let valueExplanation = '';
+        
+        if (marketSpread !== 0 && spreadDeviation >= 3.0 && !forceNeutralSpread) {
+          // Significant deviation (2+ pts)
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            {/* Side Lean */}
-            <div className="bg-charcoal/50 p-4 rounded-lg">
-              <div className="text-light-gray text-xs uppercase mb-2">Side Lean</div>
-              <div className={`font-bold ${winProb > 0.65 ? 'text-neon-green' : winProb < 0.45 ? 'text-bold-red' : 'text-gold'}`}>
-                {winProb > 0.65 ? `✅ ${event.home_team} -${((winProb - 0.5) * 20).toFixed(1)}` :
-                 winProb < 0.45 ? `✅ ${event.away_team} +${((0.5 - winProb) * 20).toFixed(1)}` :
-                 '⚖️ NEUTRAL (Coin flip)'}
-              </div>
-              <div className="text-xs text-light-gray mt-1">
-                {winProb > 0.65 ? `Model favors home by ${((winProb - 0.5) * 100).toFixed(0)}%` :
-                 winProb < 0.45 ? `Model favors away by ${((0.5 - winProb) * 100).toFixed(0)}%` :
-                 'No statistical edge detected'}
-              </div>
+          // Determine who is favorite/underdog in VEGAS line
+          const vegasFavorite = marketSpread < 0 ? event.home_team : event.away_team;
+          const vegasUnderdog = marketSpread < 0 ? event.away_team : event.home_team;
+          const vegasSpreadValue = Math.abs(marketSpread);
+          
+          // Determine who is favorite in MODEL
+          const modelFavorite = modelImpliedSpread < 0 ? event.home_team : event.away_team;
+          const modelSpreadValue = Math.abs(modelImpliedSpread);
+          
+          // CASE 1: Both agree on favorite, but disagree on margin
+          if (vegasFavorite === modelFavorite) {
+            if (modelSpreadValue > vegasSpreadValue) {
+              // Model thinks favorite is STRONGER than market
+              // Sharp play: Take the favorite at the smaller spread
+              valueSide = vegasFavorite;
+              valueExplanation = `Vegas line: ${vegasUnderdog} +${vegasSpreadValue.toFixed(1)} | Model line: ${vegasUnderdog} +${modelSpreadValue.toFixed(1)}. Model believes ${vegasFavorite} is stronger than market thinks. Value leans toward ${vegasFavorite} -${vegasSpreadValue.toFixed(1)}.`;
+            } else {
+              // Model thinks favorite is WEAKER than market
+              // Sharp play: Take the underdog getting more points
+              valueSide = vegasUnderdog;
+              valueExplanation = `Vegas line: ${vegasUnderdog} +${vegasSpreadValue.toFixed(1)} | Model line: ${vegasUnderdog} +${modelSpreadValue.toFixed(1)}. Model believes ${vegasFavorite} is weaker than market thinks. Value leans toward underdog ${vegasUnderdog} +${vegasSpreadValue.toFixed(1)}.`;
+            }
+          } 
+          // CASE 2: Model disagrees on who the favorite is (rare but possible)
+          else {
+            // Model has opposite team favored - take model's favorite
+            valueSide = modelFavorite;
+            valueExplanation = `Vegas line: ${vegasFavorite} -${vegasSpreadValue.toFixed(1)} | Model line: ${modelFavorite} -${modelSpreadValue.toFixed(1)}. Model projects ${modelFavorite} as favorite while market favors ${vegasFavorite}. Significant disagreement — value leans toward ${modelFavorite}.`;
+          }
+        }
+        
+        const spreadLean = forceNeutralSpread ? 'NEUTRAL' : valueSide || 'NEUTRAL';
+        
+        // Final explanation with proper value identification
+        const spreadExplanation = forceNeutralSpread ? 
+          `Volatility (σ=${varianceValue.toFixed(1)}) > 300 or confidence (${normalizedScore}/100) < 60 = No statistical edge. Market appears efficient.` :
+          valueExplanation || 
+          (winProb > 0.65 ? `Model favors ${event.home_team} with ${((spreadEdge) * 100).toFixed(0)}% edge` :
+           winProb < 0.45 ? `Model favors ${event.away_team} with ${((spreadEdge) * 100).toFixed(0)}% edge` :
+           'Win probability near 50% — no edge detected');
+        
+        // Total interpretation (SINGLE calculation)
+        const totalEdge = Math.abs((simulation.projected_score || totalLine) - totalLine);
+        const hasTotalEdge = totalEdge >= 3.0; // Must be >= 3pts to be significant
+        const totalLean = !hasTotalEdge ? 'NEUTRAL' :
+                         overProb > 55 ? 'OVER' :
+                         underProb > 55 ? 'UNDER' : 'NEUTRAL';
+        const totalExplanation = !hasTotalEdge ? 
+          `Model projects ${(simulation.projected_score || totalLine).toFixed(1)} vs market ${totalLine.toFixed(1)} (Δ ${totalEdge.toFixed(1)} pts) — within statistical noise` :
+          overProb > 55 ? `Model mispricing detected: ${overProb.toFixed(0)}% probability of OVER, ${totalEdge.toFixed(1)} point edge vs market` :
+          underProb > 55 ? `Model mispricing detected: ${underProb.toFixed(0)}% probability of UNDER, ${totalEdge.toFixed(1)} point edge vs market` :
+          'Projected total aligns with market';
+        
+        // Volatility explanation
+        const volatilityExplanation = isHighVolatility ? 
+          `High variance environment (σ=${varianceValue.toFixed(2)}) — wider outcome distribution, increased upset potential. Consider reduced position sizing.` :
+          volatility === 'LOW' ? `Low variance (σ=${varianceValue.toFixed(2)}) — stable, predictable scoring range.` :
+          `Moderate variance (σ=${varianceValue.toFixed(2)}) — normal outcome distribution.`;
+        
+        // Final action recommendation
+        const actionRecommendation = forceNeutralSpread && !hasTotalEdge ? 
+          '🔶 Statistical insight only — market appears efficient on both spread and total. High volatility reduces edge clarity.' :
+          !forceNeutralSpread && hasTotalEdge && totalLean !== 'NEUTRAL' ? 
+          `⚡ Market appears efficient on spread, but ${totalEdge.toFixed(1)} pt mispricing detected on total (${totalLean}).` :
+          forceNeutralSpread && hasTotalEdge ? 
+          `⚠️ Spread shows no edge (high volatility), but ${totalEdge.toFixed(1)} pt mispricing on total (${totalLean}).` :
+          '✅ Statistical edges detected — use as part of your decision framework.';
+        
+        return (
+          <div className="mb-6 bg-gradient-to-br from-electric-blue/10 to-purple-900/10 border border-electric-blue/30 rounded-xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="text-2xl">🎯</div>
+              <h3 className="text-xl font-bold text-white font-teko">FINAL UNIFIED SUMMARY</h3>
             </div>
-
-            {/* Total Lean */}
-            <div className="bg-charcoal/50 p-4 rounded-lg">
-              <div className="text-light-gray text-xs uppercase mb-2">Total Lean</div>
-              <div className={`font-bold ${overProb > 55 ? 'text-neon-green' : underProb > 55 ? 'text-electric-blue' : 'text-gold'}`}>
-                {overProb > 55 ? `📈 OVER ${totalLine}` :
-                 underProb > 55 ? `📉 UNDER ${totalLine}` :
-                 `⚖️ NEUTRAL (${totalLine})`}
-              </div>
-              <div className="text-xs text-light-gray mt-1">
-                {overProb > 55 ? `Model projects ${overProb.toFixed(0)}% chance of OVER` :
-                 underProb > 55 ? `Model projects ${underProb.toFixed(0)}% chance of UNDER` :
-                 'Projected total aligns with market'}
-              </div>
-            </div>
-
-            {/* 1H Lean */}
-            {firstHalfSimulation && (
-              <div className="bg-charcoal/50 p-4 rounded-lg">
-                <div className="text-light-gray text-xs uppercase mb-2">1H Lean</div>
-                <div className="font-bold text-purple-400">
-                  {firstHalfSimulation.median_total ? `${firstHalfSimulation.median_total.toFixed(1)} proj` : 'No 1H data'}
+            
+            <div className="space-y-4">
+              {/* Spread Analysis */}
+              <div className="bg-charcoal/50 p-4 rounded-lg border-l-4 ${forceNeutralSpread ? 'border-gold' : spreadLean === 'NEUTRAL' ? 'border-gold' : 'border-neon-green'}">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-light-gray text-xs uppercase font-bold">Spread Analysis</div>
+                  <div className={`font-bold text-sm ${forceNeutralSpread ? 'text-gold' : spreadLean === 'NEUTRAL' ? 'text-gold' : 'text-neon-green'}`}>
+                    {spreadLean === 'NEUTRAL' ? '⚖️ NEUTRAL' : `✅ ${spreadLean}`}
+                  </div>
                 </div>
-                <div className="text-xs text-light-gray mt-1">First half projection</div>
+                <div className="text-xs text-light-gray leading-relaxed">
+                  {spreadExplanation}
+                </div>
+                {forceNeutralSpread && (
+                  <div className="mt-2 text-xs text-vibrant-yellow bg-vibrant-yellow/10 border border-vibrant-yellow/30 rounded px-2 py-1">
+                    🔶 Volatility &gt;300 or Confidence &lt;60% = All spread leans default to NEUTRAL (protects from fake edges)
+                  </div>
+                )}
               </div>
-            )}
-
-            {/* One-line Summary */}
-            <div className="bg-charcoal/50 p-4 rounded-lg md:col-span-2">
-              <div className="text-light-gray text-xs uppercase mb-2">Model Summary</div>
-              <div className="text-white font-semibold">
-                {(() => {
-                  const rawScore = simulation.confidence_score || 0.65;
-                  const normalizedScore = rawScore > 10 ? Math.min(100, Math.round((rawScore / 6000) * 100)) : Math.round(rawScore * 100);
-                  const volatility = getVolatilityLabel(volatilityIndex);
-                  
-                  if (normalizedScore >= 70 && volatility !== 'HIGH' && Math.abs(winProb - 0.5) > 0.10) {
-                    return `🔥 HIGH-CONFIDENCE SCENARIO: Model shows ${(Math.abs(winProb - 0.5) * 100).toFixed(0)}% edge with ${normalizedScore}/100 confidence. ${volatility} volatility suggests ${volatility === 'LOW' ? 'stable' : 'moderate'} outcome variance.`;
-                  } else if (normalizedScore >= 55 && Math.abs(winProb - 0.5) > 0.05) {
-                    return `⚡ MODERATE LEAN: ${(Math.abs(winProb - 0.5) * 100).toFixed(0)}% edge detected with ${normalizedScore}/100 confidence. ${volatility} volatility indicates ${volatility === 'HIGH' ? 'high risk' : 'manageable variance'}.`;
-                  } else {
-                    return `⚠️ NEUTRAL PROJECTION: No significant edge detected (${normalizedScore}/100 confidence, ${volatility} volatility). Market appears efficiently priced.`;
-                  }
-                })()}
+              
+              {/* Total Analysis */}
+              <div className="bg-charcoal/50 p-4 rounded-lg border-l-4 ${hasTotalEdge && totalLean !== 'NEUTRAL' ? 'border-electric-blue' : 'border-gold'}">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-light-gray text-xs uppercase font-bold">Total Analysis</div>
+                  <div className={`font-bold text-sm ${hasTotalEdge && totalLean !== 'NEUTRAL' ? 'text-electric-blue' : 'text-gold'}`}>
+                    {totalLean === 'NEUTRAL' ? '⚖️ NEUTRAL' : totalLean === 'OVER' ? '📈 OVER' : '📉 UNDER'} {totalLine.toFixed(1)}
+                  </div>
+                </div>
+                <div className="text-xs text-light-gray leading-relaxed">
+                  {totalExplanation}
+                </div>
+                {hasTotalEdge && totalLean !== 'NEUTRAL' && (
+                  <div className="mt-2 text-xs text-neon-green bg-neon-green/10 border border-neon-green/30 rounded px-2 py-1">
+                    {shouldSuppressCertainty(simulation) ? (
+                      <span className="text-amber-400">⚠️ {getUncertaintyLabel(simulation)}</span>
+                    ) : (
+                      <>💡 Model edge: {totalEdge.toFixed(1)} pts | Probability: {(totalLean === 'OVER' ? overProb : underProb).toFixed(1)}%</>
+                    )}
+                  </div>
+                )}
               </div>
+              
+              {/* Volatility Context */}
+              <div className="bg-charcoal/50 p-4 rounded-lg border-l-4 ${isHighVolatility ? 'border-bold-red' : 'border-neon-green'}">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-light-gray text-xs uppercase font-bold">Volatility Context</div>
+                  <div className={`font-bold text-sm ${isHighVolatility ? 'text-bold-red' : volatility === 'LOW' ? 'text-neon-green' : 'text-gold'}`}>
+                    {isHighVolatility ? '🔴' : volatility === 'LOW' ? '🟢' : '🟡'} {volatility}
+                  </div>
+                </div>
+                <div className="text-xs text-light-gray leading-relaxed">
+                  {volatilityExplanation}
+                </div>
+              </div>
+              
+              {/* Action Recommendation */}
+              <div className="bg-gradient-to-r from-gold/10 to-purple-500/10 border border-gold/40 rounded-lg p-4">
+                <div className="text-light-gray text-xs uppercase mb-2 font-bold">Action Summary</div>
+                <div className="text-white font-semibold text-sm leading-relaxed">
+                  {actionRecommendation}
+                </div>
+              </div>
+              
+              {/* 1H Quick Reference */}
+              {firstHalfSimulation && firstHalfSimulation.median_total && (
+                <div className="bg-charcoal/50 p-3 rounded-lg border border-purple-400/30">
+                  <div className="flex items-center justify-between">
+                    <div className="text-light-gray text-xs uppercase font-bold">1H Projection</div>
+                    <div className="font-bold text-purple-400">
+                      {firstHalfSimulation.median_total.toFixed(1)} pts
+                    </div>
+                  </div>
+                  <div className="text-xs text-light-gray mt-1">
+                    First half model median • {firstHalfSimulation.book_line_available ? 'Market anchor available' : 'No market line — reduced accuracy'}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* SIMULATION TIER NUDGE - Mandatory upgrade messaging */}
       {simulation && (
@@ -1549,10 +1745,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               </div>
             )}
             
-            {/* Legal Disclaimer */}
-            <div className="mt-6 bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-3 text-center">
-              <p className="text-xs text-yellow-200/80">
-                ⚠️ This platform provides statistical modeling only. No recommendations or betting instructions are provided.
+            {/* Interpretation Notice */}
+            <div className="mt-6 bg-gold/5 border border-gold/20 rounded-lg p-3 text-center">
+              <p className="text-xs text-light-gray">
+                <span className="text-gold font-semibold">Statistical Model Output</span> — Use as part of your decision framework.
               </p>
             </div>
           </div>
@@ -1950,10 +2146,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               </p>
             </div>
             
-            {/* Legal Disclaimer */}
-            <div className="mt-4 bg-yellow-900/20 border border-yellow-600/30 rounded-lg p-3 text-center">
-              <p className="text-xs text-yellow-200/80">
-                ⚠️ This platform provides statistical modeling only. No recommendations or betting instructions are provided.
+            {/* Interpretation Notice */}
+            <div className="mt-4 bg-gold/5 border border-gold/20 rounded-lg p-3 text-center">
+              <p className="text-xs text-light-gray">
+                <span className="text-gold font-semibold">Statistical Model Output</span> — Use as part of your decision framework.
               </p>
             </div>
           </div>

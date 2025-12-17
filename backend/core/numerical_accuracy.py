@@ -48,8 +48,8 @@ class SimulationOutput:
         if not (0 <= self.away_win_probability <= 1):
             raise ValueError(f"Invalid away_win_p: {self.away_win_probability}")
         
-        if self.sim_count not in [10000, 25000, 50000, 100000]:
-            raise ValueError(f"Invalid sim_count: {self.sim_count}. Must be 10K/25K/50K/100K")
+        if self.sim_count not in [10000, 25000, 35000, 50000, 100000]:
+            raise ValueError(f"Invalid sim_count: {self.sim_count}. Must be 10K/25K/35K/50K/100K")
         
         return True
 
@@ -186,16 +186,22 @@ class SimulationTierConfig:
     
     TIERS = {
         10000: {
-            "label": "Starter",
+            "label": "Free",
             "stability_band": 0.15,  # ±15% variance band
             "confidence_multiplier": 0.7,
             "min_edge_required": 0.05  # Need 5% edge at 10K sims
         },
         25000: {
-            "label": "Core",
+            "label": "Starter",
             "stability_band": 0.10,  # ±10%
             "confidence_multiplier": 0.85,
             "min_edge_required": 0.04
+        },
+        35000: {
+            "label": "Core",
+            "stability_band": 0.08,  # ±8%
+            "confidence_multiplier": 0.90,
+            "min_edge_required": 0.035
         },
         50000: {
             "label": "Pro",
@@ -214,7 +220,7 @@ class SimulationTierConfig:
     @classmethod
     def get_tier_config(cls, sim_count: int) -> Dict[str, Any]:
         if sim_count not in cls.TIERS:
-            raise ValueError(f"Invalid sim_count: {sim_count}. Must be 10K/25K/50K/100K")
+            raise ValueError(f"Invalid sim_count: {sim_count}. Must be 10K/25K/35K/50K/100K")
         return cls.TIERS[sim_count]
 
 

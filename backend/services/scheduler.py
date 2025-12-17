@@ -128,6 +128,44 @@ def run_reflection_loop():
         print(f"✗ Exception in reflection loop: {e}")
 
 
+def grade_completed_games():
+    """
+    Grade completed game predictions against real results
+    Runs every 2 hours to populate trust metrics with real data
+    """
+    try:
+        import asyncio
+        from services.result_grading import result_grading_service
+        
+        print("⏱️  Running result grading for completed games...")
+        
+        # Grade games from last 48 hours
+        result = asyncio.run(result_grading_service.grade_completed_games(hours_back=48))
+        
+        log_stage(
+            "result_grading",
+            "success",
+            input_payload={"hours_back": 48},
+            output_payload=result
+        )
+        
+        if result.get('graded_count', 0) > 0:
+            print(f"✓ Graded {result['graded_count']} predictions:")
+            print(f"  - Wins: {result['wins']}, Losses: {result['losses']}")
+            print(f"  - Win Rate: {result['win_rate']}%")
+            print(f"  - Units Won: {result['units_won']:+.2f}")
+    
+    except Exception as e:
+        print(f"✗ Exception in result grading: {e}")
+        log_stage(
+            "result_grading",
+            "exception",
+            input_payload={},
+            output_payload={"error": str(e)},
+            level="ERROR"
+        )
+
+
 def run_daily_brier_calculation():
     """
     Calculate Brier Scores for yesterday's completed games
@@ -387,6 +425,15 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=5),
         id="poll_injuries",
         name="Poll Injury Updates (5m)",
+        replace_existing=True
+    )
+    
+    # Job 8: Grade completed games every 2 hours (CRITICAL: Populates trust metrics)
+    scheduler.add_job(
+        func=grade_completed_games,
+        trigger=IntervalTrigger(hours=2),
+        id="grade_completed_games",
+        name="Grade Completed Games (2h)",
         replace_existing=True
     )
     

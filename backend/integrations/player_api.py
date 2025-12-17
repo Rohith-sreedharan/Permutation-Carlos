@@ -138,8 +138,14 @@ def get_team_roster(team_name: str, sport_key: str) -> List[Dict[str, Any]]:
                     roster.append(player_data)
                 
                 logger.info(f"✅ Fetched {len(roster)} REAL NCAAF players for {team_name} from CollegeFootballData")
+            except ValueError as ve:
+                # API key not configured
+                logger.error(f"❌ CFB API KEY MISSING: {ve}")
+                logger.error(f"⚠️ FALLING BACK TO SYNTHETIC ROSTER - Sign up at https://collegefootballdata.com/ for free API key")
+                return _get_fallback_roster(team_name, sport_key)
             except Exception as e:
                 logger.error(f"❌ Failed to fetch NCAAF roster: {e}")
+                logger.warning(f"⚠️ FALLING BACK TO SYNTHETIC ROSTER")
                 return _get_fallback_roster(team_name, sport_key)
         
         else:

@@ -25,9 +25,10 @@ router = APIRouter()
 
 class GenerateParlayRequest(BaseModel):
     """Request model for parlay generation"""
-    sport_key: str = Field(..., description="Sport to focus on (basketball_nba, americanfootball_nfl, etc)")
-    leg_count: int = Field(..., ge=3, le=6, description="Number of legs (3-6)")
+    sport_key: str = Field(..., description="Sport to focus on (basketball_nba, americanfootball_nfl, etc) or 'all' for multi-sport")
+    leg_count: int = Field(..., ge=2, le=6, description="Number of legs (2-6)")
     risk_profile: str = Field(..., description="high_confidence | balanced | high_volatility")
+    multi_sport: bool = Field(default=False, description="If True, include games from all sports (same day only)")
 
 
 class UnlockParlayRequest(BaseModel):
@@ -66,10 +67,12 @@ async def generate_parlay(
     """
     try:
         # Get user tier from authenticated user
+        print(f"🔍 [Parlay Debug] current_user: {current_user}")
         user_tier = get_user_tier(current_user)
         user_email = current_user.get("email")
         
         print(f"[Parlay Architect] Authenticated user {user_email} has tier: {user_tier}")
+        print(f"🔑 [Parlay Debug] Extracted tier: {user_tier}")
         
         # Check parlay access level
         access_level = PARLAY_ACCESS.get(user_tier.lower(), "blur_only")
@@ -115,7 +118,8 @@ async def generate_parlay(
             "americanfootball_nfl",
             "americanfootball_ncaaf",
             "baseball_mlb",
-            "icehockey_nhl"
+            "icehockey_nhl",
+            "all"  # Multi-sport parlays
         ]
         if request.sport_key not in valid_sports:
             raise HTTPException(
@@ -123,8 +127,7 @@ async def generate_parlay(
                 detail=(
                     f"Invalid sport_key '{request.sport_key}'. "
                     f"Must be one of: {', '.join(valid_sports)}. "
-                    f"💡 Tip: Use 'basketball_nba' for NBA, 'basketball_ncaab' for NCAA Basketball, "
-                    f"'americanfootball_nfl' for NFL, 'americanfootball_ncaaf' for NCAA Football."
+                    f"💡 Tip: Use 'basketball_nba' for NBA, 'all' for multi-sport parlays, etc."
                 )
             )
         
@@ -141,17 +144,20 @@ async def generate_parlay(
             sport_key=request.sport_key,
             leg_count=request.leg_count,
             risk_profile=request.risk_profile,
-            user_tier=user_tier
+            user_tier=user_tier,
+            multi_sport=request.multi_sport or request.sport_key == "all"
         )
         
         # Get universal pricing
         leg_price = get_parlay_price(request.leg_count, user_tier)
         
         # Determine if parlay should be locked
-        # FOUNDER and INTERNAL tiers get free unlimited access
-        is_unlocked = user_tier.lower() in ["founder", "internal"]
+        # FOUNDER, ELITE, and INTERNAL tiers get free unlimited access
+        is_unlocked = user_tier.lower() in ["founder", "elite", "internal"]
+        print(f"🔑 [Parlay Unlock Check] User tier: {user_tier.lower()}, is_unlocked: {is_unlocked}")
         
         if not is_unlocked:
+            print(f"🔒 [Parlay] Returning LOCKED parlay for tier: {user_tier}")
             # Return locked parlay with pricing info
             response = {
                 "parlay_id": parlay["parlay_id"],
@@ -176,17 +182,53 @@ async def generate_parlay(
             }
             print(f"🔒 Locked parlay for {user_tier}: {request.leg_count} legs = ${leg_price/100:.2f}")
         else:
-            # FOUNDER and INTERNAL tiers get full access immediately
+            # FOUNDER, ELITE, and INTERNAL tiers get full access immediately
+            print(f"🔓 [Parlay] Returning UNLOCKED parlay for tier: {user_tier}")
+            unlock_reason = "elite_tier"
+            if user_tier.lower() == "founder":
+                unlock_reason = "founder_tier"
+            elif user_tier.lower() == "internal":
+                unlock_reason = "internal_tier"
+            
             response = {
                 **parlay,
                 "is_unlocked": True,
-                "unlock_reason": "founder_tier" if user_tier.lower() == "founder" else "internal_tier"
+                "unlock_reason": unlock_reason
             }
+            print(f"✅ [Parlay] Response is_unlocked: {response.get('is_unlocked')}")
+            print(f"✅ [Parlay] Full response keys: {list(response.keys())}")
         
         return response
         
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Check if this is a blocked state response (dict) or regular error (str)
+        error_detail = str(e)
+        
+        # Try to eval if it's a dict string representation
+        try:
+            # Extract dict from ValueError if present
+            if "{'status': 'BLOCKED'" in error_detail or '{"status": "BLOCKED"' in error_detail:
+                # ValueError contains our blocked state dict - extract and return it
+                import ast
+                blocked_data = ast.literal_eval(error_detail)
+                
+                # Add user tier and unlock status to blocked response
+                is_unlocked = user_tier.lower() in ["founder", "elite", "internal"]
+                
+                # Return blocked state with tier info
+                return {
+                    **blocked_data,
+                    "parlay_available": False,
+                    "truth_mode_enforced": True,
+                    "is_unlocked": is_unlocked,
+                    "user_tier": user_tier,
+                    "unlock_reason": f"{user_tier.lower()}_tier" if is_unlocked else None
+                }
+        except:
+            pass
+        
+        # Regular error - raise HTTP exception
+        raise HTTPException(status_code=400, detail=error_detail)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate parlay: {str(e)}")
 

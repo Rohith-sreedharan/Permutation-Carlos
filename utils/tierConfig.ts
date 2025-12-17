@@ -7,7 +7,7 @@ export const SIMULATION_TIERS = {
   free: 10000,
   starter: 25000,  // $19.99/mo
   pro: 50000,      // $39.99/mo
-  elite: 75000,    // $89/mo
+  elite: 100000,   // $89/mo
   admin: 100000,   // Internal use
 } as const;
 

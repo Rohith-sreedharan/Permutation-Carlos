@@ -71,7 +71,9 @@ def calculate_spread_edge(
     model_spread: float,
     favorite_team: str,
     underdog_team: str,
-    threshold: float = 2.0
+    threshold: float = 3.0,
+    confidence_score: int = 0,
+    variance: float = 999.0
 ) -> SpreadAnalysis:
     """
     Calculate spread mispricing and determine sharp side
@@ -81,7 +83,9 @@ def calculate_spread_edge(
         model_spread: Model's projected margin (favorite's perspective, negative)
         favorite_team: Name of favorite
         underdog_team: Name of underdog
-        threshold: Minimum edge to flag (default 2.0 points)
+        threshold: Minimum edge to flag (default 3.0 points)
+        confidence_score: Simulation confidence (0-100, default 0)
+        variance: Simulation variance (default 999.0)
     
     Returns:
         SpreadAnalysis with sharp side recommendation
@@ -89,28 +93,56 @@ def calculate_spread_edge(
     Logic:
         - If model_spread is CLOSER than vegas_spread → Dog is undervalued
         - If model_spread is WIDER than vegas_spread → Favorite is undervalued
+    
+    STRICT EDGE DETECTION RULES:
+        ALL 3 conditions must be true to flag sharp side:
+        1. abs(edge_points) ≥ 3.0
+        2. confidence_score ≥ 60
+        3. variance < 300
+        
+        EXCEPTION: If edge ≥ 6 pts AND confidence ≥ 70, variance threshold relaxed to < 400
+        (Extreme edges with strong consensus override volatility concerns)
     """
     # Calculate edge (positive = dog undervalued, negative = favorite undervalued)
     spread_mispricing = abs(vegas_spread) - abs(model_spread)
     edge_points = abs(spread_mispricing)
     
+    # STRICT VALIDATION: Protect against fake edges from high volatility/low confidence
+    # Rule: volatility > 300 OR confidence < 60 → NEUTRAL unless edge > 6 pts AND consensus strong
+    has_exceptional_edge = edge_points >= 6.0 and confidence_score >= 70 and variance < 400
+    has_standard_edge = (
+        edge_points >= 3.0 and 
+        confidence_score >= 60 and 
+        variance < 300
+    )
+    has_valid_edge = has_standard_edge or has_exceptional_edge
+    
     # Determine sharp side
-    if spread_mispricing > threshold:
+    if spread_mispricing > threshold and has_valid_edge:
         # Dog is undervalued (Vegas too harsh on dog)
         edge_direction = 'DOG'
         vegas_dog_line = abs(vegas_spread)
         sharp_side = f"{underdog_team} +{vegas_dog_line}"
         sharp_side_reason = f"Model shows dog should get +{abs(model_spread):.1f} vs Vegas +{vegas_dog_line}. Dog undervalued by {edge_points:.1f} pts."
-    elif spread_mispricing < -threshold:
+    elif spread_mispricing < -threshold and has_valid_edge:
         # Favorite is undervalued (Vegas not giving enough points)
         edge_direction = 'FAVORITE'
         sharp_side = f"{favorite_team} {vegas_spread}"
         sharp_side_reason = f"Model shows favorite should win by {abs(model_spread):.1f} vs Vegas {abs(vegas_spread)}. Favorite undervalued by {edge_points:.1f} pts."
     else:
-        # No significant edge
+        # No significant edge OR failed validation checks
         edge_direction = 'NO_EDGE'
         sharp_side = None
-        sharp_side_reason = "No significant mispricing detected (< 2 pts)"
+        if edge_points >= threshold:
+            # Edge exists but failed quality checks
+            if confidence_score < 60:
+                sharp_side_reason = f"Model lean detected ({edge_points:.1f} pts) but confidence too low ({confidence_score}/100). No valid edge."
+            elif variance >= 300:
+                sharp_side_reason = f"Model lean detected ({edge_points:.1f} pts) but variance too high (σ={variance:.1f}). No valid edge."
+            else:
+                sharp_side_reason = f"Model lean detected ({edge_points:.1f} pts) but edge below threshold. No valid edge."
+        else:
+            sharp_side_reason = "No significant mispricing detected (< 3 pts)"
     
     # Grade the edge strength
     edge_grade, edge_strength = grade_edge(edge_points)
@@ -130,7 +162,9 @@ def calculate_spread_edge(
 def calculate_total_edge(
     vegas_total: float,
     model_total: float,
-    threshold: float = 3.0
+    threshold: float = 3.0,
+    confidence_score: int = 0,
+    variance: float = 999.0
 ) -> TotalAnalysis:
     """
     Calculate total mispricing and determine sharp side
@@ -139,6 +173,8 @@ def calculate_total_edge(
         vegas_total: Over/Under line offered by sportsbook
         model_total: Model's projected total score
         threshold: Minimum edge to flag (default 3.0 points)
+        confidence_score: Simulation confidence (0-100, default 0)
+        variance: Simulation variance (default 999.0)
     
     Returns:
         TotalAnalysis with sharp side recommendation
@@ -146,27 +182,55 @@ def calculate_total_edge(
     Logic:
         - If model_total < vegas_total → Vegas too high → Bet UNDER
         - If model_total > vegas_total → Vegas too low → Bet OVER
+    
+    STRICT EDGE DETECTION RULES:
+        ALL 3 conditions must be true to flag sharp side:
+        1. abs(edge_points) ≥ 3.0
+        2. confidence_score ≥ 60
+        3. variance < 300
+        
+        EXCEPTION: If edge ≥ 6 pts AND confidence ≥ 70, variance threshold relaxed to < 400
+        (Extreme edges with strong consensus override volatility concerns)
     """
     # Calculate edge (positive = bet under, negative = bet over)
     total_mispricing = vegas_total - model_total
     edge_points = abs(total_mispricing)
     
+    # STRICT VALIDATION: Protect against fake edges from high volatility/low confidence
+    # Rule: volatility > 300 OR confidence < 60 → NEUTRAL unless edge > 6 pts AND consensus strong
+    has_exceptional_edge = edge_points >= 6.0 and confidence_score >= 70 and variance < 400
+    has_standard_edge = (
+        edge_points >= 3.0 and 
+        confidence_score >= 60 and 
+        variance < 300
+    )
+    has_valid_edge = has_standard_edge or has_exceptional_edge
+    
     # Determine sharp side
-    if total_mispricing > threshold:
+    if total_mispricing > threshold and has_valid_edge:
         # Model expects lower scoring → Bet UNDER
         edge_direction = 'UNDER'
         sharp_side = f"UNDER {vegas_total}"
         sharp_side_reason = f"Model projects {model_total:.1f} vs Vegas {vegas_total}. Vegas line too high by {edge_points:.1f} pts."
-    elif total_mispricing < -threshold:
+    elif total_mispricing < -threshold and has_valid_edge:
         # Model expects higher scoring → Bet OVER
         edge_direction = 'OVER'
         sharp_side = f"OVER {vegas_total}"
         sharp_side_reason = f"Model projects {model_total:.1f} vs Vegas {vegas_total}. Vegas line too low by {edge_points:.1f} pts."
     else:
-        # No significant edge
+        # No significant edge OR failed validation checks
         edge_direction = 'NO_EDGE'
         sharp_side = None
-        sharp_side_reason = "No significant mispricing detected (< 3 pts)"
+        if edge_points >= threshold:
+            # Edge exists but failed quality checks
+            if confidence_score < 60:
+                sharp_side_reason = f"Model lean detected ({edge_points:.1f} pts) but confidence too low ({confidence_score}/100). Market appears efficient."
+            elif variance >= 300:
+                sharp_side_reason = f"Model lean detected ({edge_points:.1f} pts) but variance too high (σ={variance:.1f}). Market appears efficient."
+            else:
+                sharp_side_reason = f"Model lean detected ({edge_points:.1f} pts) but edge below threshold. Market appears efficient."
+        else:
+            sharp_side_reason = "No significant mispricing detected (< 3 pts)"
     
     # Grade the edge strength
     edge_grade, edge_strength = grade_edge(edge_points)

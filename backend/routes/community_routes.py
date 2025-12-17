@@ -11,6 +11,7 @@ from db.mongo import db
 from services.nlp_parser import nlp_parser
 from services.reputation_engine import reputation_engine
 from services.moderation_service import validate_content  # COMPLIANCE FILTER
+from middleware.truth_mode_enforcement import enforce_truth_mode_on_pick
 
 
 router = APIRouter(prefix="/api/community", tags=["Community"])
@@ -217,6 +218,7 @@ async def get_community_picks(
 ):
     """
     Get structured community picks
+    🛡️ TRUTH MODE ENFORCED: All picks validated before display
     """
     query = {}
     if user_id:
@@ -231,7 +233,10 @@ async def get_community_picks(
         .limit(limit)
     )
     
-    # Convert ObjectId and enrich with user reputation
+    # Apply Truth Mode validation to each pick
+    validated_picks = []
+    blocked_count = 0
+    
     for pick in picks:
         pick["_id"] = str(pick["_id"])
         
@@ -240,11 +245,36 @@ async def get_community_picks(
         if reputation:
             pick["user_elo"] = reputation["elo_score"]
             pick["user_weight"] = reputation["weight_multiplier"]
+        
+        # Validate through Truth Mode
+        event_id_val = pick.get("event_id")
+        bet_type = pick.get("bet_type", "moneyline")
+        
+        if event_id_val:
+            validation_result = enforce_truth_mode_on_pick(
+                event_id=event_id_val,
+                bet_type=bet_type
+            )
+            
+            if validation_result["status"] == "VALID":
+                pick["truth_mode_validated"] = True
+                pick["confidence_score"] = validation_result.get("confidence_score", 0.0)
+                validated_picks.append(pick)
+            else:
+                # Pick blocked - don't show to users
+                blocked_count += 1
+                print(f"🛡️ [Truth Mode] Community pick blocked: {pick.get('selection', 'Unknown')}")
+        else:
+            # No event_id - include but mark as unvalidated
+            pick["truth_mode_validated"] = False
+            validated_picks.append(pick)
     
     return {
         "status": "ok",
-        "count": len(picks),
-        "picks": picks
+        "count": len(validated_picks),
+        "picks": validated_picks,
+        "truth_mode_enabled": True,
+        "blocked_count": blocked_count
     }
 
 

@@ -1,12 +1,14 @@
 """
 AI Parlay Architect Service
 Generates optimized 3-6 leg parlays using Monte Carlo simulation data
+TRUTH MODE ENFORCED: All legs validated through zero-lies gates
 """
 import random
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from db.mongo import db
 from core.monte_carlo_engine import monte_carlo_engine
+from core.truth_mode import truth_mode_validator
 from utils.mongo_helpers import sanitize_mongo_doc
 
 
@@ -45,29 +47,89 @@ class ParlayArchitectService:
         sport_key: str,
         leg_count: int,
         risk_profile: str,
-        user_tier: str = "free"
+        user_tier: str = "free",
+        multi_sport: bool = False
     ) -> Dict[str, Any]:
         """
-        Generate AI-optimized parlay
+        Generate AI-optimized parlay with CROSS-SPORT support
+        
+        CROSS-SPORT COMPOSITION:
+        Supports combining legs from NFL, NBA, NHL, MLB, NCAAF, NCAAB in single parlay.
+        Cross-sport legs are treated as independent (0.0 correlation).
         
         Args:
-            sport_key: Sport to focus on (basketball_nba, americanfootball_nfl, etc)
+            sport_key: Primary sport (or 'all' for multi-sport)
             leg_count: Number of legs (3-6)
             risk_profile: 'high_confidence' | 'balanced' | 'high_volatility'
             user_tier: User's subscription tier
+            multi_sport: If True, include games from ALL 6 supported sports (same day only)
         
         Returns:
             Parlay with legs, odds, EV, confidence, correlation analysis
+            
+        Governance:
+            All legs validated through Truth Mode (PICK/LEAN/NO_PLAY enforcement)
+            Cross-sport correlation = 0.0 (independent events)
         """
         
-        # Step 1: Get all available games for the sport
-        events = list(db.events.find({
-            "sport_key": sport_key,
-            "commence_time": {"$gt": datetime.now(timezone.utc).isoformat()}
-        }).limit(50))
+        # Step 1: Get all available games (SAME DAY ONLY for parlays)
+        now = datetime.now(timezone.utc)
+        
+        # Get events grouped by calendar day
+        events_by_day = self._get_events_by_day(sport_key, multi_sport)
+        
+        if not events_by_day:
+            raise ValueError(
+                f"No games available in the next 7 days for {sport_key}. "
+                f"Try a different sport or check back later."
+            )
+        
+        # Find the first day with enough games
+        selected_day = None
+        events = []
+        
+        for day_date, day_events in sorted(events_by_day.items()):
+            if len(day_events) >= leg_count:
+                selected_day = day_date
+                events = day_events
+                print(f"📅 [Parlay Architect] Using games from {day_date}: {len(events)} available")
+                break
+        
+        if not events or len(events) < leg_count:
+            # Show what's available each day
+            day_breakdown = "\n".join([
+                f"   • {date}: {len(evts)} games"
+                for date, evts in sorted(events_by_day.items())[:5]
+            ])
+            raise ValueError(
+                f"Insufficient games on any single day for {sport_key}. "
+                f"Need {leg_count} legs, but no day has enough games.\n\n"
+                f"📊 Games by day:\n{day_breakdown}\n\n"
+                f"💡 Options:\n"
+                f"   • Reduce leg count to 2\n"
+                f"   • Enable multi-sport parlays\n"
+                f"   • Try a different sport"
+            )
         
         if len(events) < leg_count:
-            raise ValueError(f"Insufficient games available. Found {len(events)}, need {leg_count}")
+            # Check other sports to suggest alternatives
+            available_sports = self._get_available_sports_count(now, extended_end if len(events) < leg_count else today_end)
+            
+            suggestions = []
+            for sport, count in available_sports.items():
+                if count >= leg_count and sport != sport_key:
+                    sport_name = sport.replace('_', ' ').replace('basketball', 'Basketball').replace('americanfootball', 'Football').replace('baseball', 'Baseball').replace('icehockey', 'Hockey')
+                    suggestions.append(f"   • {sport_name}: {count} games available")
+            
+            suggestion_text = "\n\n💡 Available alternatives:\n" + "\n".join(suggestions) if suggestions else ""
+            
+            raise ValueError(
+                f"Insufficient games available for {sport_key}. "
+                f"Found {len(events)} games in next 72 hours, need {leg_count} for parlay. "
+                f"\n\n📊 Options:\n"
+                f"   • Reduce leg count to {len(events)} or fewer\n"
+                f"   • Try a different sport{suggestion_text}"
+            )
         
         # Step 2: Score all potential legs using simulations
         scored_legs = []
@@ -170,8 +232,67 @@ class ParlayArchitectService:
                 f"   • Check back in 5-10 minutes for new simulations"
             )
         
-        final_legs = selected_legs["legs"]
+        # Step 3.5: TRUTH MODE VALIDATION - Enforce zero-lies principle
+        print(f"🛡️ [Truth Mode] Validating {len(selected_legs['legs'])} legs through zero-lies gates...")
+        valid_legs, blocked_legs = truth_mode_validator.validate_parlay_legs(selected_legs["legs"])
+        
+        if blocked_legs:
+            print(f"⚠️ [Truth Mode] {len(blocked_legs)} leg(s) blocked:")
+            for leg in blocked_legs:
+                print(f"   ❌ {leg.get('event', 'Unknown')}: {leg.get('block_reasons', [])}")
+        
+        print(f"✅ [Truth Mode] {len(valid_legs)} leg(s) validated and approved")
+        
+        # Use only Truth Mode validated legs
+        if len(valid_legs) < 2:
+            # BLOCKED STATE - Return structured blocked response with next-best actions
+            best_single = self._find_best_single(scored_legs)
+            
+            # Calculate next refresh time (simulations update every 5-10 minutes)
+            next_refresh_seconds = 300  # 5 minutes
+            
+            blocked_response = {
+                "status": "BLOCKED",
+                "message": "No Valid Parlay Available",
+                "reason": "Current games do not meet Truth Mode standards for safe parlay construction.",
+                "passed_count": len(valid_legs),
+                "failed_count": len(blocked_legs),
+                "minimum_required": 2,
+                "failed": [
+                    {
+                        "game": leg.get('event', 'Unknown'),
+                        "reason": ', '.join(leg.get('block_reasons', []))
+                    }
+                    for leg in blocked_legs[:5]
+                ],
+                "best_single": best_single,
+                "next_best_actions": {
+                    "market_filters": [
+                        {"option": "totals_only", "label": "Re-run with Totals Only"},
+                        {"option": "spreads_only", "label": "Re-run with Spreads Only"},
+                        {"option": "all_sports", "label": "Try ALL SPORTS (Multi-Sport)"}
+                    ],
+                    "risk_profiles": [
+                        {"profile": "balanced", "label": "Switch to Balanced Risk"},
+                        {"profile": "high_volatility", "label": "Switch to High Volatility"}
+                    ]
+                },
+                "next_refresh_seconds": next_refresh_seconds,
+                "next_refresh_eta": (datetime.now(timezone.utc) + timedelta(seconds=next_refresh_seconds)).isoformat()
+            }
+            
+            # Raise ValueError with the structured response
+            # The API route will catch this and return the proper response
+            raise ValueError(blocked_response)
+        
+        final_legs = valid_legs
         transparency_message = selected_legs.get("transparency_message")
+        
+        # Add Truth Mode badge to transparency message
+        if transparency_message:
+            transparency_message += " | Truth Mode: All legs validated ✓"
+        else:
+            transparency_message = "Truth Mode: All legs validated through zero-lies gates ✓"
         
         # Step 5: Calculate parlay metrics
         parlay_probability = 1.0
@@ -261,20 +382,25 @@ class ParlayArchitectService:
         """
         Calculate correlation between new leg and existing legs
         
-        Same game = high correlation (bad)
-        Same sport, different games = low correlation (good)
+        CROSS-SPORT SUPPORT:
+        - Same game = high correlation (bad) → 0.8
+        - Same sport, different games = low correlation → 0.1
+        - Different sports = ZERO correlation (independent) → 0.0
+        
+        This enables cross-sport parlays (NFL + NBA + NHL in single parlay)
         """
         max_correlation = 0.0
         
         for leg in existing_legs:
             if leg["event_id"] == new_leg["event_id"]:
-                # Same game - very high correlation
+                # Same game - very high correlation (blocks same-game parlays)
                 correlation = 0.8
             elif leg["sport"] == new_leg["sport"]:
-                # Same sport - low correlation
+                # Same sport, different games - low correlation
                 correlation = 0.1
             else:
-                # Different sports - no correlation
+                # Different sports - ZERO correlation (fully independent)
+                # This allows cross-sport composition: NFL + NBA + NHL
                 correlation = 0.0
             
             max_correlation = max(max_correlation, correlation)
@@ -284,6 +410,10 @@ class ParlayArchitectService:
     def _calculate_correlation(self, legs: List[Dict[str, Any]]) -> float:
         """
         Calculate overall correlation score for parlay
+        
+        Cross-sport legs are treated as fully independent (0.0 correlation)
+        Same-sport legs have minimal correlation (0.1)
+        Same-game legs have high correlation and are rejected (0.8)
         
         Lower is better (more independent legs)
         """
@@ -481,6 +611,144 @@ class ParlayArchitectService:
             "transparency_message": transparency_message,
             "tier_breakdown": tiers_used
         }
+    
+    def _get_events_by_day(
+        self, 
+        sport_key: str, 
+        multi_sport: bool = False
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get events grouped by calendar day (UTC)
+        All parlay legs MUST be on the same day
+        
+        Returns:
+            Dict mapping date string (YYYY-MM-DD) to list of events
+        """
+        now = datetime.now(timezone.utc)
+        week_end = now + timedelta(days=7)
+        
+        # Build query
+        query = {
+            "commence_time": {
+                "$gt": now.isoformat(),
+                "$lt": week_end.isoformat()
+            }
+        }
+        
+        # Single sport or multi-sport
+        if not multi_sport and sport_key != "all":
+            query["sport_key"] = sport_key
+        
+        events = list(db.events.find(query).limit(200))
+        
+        # Group by calendar day (UTC date)
+        events_by_day = {}
+        for event in events:
+            try:
+                # Parse commence_time and get date
+                commence = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
+                date_key = commence.strftime("%Y-%m-%d")
+                
+                if date_key not in events_by_day:
+                    events_by_day[date_key] = []
+                
+                events_by_day[date_key].append(event)
+            except Exception as e:
+                print(f"⚠️ Error parsing date for event {event.get('event_id')}: {e}")
+                continue
+        
+        # Log what we found
+        if multi_sport:
+            total = sum(len(evts) for evts in events_by_day.values())
+            print(f"🌐 [Multi-Sport] Found {total} games across all sports in next 7 days")
+        else:
+            total = sum(len(evts) for evts in events_by_day.values())
+            print(f"📅 [Same-Day Filter] Found {total} {sport_key} games grouped by day")
+        
+        return events_by_day
+    
+    def _get_available_sports_count(self, start_time: datetime, end_time: datetime) -> Dict[str, int]:
+        """
+        Get count of available games for each sport in the time window
+        """
+        sports = [
+            "basketball_nba",
+            "basketball_ncaab", 
+            "americanfootball_nfl",
+            "americanfootball_ncaaf",
+            "baseball_mlb",
+            "icehockey_nhl"
+        ]
+        
+        sport_counts = {}
+        for sport in sports:
+            count = db.events.count_documents({
+                "sport_key": sport,
+                "commence_time": {
+                    "$gt": start_time.isoformat(),
+                    "$lt": end_time.isoformat()
+                }
+            })
+            if count > 0:
+                sport_counts[sport] = count
+        
+        return sport_counts
+    
+    def _find_best_single(self, scored_legs: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Find the single best Truth-Mode-approved pick
+        Used when parlay generation is blocked
+        
+        Returns:
+            Best single pick with full details, or None if no valid picks
+        """
+        if not scored_legs:
+            return None
+        
+        # Validate each leg through Truth Mode
+        valid_singles = []
+        for leg in scored_legs:
+            # Create a single-item list for validation
+            valid_legs, blocked_legs = truth_mode_validator.validate_parlay_legs([leg])
+            if valid_legs:
+                valid_singles.append(leg)
+        
+        if not valid_singles:
+            return None
+        
+        # Sort by score (confidence * 60 + EV * 40)
+        valid_singles.sort(key=lambda x: x['score'], reverse=True)
+        best = valid_singles[0]
+        
+        # Format for response
+        return {
+            "sport": best['sport'],
+            "event": best['event'],
+            "market": best['market_type'],
+            "pick": best['pick'],
+            "confidence": round(best['confidence'] * 100, 1),
+            "expected_value": round(best['ev'], 2),
+            "volatility": best['volatility'],
+            "edge_description": self._get_edge_description(best),
+            "american_odds": best['american_odds'],
+            "pricing": {
+                "single_unlock": 399  # $3.99 in cents
+            }
+        }
+    
+    def _get_edge_description(self, leg: Dict[str, Any]) -> str:
+        """
+        Generate human-readable edge description
+        """
+        confidence_pct = leg['confidence'] * 100
+        ev_pct = leg['ev']
+        
+        if confidence_pct >= 60 and ev_pct >= 5:
+            return f"Premium edge: {confidence_pct:.0f}% confidence, {ev_pct:+.1f}% EV"
+        elif confidence_pct >= 52 and ev_pct >= 1:
+            return f"Solid edge: {confidence_pct:.0f}% confidence, {ev_pct:+.1f}% EV"
+        else:
+            return f"Value play: {confidence_pct:.0f}% confidence, {ev_pct:+.1f}% EV"
 
 
 # Singleton instance

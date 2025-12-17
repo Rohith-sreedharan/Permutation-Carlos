@@ -20,6 +20,7 @@ SIMULATION_POWER = {
     "bronze": 25_000,
     "silver": 50_000,
     "platinum": 100_000,
+    "elite": 100_000,
     "founder": 100_000,
     "internal": 1_000_000
 }
@@ -30,6 +31,7 @@ PARLAY_ACCESS = {
     "bronze": "full",
     "silver": "full",
     "platinum": "full",
+    "elite": "full",
     "founder": "full",
     "internal": "full"
 }
@@ -61,6 +63,13 @@ TIER_CONFIG = {
         "price_monthly": 79,
         "simulations": 100_000,
         "parlay_access": "full",
+    },
+    "elite": {
+        "name": "Elite",
+        "price_monthly": 99,
+        "simulations": 100_000,
+        "parlay_access": "full",
+        "features": ["100K simulations", "Full parlay generation", "Priority support"],
     },
     "founder": {
         "name": "Founder",
