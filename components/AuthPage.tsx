@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { loginUser, registerUser, verify2FALogin } from '../services/api';
+import { loginUser, registerUser, verify2FALogin, beginPasskeyLogin, completePasskeyLogin } from '../services/api';
 import Swal from 'sweetalert2';
 
 interface AuthPageProps {
@@ -14,6 +14,69 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleBiometricLogin = async () => {
+    if (!email) {
+      setError('Please enter your email first');
+      return;
+    }
+
+    setError('');
+    setLoading(true);
+
+    try {
+      // Check if browser supports WebAuthn
+      if (!window.PublicKeyCredential) {
+        throw new Error('Your browser does not support biometric authentication');
+      }
+
+      // Start passkey login
+      const options = await beginPasskeyLogin(email);
+
+      // Convert challenge from base64
+      const challenge = Uint8Array.from(atob(options.challenge), c => c.charCodeAt(0));
+
+      // Get credential from authenticator
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          rpId: 'localhost',
+          userVerification: 'preferred',
+          timeout: 60000,
+        }
+      }) as any;
+
+      if (!credential) {
+        throw new Error('Authentication cancelled');
+      }
+
+      // Prepare credential data for server
+      const credentialData = {
+        id: credential.id,
+        rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+        response: {
+          clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(credential.response.clientDataJSON))),
+          authenticatorData: btoa(String.fromCharCode(...new Uint8Array(credential.response.authenticatorData))),
+          signature: btoa(String.fromCharCode(...new Uint8Array(credential.response.signature))),
+        },
+        type: credential.type,
+      };
+
+      // Complete login
+      const response = await completePasskeyLogin(email, credentialData);
+      
+      if (response.access_token) {
+        localStorage.setItem('token', response.access_token);
+        onAuthSuccess();
+      } else {
+        throw new Error('Login failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Biometric login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,6 +310,36 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                 isLogin ? 'Sign In' : 'Create Account'
               )}
             </button>
+
+            {/* Biometric Login - Only show on login, not signup */}
+            {isLogin && window.PublicKeyCredential && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-700"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-[#0f1419] text-gray-400">or</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleBiometricLogin}
+                  disabled={loading || !email}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold py-4 rounded-lg hover:shadow-xl hover:shadow-blue-500/30 transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <span className="text-xl">🔐</span>
+                  Sign In with Face ID / Touch ID
+                </button>
+
+                {!email && (
+                  <p className="text-xs text-gray-500 text-center -mt-2">
+                    Enter your email first to use biometric login
+                  </p>
+                )}
+              </>
+            )}
           </form>
 
           {/* Footer */}

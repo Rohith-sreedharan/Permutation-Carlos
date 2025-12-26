@@ -234,17 +234,25 @@ def enable_2fa(Authorization: Optional[str] = Header(None)):
         img.save(buffered, format="PNG")
         qr_code_base64 = base64.b64encode(buffered.getvalue()).decode()
         
-        # Store secret temporarily (will be confirmed on verification)
+        # Generate backup codes (8 codes, 8 characters each)
+        import secrets
+        backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+        
+        # Store secret and backup codes
         oid = ObjectId(user_id)
         db['users'].update_one(
             {"_id": oid},
-            {"$set": {"two_factor_secret_pending": secret}}
+            {"$set": {
+                "two_factor_secret_pending": secret,
+                "two_factor_backup_codes": backup_codes
+            }}
         )
         
         return {
             "secret": secret,
             "qr_code_url": f"data:image/png;base64,{qr_code_base64}",
-            "message": "Scan this QR code with your authenticator app"
+            "backup_codes": backup_codes,
+            "message": "Save these backup codes in a safe place. Each can be used once if you lose access to your authenticator app."
         }
     except ImportError:
         raise HTTPException(
@@ -274,6 +282,9 @@ def verify_2fa(payload: Verify2FARequest, Authorization: Optional[str] = Header(
         if not totp.verify(payload.code, valid_window=1):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid verification code")
         
+        # Get backup codes
+        backup_codes = user.get("two_factor_backup_codes", [])
+        
         # Enable 2FA
         oid = ObjectId(user_id)
         db['users'].update_one(
@@ -282,6 +293,7 @@ def verify_2fa(payload: Verify2FARequest, Authorization: Optional[str] = Header(
                 "$set": {
                     "two_factor_enabled": True,
                     "two_factor_secret": secret,
+                    "two_factor_backup_codes": backup_codes,  # Keep backup codes
                     "two_factor_enabled_at": datetime.now(timezone.utc).isoformat()
                 },
                 "$unset": {"two_factor_secret_pending": ""}
@@ -496,13 +508,29 @@ def complete_passkey_registration(
     
     try:
         from webauthn import verify_registration_response
-        from webauthn.helpers.structs import RegistrationCredential
+        from webauthn.helpers.structs import (
+            RegistrationCredential,
+            AuthenticatorAttestationResponse
+        )
+        import json
         
-        # Construct the credential object from the dict
+        # Decode base64-encoded fields to bytes
+        raw_id_bytes = base64.b64decode(credential.get("rawId"))
+        client_data_json_bytes = base64.b64decode(credential["response"]["clientDataJSON"])
+        attestation_object_bytes = base64.b64decode(credential["response"]["attestationObject"])
+        
+        # Construct response object
+        attestation_response = AuthenticatorAttestationResponse(
+            client_data_json=client_data_json_bytes,
+            attestation_object=attestation_object_bytes,
+            transports=credential["response"].get("transports", [])
+        )
+        
+        # Construct the credential object
         reg_credential = RegistrationCredential(
             id=credential.get("id"),
-            raw_id=credential.get("rawId"),
-            response=credential.get("response"),
+            raw_id=raw_id_bytes,
+            response=attestation_response,
             type=credential.get("type", "public-key")
         )
         
@@ -510,7 +538,7 @@ def complete_passkey_registration(
         verification = verify_registration_response(
             credential=reg_credential,
             expected_challenge=base64.b64decode(stored_challenge),
-            expected_origin="http://localhost:3000",  # Change to your origin in production
+            expected_origin="http://localhost:3000",
             expected_rp_id="localhost",
         )
         

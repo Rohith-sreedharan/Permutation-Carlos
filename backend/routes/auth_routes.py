@@ -15,6 +15,11 @@ class UserRegistration(BaseModel):
     username: Optional[str]
 
 
+class PasskeyLoginRequest(BaseModel):
+    email: EmailStr
+    credential: dict
+
+
 router = APIRouter(prefix="/api", tags=["auth"])
 
 
@@ -194,40 +199,81 @@ def begin_passkey_login(email: str):
 
 
 @router.post("/passkey/login-complete")
-def complete_passkey_login(email: str, credential: dict):
+def complete_passkey_login(payload: PasskeyLoginRequest):
     """Complete passkey login"""
     import base64
     from bson import ObjectId
     
-    user = db["users"].find_one({"email": email})
+    print(f"[PASSKEY LOGIN] Attempting login for: {payload.email}")
+    
+    user = db["users"].find_one({"email": payload.email})
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        print(f"[PASSKEY LOGIN] User not found: {payload.email}")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email address")
+    
+    # Check if user has any passkeys registered
+    passkeys = user.get("passkey_credentials", [])
+    print(f"[PASSKEY LOGIN] User has {len(passkeys)} passkeys registered")
+    
+    if not passkeys:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="No passkeys registered. Please register a passkey first by logging in with password and going to Settings."
+        )
     
     stored_challenge = user.get("passkey_auth_challenge")
     if not stored_challenge:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No pending authentication")
+        print(f"[PASSKEY LOGIN] No challenge found for user")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No pending authentication. Please start login again.")
+    
+    print(f"[PASSKEY LOGIN] Challenge exists, credential ID: {payload.credential.get('id')[:30]}...")
     
     try:
         from webauthn import verify_authentication_response
         from webauthn.helpers.structs import AuthenticationCredential
         
         # Find the credential
-        credential_id = credential.get("id")
+        credential_id = payload.credential.get("id")
+        print(f"[PASSKEY LOGIN] Looking for credential: {credential_id[:30]}...")
+        print(f"[PASSKEY LOGIN] Stored credentials: {[c['id'][:30]+'...' for c in user.get('passkey_credentials', [])]}")
+        
+        # Normalize base64 padding for comparison (strip trailing = signs)
+        normalized_credential_id = credential_id.rstrip('=')
+        
         stored_credential = next(
-            (c for c in user.get("passkey_credentials", []) if c["id"] == credential_id),
+            (c for c in user.get("passkey_credentials", []) if c["id"].rstrip('=') == normalized_credential_id),
             None
         )
         
         if not stored_credential:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credential")
+            print(f"[PASSKEY LOGIN] ERROR: Credential not found!")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credential - not registered")
         
-        # Construct the credential object from the dict
-        auth_credential = AuthenticationCredential(
-            id=credential.get("id"),
-            raw_id=credential.get("rawId"),
-            response=credential.get("response"),
-            type=credential.get("type", "public-key")
+        print(f"[PASSKEY LOGIN] Found stored credential, verifying...")
+        
+        # Decode base64-encoded fields to bytes
+        raw_id_bytes = base64.b64decode(payload.credential.get("rawId"))
+        client_data_json_bytes = base64.b64decode(payload.credential["response"]["clientDataJSON"])
+        authenticator_data_bytes = base64.b64decode(payload.credential["response"]["authenticatorData"])
+        signature_bytes = base64.b64decode(payload.credential["response"]["signature"])
+        
+        # Construct response object
+        from webauthn.helpers.structs import AuthenticatorAssertionResponse
+        assertion_response = AuthenticatorAssertionResponse(
+            client_data_json=client_data_json_bytes,
+            authenticator_data=authenticator_data_bytes,
+            signature=signature_bytes,
         )
+        
+        # Construct the credential object
+        auth_credential = AuthenticationCredential(
+            id=payload.credential.get("id"),
+            raw_id=raw_id_bytes,
+            response=assertion_response,
+            type=payload.credential.get("type", "public-key")
+        )
+        
+        print(f"[PASSKEY LOGIN] Calling webauthn verification...")
         
         # Verify the authentication
         verification = verify_authentication_response(
