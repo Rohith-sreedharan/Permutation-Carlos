@@ -7,93 +7,53 @@ Your production site is slow because you're using:
 2. **CDN React** - loads React from external CDN (ADDS DELAY)
 3. **No build optimization** - bundle not optimized
 
-## Files to Copy to Production Server
+## Quick Fix for Production Server
 
-### 1. tailwind.config.js (NEW FILE)
-```javascript
-/** @type {import('tailwindcss').Config} */
-export default {
-  content: [
-    "./index.html",
-    "./**/*.{js,ts,jsx,tsx}",
-  ],
-  theme: {
-    extend: {
-      colors: {
-        'dark-navy': '#0C1018',
-        'navy': '#1A1F27',
-        'card-gray': '#1A1F27',
-        'charcoal': '#343a40',
-        'border-gray': '#2D3542',
-        'gold': '#D4A64A',
-        'light-gold': '#E7C776',
-        'deep-red': '#A03333',
-        'light-red': '#CC4A45',
-        'off-white': '#F3F2ED',
-        'muted-text': '#8B97A7',
-        'light-gray': '#adb5bd',
-        'neon-green': '#4CAF50',
-        'vibrant-yellow': '#FFEB3B',
-        'bold-red': '#F52D2D',
-        'electric-blue': '#D4A64A',
-      },
-      fontFamily: {
-        sans: ['Roboto', 'sans-serif'],
-        teko: ['Teko', 'sans-serif'],
-      },
-      keyframes: {
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-        'fade-in': {
-          '0%': { opacity: '0', transform: 'scale(0.95)' },
-          '100%': { opacity: '1', transform: 'scale(1)' },
-        },
-        'slide-up': {
-          '0%': { opacity: '0', transform: 'translateY(20px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        'slide-in': {
-          '0%': { transform: 'scaleX(0)', transformOrigin: 'left' },
-          '100%': { transform: 'scaleX(1)', transformOrigin: 'left' },
-        },
-        'pulse-glow': {
-          '0%, 100%': { boxShadow: '0 0 5px rgba(212, 166, 74, 0.5)' },
-          '50%': { boxShadow: '0 0 20px rgba(212, 166, 74, 0.8)' },
-        },
-      },
-      animation: {
-        shimmer: 'shimmer 2s ease-in-out infinite',
-        'fade-in': 'fade-in 0.3s ease-out',
-        'slide-up': 'slide-up 0.3s ease-out',
-        'slide-in': 'slide-in 0.2s ease-out',
-        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-      },
-    },
-  },
-  plugins: [],
-}
+### Step 1: Install the required package
+```bash
+npm install @tailwindcss/postcss
 ```
 
-### 2. postcss.config.js (NEW FILE)
+### Step 2: Update postcss.config.js
 ```javascript
 export default {
   plugins: {
-    tailwindcss: {},
+    '@tailwindcss/postcss': {},
     autoprefixer: {},
   },
 }
 ```
 
-### 3. src/index.css (NEW FILE - create in src/ folder)
+### Step 3: Update src/index.css
 ```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-dark-navy: #0C1018;
+  --color-navy: #1A1F27;
+  --color-card-gray: #1A1F27;
+  --color-charcoal: #343a40;
+  --color-border-gray: #2D3542;
+  --color-gold: #D4A64A;
+  --color-light-gold: #E7C776;
+  --color-deep-red: #A03333;
+  --color-light-red: #CC4A45;
+  --color-off-white: #F3F2ED;
+  --color-muted-text: #8B97A7;
+  --color-light-gray: #adb5bd;
+  --color-neon-green: #4CAF50;
+  --color-vibrant-yellow: #FFEB3B;
+  --color-bold-red: #F52D2D;
+  --color-electric-blue: #D4A64A;
+  
+  --font-family-sans: 'Roboto', sans-serif;
+  --font-family-teko: 'Teko', sans-serif;
+}
 ```
 
-### 4. index.html (REPLACE)
+### Step 4: You can DELETE tailwind.config.js (not needed for v4)
+
+### Step 5: Update index.html (REPLACE)
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -114,13 +74,7 @@ export default {
 </html>
 ```
 
-### 5. index.tsx (UPDATE - add CSS import)
-Find the imports at the top and add:
-```typescript
-import './src/index.css';
-```
-
-So it looks like:
+### Step 6: Update index.tsx (add CSS import)
 ```typescript
 import React from 'react';
 import ReactDOM from 'react-dom/client';
