@@ -53,7 +53,21 @@ function createConnection() {
         connectionId = `user_${Math.random().toString(36).substring(2, 11)}`;
     }
 
-    const wsUrl = `ws://localhost:8000/ws?connection_id=${connectionId}`;
+    // Use environment variable or build dynamic URL based on current host
+    const getWebSocketUrl = () => {
+        if (import.meta.env.VITE_WS_URL) {
+            return import.meta.env.VITE_WS_URL;
+        }
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname === 'localhost' 
+            ? 'localhost:8000' 
+            : window.location.host;
+        
+        return `${protocol}//${host}/ws`;
+    };
+
+    const wsUrl = `${getWebSocketUrl()}?connection_id=${connectionId}`;
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
