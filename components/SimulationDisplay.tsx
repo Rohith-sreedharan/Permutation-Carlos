@@ -1,4 +1,5 @@
 import React from 'react';
+import { validateSimulationData } from '../utils/dataValidation';
 
 export interface MonteCarloSimulation {
   simulation_id: string;
@@ -16,6 +17,7 @@ export interface MonteCarloSimulation {
   spread_distribution?: Record<string, number>;
   total_distribution?: Record<string, number>;
   created_at: string;
+  canonical_teams?: any; // Canonical team anchor
 }
 
 interface SimulationDisplayProps {
@@ -29,6 +31,11 @@ const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userT
 
   const formatProbability = (prob: number) => (prob * 100).toFixed(2) + '%';
   const formatScore = (score: number) => score.toFixed(1);
+  
+  // Use canonical team data if available (prevents win probability flip bug)
+  const canonicalTeams = simulation.canonical_teams;
+  const team_a_win_prob = canonicalTeams?.home_team?.win_probability ?? simulation.team_a_win_probability;
+  const team_b_win_prob = canonicalTeams?.away_team?.win_probability ?? simulation.team_b_win_probability;
 
   return (
     <div className="bg-charcoal rounded-xl p-6 space-y-6">
@@ -59,13 +66,13 @@ const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userT
           <div className="flex items-center justify-between">
             <span className="text-sm text-light-gray">{simulation.team_a}</span>
             <span className="text-2xl font-bold text-electric-blue">
-              {formatProbability(simulation.team_a_win_probability)}
+              {formatProbability(team_a_win_prob)}
             </span>
           </div>
           <div className="h-2 bg-charcoal rounded-full overflow-hidden">
             <div
               className="h-full bg-electric-blue transition-all"
-              style={{ width: `${simulation.team_a_win_probability * 100}%` }}
+              style={{ width: `${team_a_win_prob * 100}%` }}
             />
           </div>
           <div className="text-sm text-light-gray">
@@ -77,13 +84,13 @@ const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userT
           <div className="flex items-center justify-between">
             <span className="text-sm text-light-gray">{simulation.team_b}</span>
             <span className="text-2xl font-bold text-bold-red">
-              {formatProbability(simulation.team_b_win_probability)}
+              {formatProbability(team_b_win_prob)}
             </span>
           </div>
           <div className="h-2 bg-charcoal rounded-full overflow-hidden">
             <div
               className="h-full bg-bold-red transition-all"
-              style={{ width: `${simulation.team_b_win_probability * 100}%` }}
+              style={{ width: `${team_b_win_prob * 100}%` }}
             />
           </div>
           <div className="text-sm text-light-gray">

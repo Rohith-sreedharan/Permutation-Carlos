@@ -18,10 +18,11 @@ from services.logger import log_stage
 from core.sport_strategies import SportStrategyFactory
 from core.sport_constants import map_position_abbreviation
 from core.calibration_engine import CalibrationEngine
+from utils.mongo_helpers import sanitize_mongo_doc
 from core.calibration_logger import CalibrationLogger
 from core.market_line_integrity import MarketLineIntegrityVerifier, MarketLineIntegrityError
 from core.decomposition_logger import DecompositionLogger
-from core.pick_state_machine import PickStateMachine, PickState
+from core.pick_state_machine import PickStateMachine, PickState, PickClassification
 from core.version_tracker import get_version_tracker
 from core.numerical_accuracy import (
     SimulationOutput,
@@ -585,6 +586,20 @@ class MonteCarloEngine:
                 f"({'✅ PASSED' if rcl_passed else '🚫 FAILED'}: {rcl_reason})"
             )
             
+            # Log RCL check (7-year retention, immutable)
+            try:
+                from db.audit_logger import get_audit_logger
+                audit_logger = get_audit_logger()
+                audit_logger.log_rcl(
+                    game_id=event_id,
+                    rcl_passed=rcl_passed,
+                    rcl_reason=rcl_reason,
+                    sport=market_context.get("sport_key", "unknown").replace('basketball_', '').replace('americanfootball_', '')
+                )
+            except Exception as e:
+                # Non-blocking: audit logging failure doesn't break simulation
+                logger.debug(f"Audit RCL logging skipped: {e}")
+            
         except Exception as e:
             logger.error(f"RCL failed, using raw total: {e}")
             rcl_total = median_total
@@ -597,41 +612,82 @@ class MonteCarloEngine:
                 "edge_eligible": True
             }
         
-        # ===== SHARP SIDE ANALYSIS =====
-        # Calculate model's projected spread (based on win probabilities and margin)
-        # model_spread = Team A score - Team B score
-        # Positive = Team A (home) favored, Negative = Team B (away) favored
-        model_spread = avg_margin / iterations
+        # ===== CANONICAL TEAM ANCHOR (BUG FIX) =====
+        # CRITICAL FIX: Establish single source of truth for all team data
+        # This prevents win probability and spread sign flips in UI
         
-        # vegas_spread is from market_context (home team's perspective from odds API)
-        # Negative = home team favored, Positive = home team underdog
-        vegas_spread = market_context.get('current_spread', 0.0)
+        # Lock team names to home/away positions (never flip these)
+        home_team_name = team_a.get("name", "Team A")
+        away_team_name = team_b.get("name", "Team B")
         
-        # Determine favorite and underdog based on MODEL projection
-        if abs(model_spread) < 0.5:
-            # Pick'em game - no spread edge to calculate
-            favorite_team = team_a.get("name", "Team A")
-            underdog_team = team_b.get("name", "Team B")
-            model_spread_formatted = model_spread
-            vegas_spread_formatted = vegas_spread
-        elif model_spread > 0:
-            # Team A (home) is favored by model
-            favorite_team = team_a.get("name", "Team A")
-            underdog_team = team_b.get("name", "Team B")
-            # Express as favorite's spread (negative)
-            model_spread_formatted = -abs(model_spread)
-            # Vegas spread should also be negative if home is favored
-            # If vegas_spread is positive, that means away team is favored by Vegas, keep it as-is
-            vegas_spread_formatted = vegas_spread
+        # Calculate raw model spread (home perspective: positive = home favored)
+        model_spread_home_perspective = avg_margin / iterations
+        
+        # Lock Vegas spread to sportsbook source (preserve sign exactly as published)
+        # Negative = home favored, Positive = away favored
+        vegas_spread_home_perspective = market_context.get('current_spread', 0.0)
+        
+        # Determine favorite/underdog based STRICTLY on Vegas spread sign
+        # (Vegas is the canonical source of truth for market roles)
+        if abs(vegas_spread_home_perspective) < 0.5:
+            # Pick'em game
+            vegas_favorite = home_team_name if vegas_spread_home_perspective <= 0 else away_team_name
+            vegas_underdog = away_team_name if vegas_spread_home_perspective <= 0 else home_team_name
+            vegas_spread_favorite_perspective = vegas_spread_home_perspective
+        elif vegas_spread_home_perspective < 0:
+            # Home team is Vegas favorite (negative spread)
+            vegas_favorite = home_team_name
+            vegas_underdog = away_team_name
+            vegas_spread_favorite_perspective = vegas_spread_home_perspective  # Keep negative
         else:
-            # Team B (away) is favored by model
-            favorite_team = team_b.get("name", "Team B")
-            underdog_team = team_a.get("name", "Team A")
-            # Express as favorite's spread (negative) 
-            model_spread_formatted = -abs(model_spread)
-            # Convert vegas_spread to away team's perspective
-            # If home team has +5, away team is favored at -5
-            vegas_spread_formatted = -vegas_spread
+            # Away team is Vegas favorite (positive home spread)
+            vegas_favorite = away_team_name
+            vegas_underdog = home_team_name
+            vegas_spread_favorite_perspective = -vegas_spread_home_perspective  # Convert to favorite perspective
+        
+        # Convert model spread to favorite's perspective for comparison
+        if vegas_favorite == home_team_name:
+            # Home is Vegas favorite, model spread already in correct perspective
+            model_spread_favorite_perspective = -abs(model_spread_home_perspective) if model_spread_home_perspective > 0 else abs(model_spread_home_perspective)
+        else:
+            # Away is Vegas favorite, flip model spread
+            model_spread_favorite_perspective = -abs(model_spread_home_perspective) if model_spread_home_perspective < 0 else abs(model_spread_home_perspective)
+        
+        # CANONICAL TEAM ANCHOR: Single source of truth for all downstream usage
+        canonical_team_data = {
+            "home_team": {
+                "name": home_team_name,
+                "team_id": team_a.get("id", "team_a"),
+                "win_probability": home_win_probability,
+                "role": "favorite" if vegas_favorite == home_team_name else "underdog",
+                "vegas_spread": vegas_spread_home_perspective  # Preserve original sign
+            },
+            "away_team": {
+                "name": away_team_name,
+                "team_id": team_b.get("id", "team_b"),
+                "win_probability": away_win_probability,
+                "role": "favorite" if vegas_favorite == away_team_name else "underdog",
+                "vegas_spread": -vegas_spread_home_perspective  # Away perspective
+            },
+            "vegas_favorite": {
+                "name": vegas_favorite,
+                "spread": vegas_spread_favorite_perspective,  # Always negative
+                "win_probability": home_win_probability if vegas_favorite == home_team_name else away_win_probability
+            },
+            "vegas_underdog": {
+                "name": vegas_underdog,
+                "spread": -vegas_spread_favorite_perspective,  # Always positive
+                "win_probability": away_win_probability if vegas_favorite == home_team_name else home_win_probability
+            },
+            "model_spread_home_perspective": model_spread_home_perspective,
+            "vegas_spread_home_perspective": vegas_spread_home_perspective
+        }
+        
+        # Use canonical data for sharp analysis (prevents team label flips)
+        favorite_team = vegas_favorite
+        underdog_team = vegas_underdog
+        model_spread_formatted = model_spread_favorite_perspective
+        vegas_spread_formatted = vegas_spread_favorite_perspective
         
         # Calculate spread edge
         spread_analysis = calculate_spread_edge(
@@ -712,7 +768,7 @@ class MonteCarloEngine:
             sport_key=sport_key,
             model_total=rcl_total,
             vegas_total=bookmaker_total_line,
-            std_total=np.std(totals_array),
+            std_total=float(np.std(totals_array)),
             p_raw=p_raw,
             edge_raw=edge_raw,
             data_quality_score=data_quality_score,
@@ -776,13 +832,13 @@ class MonteCarloEngine:
         # CRITICAL: Every game must have explicit state - NO UNKNOWN allowed
         
         if missing_inputs:
-            # Inputs not ready - set PENDING_INPUTS (internal only)
+            # Inputs not ready - set NO_PLAY with pending reason
             pick_classification = PickClassification(
-                state=PickState.PENDING_INPUTS,
+                state=PickState.NO_PLAY,
                 can_publish=False,
                 can_parlay=False,
                 confidence_tier="NONE",
-                reasons=missing_inputs,
+                reasons=["PENDING_INPUTS"] + missing_inputs,
                 thresholds_met={}
             )
             logger.info(f"⏳ [{sport_key}] {event_id[:20]} → PENDING_INPUTS: {', '.join(missing_inputs)}")
@@ -855,7 +911,11 @@ class MonteCarloEngine:
             "team_a": team_a.get("name"),
             "team_b": team_b.get("name"),
             
+            # CANONICAL TEAM ANCHOR: Single source of truth (prevents UI bugs)
+            "canonical_teams": canonical_team_data,
+            
             # NUMERICAL ACCURACY: All values from validated SimulationOutput
+            # CRITICAL: These are ALWAYS from home team perspective
             "team_a_win_probability": round(home_win_probability, 4),
             "team_b_win_probability": round(away_win_probability, 4),
             "win_probability": round(home_win_probability, 4),  # For home team
@@ -972,8 +1032,8 @@ class MonteCarloEngine:
             # ===== SHARP SIDE ANALYSIS =====
             "sharp_analysis": {
                 "spread": {
-                    "vegas_spread": vegas_spread,
-                    "model_spread": model_spread,
+                    "vegas_spread": vegas_spread_home_perspective,
+                    "model_spread": model_spread_home_perspective,
                     "sharp_side": spread_analysis.sharp_side,
                     "edge_points": spread_analysis.edge_points,
                     "edge_direction": spread_analysis.edge_direction,
@@ -1010,6 +1070,9 @@ class MonteCarloEngine:
             "debug_label": get_debug_label("monte_carlo_engine", iterations, median_total, variance_total)
         }
         
+        # Sanitize numpy types before saving to MongoDB
+        simulation_result = sanitize_mongo_doc(simulation_result)
+        
         # Store simulation in database - use update_one with upsert to avoid duplicate key errors
         # This handles regeneration cases where simulation_id might already exist
         db["monte_carlo_simulations"].update_one(
@@ -1031,14 +1094,14 @@ class MonteCarloEngine:
                     away_team=team_b.get("name", "Team B"),
                     market_type="spread",
                     predicted_outcome={
-                        "prediction_value": model_spread,
+                        "prediction_value": model_spread_home_perspective,
                         "win_probability": home_win_probability if spread_analysis.edge_direction == 'DOG' else away_win_probability,
                         "sharp_side": spread_analysis.sharp_side,
                         "edge_points": spread_analysis.edge_points,
                         "edge_grade": spread_analysis.edge_grade
                     },
                     vegas_line={
-                        "line_value": vegas_spread,
+                        "line_value": vegas_spread_home_perspective,
                         "bookmaker": market_context.get("bookmaker_source", "Consensus"),
                         "timestamp": market_context.get("odds_timestamp", datetime.now(timezone.utc).isoformat())
                     },
@@ -1089,7 +1152,7 @@ class MonteCarloEngine:
                 vegas_line=bookmaker_total_line,
                 model_line=rcl_total,
                 raw_model_line=median_total,
-                std_total=np.std(totals_array),
+                std_total=float(np.std(totals_array)),
                 p_raw=p_raw,
                 p_adjusted=calibration_result['p_adjusted'],
                 edge_raw=edge_raw,
@@ -1099,7 +1162,7 @@ class MonteCarloEngine:
                 confidence_score=confidence_score,
                 data_quality=data_quality_score * 100,  # Convert to 0-100 scale
                 market_type="total",
-                sharp_side=total_analysis.sharp_side,
+                sharp_side=total_analysis.sharp_side or "NO_PLAY",
                 edge_direction=total_analysis.edge_direction,
                 pick_state=pick_classification.state.value,
                 state_machine_reasons=pick_classification.reasons
@@ -1332,6 +1395,9 @@ class MonteCarloEngine:
             # Debug label
             "debug_label": get_debug_label(f"monte_carlo_1h", iterations, h1_median_total, h1_variance)
         }
+        
+        # Sanitize numpy types before saving to MongoDB
+        simulation_result = sanitize_mongo_doc(simulation_result)
         
         # Store period simulation in database - use update_one with upsert to avoid duplicate key errors
         db["monte_carlo_simulations"].update_one(

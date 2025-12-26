@@ -4,12 +4,13 @@ Functions to clean MongoDB documents for JSON serialization
 """
 from typing import Any, Dict, List, Union
 from bson import ObjectId
+import numpy as np
 
 
 def sanitize_mongo_doc(doc: Any) -> Any:
     """
     Recursively remove MongoDB-specific fields (_id, ObjectId) from documents
-    to make them JSON serializable.
+    to make them JSON serializable. Also converts numpy types to native Python types.
     
     Args:
         doc: MongoDB document, list, dict, or primitive value
@@ -23,6 +24,27 @@ def sanitize_mongo_doc(doc: Any) -> Any:
     # Handle ObjectId directly
     if isinstance(doc, ObjectId):
         return str(doc)
+    
+    # Handle numpy types - check type name first for broader compatibility
+    type_name = type(doc).__name__
+    if type_name.startswith('bool') or 'bool' in type_name.lower():
+        # Handles np.bool_, np.False_, np.True_, etc.
+        return bool(doc)
+    if type_name.startswith('int') or type_name in ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64']:
+        return int(doc)
+    if type_name.startswith('float') or type_name in ['float16', 'float32', 'float64', 'float128']:
+        return float(doc)
+    
+    # Handle numpy arrays
+    if isinstance(doc, np.ndarray):
+        return doc.tolist()
+    
+    # Catch-all for any numpy scalar using hasattr and isinstance
+    try:
+        if hasattr(np, 'generic') and isinstance(doc, np.generic):
+            return doc.item()
+    except (TypeError, AttributeError):
+        pass
     
     # Handle dictionaries (MongoDB documents)
     if isinstance(doc, dict):

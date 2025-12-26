@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DecisionCommandCenter from './components/DecisionCommandCenter';  // Renamed from Dashboard
 import Community from './components/CommunityEnhanced';
+import WarRoom from './components/WarRoom';
+import WarRoomLeaderboard from './components/WarRoomLeaderboard';
 import Affiliates from './components/Affiliates';
 import Leaderboard from './components/Leaderboard';
 import Profile from './components/Profile';
@@ -10,6 +12,7 @@ import SubscriptionSettings from './components/SubscriptionSettings';
 import AffiliateWallet from './components/AffiliateWallet';
 import DecisionCapitalProfile from './components/DecisionCapitalProfile';
 import Settings from './components/Settings';
+import TelegramConnection from './components/TelegramConnection';
 import AuthPage from './components/AuthPage';
 import GameDetail from './components/GameDetail';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -135,6 +138,10 @@ const App: React.FC = () => {
         );
       case 'community':
         return <Community />;
+      case 'war-room':
+        return <WarRoom />;
+      case 'war-room-leaderboard':
+        return <WarRoomLeaderboard />;
       case 'trust-loop':
         return <TrustLoop />;
       case 'architect':
@@ -154,6 +161,8 @@ const App: React.FC = () => {
         return <DecisionCapitalProfile onAuthError={handleLogout} />;
       case 'settings':
         return <Settings />;
+      case 'telegram':
+        return <TelegramConnection />;
       default:
         return <DecisionCommandCenter onAuthError={handleLogout} onGameClick={handleGameClick} />;
     }

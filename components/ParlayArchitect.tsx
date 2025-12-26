@@ -27,6 +27,7 @@ interface ParlayData {
   correlation_impact: string;
   confidence_rating: string;
   is_unlocked: boolean;
+  is_speculative?: boolean; // Flag for simulated/speculative parlays
   transparency_message?: string;  // Notification about tier fallback
   unlock_price?: number;
   unlock_message?: string;

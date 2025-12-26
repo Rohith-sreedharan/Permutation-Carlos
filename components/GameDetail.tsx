@@ -33,6 +33,16 @@ import { getUserTierInfo, type TierName } from '../utils/tierConfig';
 import { getConfidenceTier, getConfidenceGlow, getConfidenceBadgeStyle } from '../utils/confidenceTiers';
 import { getSportLabels } from '../utils/sportLabels';
 import { validateEdge, getImpliedProbability, explainEdgeSource, type EdgeValidationInput } from '../utils/edgeValidation';
+import { validateSimulationData, getSpreadDisplay, getTeamWinProbability } from '../utils/dataValidation';
+import { 
+  classifySpreadEdge, 
+  classifyTotalEdge, 
+  getEdgeStateStyling, 
+  shouldHighlightSide, 
+  getBlockedSignalMessage,
+  EdgeState,
+  type EdgeClassification 
+} from '../utils/edgeStateClassification';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart } from 'recharts';
 import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } from '../types';
 
@@ -447,9 +457,58 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     ci_99: [simulation.avg_margin - 15, simulation.avg_margin + 15] as [number, number]
   };
 
-  // Dynamic community pulse based on simulation probabilities
-  const homeWinProb = (simulation.team_a_win_probability || simulation.win_probability || 0.5) * 100;
-  const awayWinProb = 100 - homeWinProb;
+  // CRITICAL FIX: Use canonical team anchor to prevent win probability flip bug
+  // Always get win probability from canonical source bound to team_id
+  const canonicalTeams = simulation.canonical_teams;
+  
+  // Validate simulation data before rendering
+  const validation = validateSimulationData(simulation, event);
+  
+  // BLOCK RENDERING if data validation fails (prevents displaying incorrect data)
+  if (!validation.isValid) {
+    console.error('🚨 DATA MISMATCH DETECTED:', validation.errors);
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6 flex items-center justify-center">
+        <div className="bg-bold-red/20 border-2 border-bold-red rounded-xl p-8 max-w-2xl">
+          <div className="text-center">
+            <div className="text-6xl mb-4">⚠️</div>
+            <h2 className="text-2xl font-bold text-bold-red mb-4">DATA MISMATCH — HOLD</h2>
+            <p className="text-light-gray mb-6">
+              Internal data inconsistency detected. This game cannot be displayed until data is corrected.
+            </p>
+            <div className="bg-charcoal/50 p-4 rounded-lg text-left">
+              <div className="text-xs text-bold-red font-mono space-y-1">
+                {validation.errors.map((error, idx) => (
+                  <div key={idx}>❌ {error}</div>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-light-gray mt-4">
+              Event ID: {event.id} | Simulation ID: {simulation.simulation_id}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Log warnings but allow rendering
+  if (validation.warnings.length > 0) {
+    console.warn('⚠️ DATA WARNINGS:', validation.warnings);
+  }
+  
+  let homeWinProb: number;
+  let awayWinProb: number;
+  
+  if (canonicalTeams) {
+    // Use canonical data (correct team-to-probability binding)
+    homeWinProb = canonicalTeams.home_team.win_probability * 100;
+    awayWinProb = canonicalTeams.away_team.win_probability * 100;
+  } else {
+    // Fallback for legacy simulations (before canonical fix)
+    homeWinProb = (simulation.team_a_win_probability || simulation.win_probability || 0.5) * 100;
+    awayWinProb = 100 - homeWinProb;
+  }
   
   // Get Over/Under from simulation (use actual data from backend)
   const totalScore = simulation.avg_total_score || simulation.avg_total || 220;
@@ -1339,6 +1398,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       </div>
 
       {/* FINAL UNIFIED SUMMARY - Single source of truth for all interpretation */}
+      {/* CRITICAL UX FIX (Jan 2025): Separates ACTIONABLE EDGE vs MODEL SIGNAL (HIGH VARIANCE) */}
       {simulation && (() => {
         const rawScore = simulation.confidence_score || 0.65;
         const normalizedScore = rawScore > 10 ? Math.min(100, Math.round((rawScore / 6000) * 100)) : Math.round(rawScore * 100);
@@ -1347,29 +1407,40 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         const isLowConfidence = normalizedScore < 60;
         
         // Spread interpretation with VALUE SIDE clarity
-        const spreadEdge = Math.abs(winProb - 0.5);
-        const marketSpread = simulation.spread || 0; // Negative = home favored, Positive = away favored
-        const modelImpliedSpread = (winProb - 0.5) * 20; // Convert win prob to spread
-        const spreadDeviation = Math.abs(modelImpliedSpread - marketSpread);
+        // CRITICAL FIX: Use canonical spread data to prevent sign inversion bug
+        // Get Vegas spread from canonical source (already in correct sign)
+        const marketSpread = canonicalTeams?.home_team?.vegas_spread ?? simulation.spread ?? 0;
         
-        // UNIVERSAL RULE (ALL SPORTS): 
-        // If volatility > 300 OR confidence < 60 → All spread leans default to NEUTRAL
-        // EXCEPTION: Edge > 6 pts AND confidence ≥ 70 → Override (extreme edge with consensus)
-        const hasExceptionalEdge = spreadDeviation >= 6.0 && normalizedScore >= 70 && varianceValue < 400;
-        const forceNeutralSpread = (varianceValue > 300 || normalizedScore < 60) && !hasExceptionalEdge;
+        // Model spread from canonical data (home perspective)
+        const modelImpliedSpread = canonicalTeams?.model_spread_home_perspective ?? (winProb - 0.5) * 20;
+        const spreadDeviation = Math.abs(modelImpliedSpread - marketSpread);
         
         // CRITICAL LOGIC: Identify favorite/underdog and determine value
         // Negative spread = home is favorite, Positive spread = away is favorite
         let valueSide = '';
         let valueExplanation = '';
         
-        if (marketSpread !== 0 && spreadDeviation >= 3.0 && !forceNeutralSpread) {
-          // Significant deviation (2+ pts)
+        if (marketSpread !== 0 && spreadDeviation >= 3.0) {
+          // Significant deviation (3+ pts)
           
-          // Determine who is favorite/underdog in VEGAS line
-          const vegasFavorite = marketSpread < 0 ? event.home_team : event.away_team;
-          const vegasUnderdog = marketSpread < 0 ? event.away_team : event.home_team;
-          const vegasSpreadValue = Math.abs(marketSpread);
+          // CRITICAL FIX: Use canonical team data for favorite/underdog roles
+          // This prevents spread sign inversion bugs
+          
+          let vegasFavorite: string;
+          let vegasUnderdog: string;
+          let vegasSpreadValue: number;
+          
+          if (canonicalTeams) {
+            // Use canonical source of truth
+            vegasFavorite = canonicalTeams.vegas_favorite.name;
+            vegasUnderdog = canonicalTeams.vegas_underdog.name;
+            vegasSpreadValue = Math.abs(canonicalTeams.vegas_favorite.spread);
+          } else {
+            // Fallback for legacy data
+            vegasFavorite = marketSpread < 0 ? event.home_team : event.away_team;
+            vegasUnderdog = marketSpread < 0 ? event.away_team : event.home_team;
+            vegasSpreadValue = Math.abs(marketSpread);
+          }
           
           // Determine who is favorite in MODEL
           const modelFavorite = modelImpliedSpread < 0 ? event.home_team : event.away_team;
@@ -1397,93 +1468,123 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           }
         }
         
-        const spreadLean = forceNeutralSpread ? 'NEUTRAL' : valueSide || 'NEUTRAL';
-        
-        // Final explanation with proper value identification
-        const spreadExplanation = forceNeutralSpread ? 
-          `Volatility (σ=${varianceValue.toFixed(1)}) > 300 or confidence (${normalizedScore}/100) < 60 = No statistical edge. Market appears efficient.` :
-          valueExplanation || 
-          (winProb > 0.65 ? `Model favors ${event.home_team} with ${((spreadEdge) * 100).toFixed(0)}% edge` :
-           winProb < 0.45 ? `Model favors ${event.away_team} with ${((spreadEdge) * 100).toFixed(0)}% edge` :
-           'Win probability near 50% — no edge detected');
+        // ===== CLASSIFY SPREAD EDGE (ACTIONABLE vs MODEL SIGNAL) =====
+        const spreadClassification = classifySpreadEdge(
+          spreadDeviation,
+          varianceValue,
+          normalizedScore,
+          valueSide || null
+        );
         
         // Total interpretation (SINGLE calculation)
         const totalEdge = Math.abs((simulation.projected_score || totalLine) - totalLine);
-        const hasTotalEdge = totalEdge >= 3.0; // Must be >= 3pts to be significant
-        const totalLean = !hasTotalEdge ? 'NEUTRAL' :
-                         overProb > 55 ? 'OVER' :
-                         underProb > 55 ? 'UNDER' : 'NEUTRAL';
-        const totalExplanation = !hasTotalEdge ? 
-          `Model projects ${(simulation.projected_score || totalLine).toFixed(1)} vs market ${totalLine.toFixed(1)} (Δ ${totalEdge.toFixed(1)} pts) — within statistical noise` :
-          overProb > 55 ? `Model mispricing detected: ${overProb.toFixed(0)}% probability of OVER, ${totalEdge.toFixed(1)} point edge vs market` :
-          underProb > 55 ? `Model mispricing detected: ${underProb.toFixed(0)}% probability of UNDER, ${totalEdge.toFixed(1)} point edge vs market` :
-          'Projected total aligns with market';
         
-        // Volatility explanation
-        const volatilityExplanation = isHighVolatility ? 
-          `High variance environment (σ=${varianceValue.toFixed(2)}) — wider outcome distribution, increased upset potential. Consider reduced position sizing.` :
-          volatility === 'LOW' ? `Low variance (σ=${varianceValue.toFixed(2)}) — stable, predictable scoring range.` :
-          `Moderate variance (σ=${varianceValue.toFixed(2)}) — normal outcome distribution.`;
+        // Calculate Expected Value (EV) for total
+        // EV = (win_prob * payout) - (loss_prob * stake)
+        // Simplified: EV = (prob - 0.5) * 2 (for even money bets)
+        const totalEV = overProb > underProb 
+          ? (overProb / 100 - 0.5) * 2 * 100  // Convert to percentage
+          : (underProb / 100 - 0.5) * 2 * 100;
         
-        // Final action recommendation
-        const actionRecommendation = forceNeutralSpread && !hasTotalEdge ? 
-          '🔶 Statistical insight only — market appears efficient on both spread and total. High volatility reduces edge clarity.' :
-          !forceNeutralSpread && hasTotalEdge && totalLean !== 'NEUTRAL' ? 
-          `⚡ Market appears efficient on spread, but ${totalEdge.toFixed(1)} pt mispricing detected on total (${totalLean}).` :
-          forceNeutralSpread && hasTotalEdge ? 
-          `⚠️ Spread shows no edge (high volatility), but ${totalEdge.toFixed(1)} pt mispricing on total (${totalLean}).` :
-          '✅ Statistical edges detected — use as part of your decision framework.';
+        // ===== CLASSIFY TOTAL EDGE (ACTIONABLE vs MODEL SIGNAL) =====
+        const totalClassification = classifyTotalEdge(
+          totalEdge,
+          overProb,
+          underProb,
+          varianceValue,
+          normalizedScore,
+          totalEV
+        );
+        
+        // ===== MASTER EDGE BANNER LOGIC =====
+        // CRITICAL UX FIX: Only show "EDGE DETECTED" if at least one side is ACTIONABLE
+        const hasActionableEdge = spreadClassification.actionable || totalClassification.actionable;
+        const showEdgeBanner = hasActionableEdge;
+        
+        // Styling based on edge state
+        const spreadStyling = getEdgeStateStyling(spreadClassification.state);
+        const totalStyling = getEdgeStateStyling(totalClassification.state);
         
         return (
           <div className="mb-6 bg-gradient-to-br from-electric-blue/10 to-purple-900/10 border border-electric-blue/30 rounded-xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="text-2xl">🎯</div>
               <h3 className="text-xl font-bold text-white font-teko">FINAL UNIFIED SUMMARY</h3>
+              {/* EDGE DETECTED BANNER - Only shows if actionable edge exists */}
+              {showEdgeBanner && (
+                <div className="ml-auto px-3 py-1 bg-neon-green/20 border border-neon-green rounded-lg text-neon-green font-bold text-xs animate-pulse">
+                  ✅ EDGE DETECTED
+                </div>
+              )}
             </div>
             
             <div className="space-y-4">
               {/* Spread Analysis */}
-              <div className="bg-charcoal/50 p-4 rounded-lg border-l-4 ${forceNeutralSpread ? 'border-gold' : spreadLean === 'NEUTRAL' ? 'border-gold' : 'border-neon-green'}">
+              <div className={`bg-charcoal/50 p-4 rounded-lg border-l-4 ${spreadStyling.borderColor}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-light-gray text-xs uppercase font-bold">Spread Analysis</div>
-                  <div className={`font-bold text-sm ${forceNeutralSpread ? 'text-gold' : spreadLean === 'NEUTRAL' ? 'text-gold' : 'text-neon-green'}`}>
-                    {spreadLean === 'NEUTRAL' ? '⚖️ NEUTRAL' : `✅ ${spreadLean}`}
+                  <div className={`font-bold text-sm ${spreadStyling.textColor} flex items-center gap-2`}>
+                    <span>{spreadStyling.icon}</span>
+                    {spreadClassification.state === EdgeState.ACTIONABLE_EDGE && spreadClassification.side ? (
+                      <span>✅ {spreadClassification.side}</span>
+                    ) : spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? (
+                      <span>⚠️ {spreadStyling.label}</span>
+                    ) : (
+                      <span>⚖️ NEUTRAL</span>
+                    )}
                   </div>
                 </div>
                 <div className="text-xs text-light-gray leading-relaxed">
-                  {spreadExplanation}
+                  {spreadClassification.reason}
                 </div>
-                {forceNeutralSpread && (
-                  <div className="mt-2 text-xs text-vibrant-yellow bg-vibrant-yellow/10 border border-vibrant-yellow/30 rounded px-2 py-1">
-                    🔶 Volatility &gt;300 or Confidence &lt;60% = All spread leans default to NEUTRAL (protects from fake edges)
+                {/* Show blocked signal message if applicable */}
+                {spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && (
+                  <div className={`mt-2 text-xs ${spreadStyling.textColor} ${spreadStyling.bgColor} border ${spreadStyling.borderColor} rounded px-2 py-1`}>
+                    {getBlockedSignalMessage(spreadClassification)}
+                  </div>
+                )}
+                {/* Show value explanation if actionable */}
+                {spreadClassification.actionable && valueExplanation && (
+                  <div className="mt-2 text-xs text-neon-green bg-neon-green/10 border border-neon-green/30 rounded px-2 py-1">
+                    💡 {valueExplanation}
                   </div>
                 )}
               </div>
               
               {/* Total Analysis */}
-              <div className="bg-charcoal/50 p-4 rounded-lg border-l-4 ${hasTotalEdge && totalLean !== 'NEUTRAL' ? 'border-electric-blue' : 'border-gold'}">
+              <div className={`bg-charcoal/50 p-4 rounded-lg border-l-4 ${totalStyling.borderColor}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-light-gray text-xs uppercase font-bold">Total Analysis</div>
-                  <div className={`font-bold text-sm ${hasTotalEdge && totalLean !== 'NEUTRAL' ? 'text-electric-blue' : 'text-gold'}`}>
-                    {totalLean === 'NEUTRAL' ? '⚖️ NEUTRAL' : totalLean === 'OVER' ? '📈 OVER' : '📉 UNDER'} {totalLine.toFixed(1)}
+                  <div className={`font-bold text-sm ${totalStyling.textColor} flex items-center gap-2`}>
+                    <span>{totalStyling.icon}</span>
+                    {totalClassification.state === EdgeState.ACTIONABLE_EDGE && totalClassification.side ? (
+                      <span>✅ {totalClassification.side} {totalLine.toFixed(1)}</span>
+                    ) : totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? (
+                      <span>⚠️ {totalStyling.label}</span>
+                    ) : (
+                      <span>⚖️ NEUTRAL</span>
+                    )}
                   </div>
                 </div>
                 <div className="text-xs text-light-gray leading-relaxed">
-                  {totalExplanation}
+                  {totalClassification.reason}
                 </div>
-                {hasTotalEdge && totalLean !== 'NEUTRAL' && (
-                  <div className="mt-2 text-xs text-neon-green bg-neon-green/10 border border-neon-green/30 rounded px-2 py-1">
-                    {shouldSuppressCertainty(simulation) ? (
-                      <span className="text-amber-400">⚠️ {getUncertaintyLabel(simulation)}</span>
-                    ) : (
-                      <>💡 Model edge: {totalEdge.toFixed(1)} pts | Probability: {(totalLean === 'OVER' ? overProb : underProb).toFixed(1)}%</>
-                    )}
+                {/* Show blocked signal message if applicable */}
+                {totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && (
+                  <div className={`mt-2 text-xs ${totalStyling.textColor} ${totalStyling.bgColor} border ${totalStyling.borderColor} rounded px-2 py-1`}>
+                    {getBlockedSignalMessage(totalClassification)}
+                  </div>
+                )}
+                {/* Show edge details if actionable */}
+                {totalClassification.actionable && (
+                  <div className="mt-2 text-xs text-electric-blue bg-electric-blue/10 border border-electric-blue/30 rounded px-2 py-1">
+                    💡 Edge: {totalEdge.toFixed(1)} pts | Probability: {(totalClassification.probability * 100).toFixed(0)}% | EV: +{totalEV.toFixed(1)}%
                   </div>
                 )}
               </div>
               
               {/* Volatility Context */}
-              <div className="bg-charcoal/50 p-4 rounded-lg border-l-4 ${isHighVolatility ? 'border-bold-red' : 'border-neon-green'}">
+              <div className={`bg-charcoal/50 p-4 rounded-lg border-l-4 ${isHighVolatility ? 'border-bold-red' : 'border-neon-green'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-light-gray text-xs uppercase font-bold">Volatility Context</div>
                   <div className={`font-bold text-sm ${isHighVolatility ? 'text-bold-red' : volatility === 'LOW' ? 'text-neon-green' : 'text-gold'}`}>
@@ -1491,7 +1592,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
                 <div className="text-xs text-light-gray leading-relaxed">
-                  {volatilityExplanation}
+                  {isHighVolatility ? 
+                    `High variance environment (σ=${varianceValue.toFixed(2)}) — wider outcome distribution, increased upset potential. Risk controls active.` :
+                    volatility === 'LOW' ? `Low variance (σ=${varianceValue.toFixed(2)}) — stable, predictable scoring range.` :
+                    `Moderate variance (σ=${varianceValue.toFixed(2)}) — normal outcome distribution.`}
                 </div>
               </div>
               
@@ -1499,8 +1603,21 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               <div className="bg-gradient-to-r from-gold/10 to-purple-500/10 border border-gold/40 rounded-lg p-4">
                 <div className="text-light-gray text-xs uppercase mb-2 font-bold">Action Summary</div>
                 <div className="text-white font-semibold text-sm leading-relaxed">
-                  {actionRecommendation}
+                  {!spreadClassification.actionable && !totalClassification.actionable ? 
+                    '⚖️ Market appears efficient on both spread and total. No actionable edges detected.' :
+                    spreadClassification.actionable && totalClassification.actionable ? 
+                    '✅ Statistical edges detected on both spread and total — use as part of your decision framework.' :
+                    spreadClassification.actionable ? 
+                    `✅ Actionable spread edge detected. Total shows ${totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? 'signal but blocked by risk controls' : 'no edge'}.` :
+                    `✅ Actionable total edge detected. Spread shows ${spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? 'signal but blocked by risk controls' : 'no edge'}.`}
                 </div>
+                {/* Show master risk control message if both sides blocked */}
+                {spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && 
+                 totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && (
+                  <div className="mt-2 text-xs text-vibrant-yellow bg-vibrant-yellow/10 border border-vibrant-yellow/30 rounded px-2 py-1">
+                    ⚠️ Both spread and total signals detected but blocked by risk controls (high volatility/low confidence). Informational only — not actionable.
+                  </div>
+                )}
               </div>
               
               {/* 1H Quick Reference */}

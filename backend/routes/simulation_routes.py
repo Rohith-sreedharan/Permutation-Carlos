@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from bson import ObjectId
+import logging
 
 from core.monte_carlo_engine import MonteCarloEngine
 from core.safety_engine import SafetyEngine, PublicCopyFormatter
@@ -11,6 +12,7 @@ from core.truth_mode import truth_mode_validator, BlockReason
 from db.mongo import db
 from middleware.auth import get_current_user_optional, get_user_tier
 from services.post_game_grader import post_game_grader
+from utils.mongo_helpers import sanitize_mongo_doc
 from legacy_config import (
     SIMULATION_TIERS, 
     PRECISION_LABELS, 
@@ -19,6 +21,7 @@ from legacy_config import (
 )
 
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
+logger = logging.getLogger(__name__)
 
 
 def _apply_truth_mode_to_simulation(
@@ -173,6 +176,11 @@ async def get_simulation(
         precision_level = PRECISION_LABELS.get(assigned_iterations, "STANDARD")
         confidence_interval = CONFIDENCE_INTERVALS.get(assigned_iterations, 0.15)
         
+        # Fetch event data (needed for Truth Mode validation)
+        event = db.events.find_one({"event_id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail=f"Event not found: {event_id}")
+        
         # Find most recent FULL-GAME simulation for this event (exclude period simulations like 1H/2H)
         simulation = db.monte_carlo_simulations.find_one(
             {
@@ -233,11 +241,6 @@ async def get_simulation(
         if not simulation or should_regenerate:
             # Auto-generate simulation if it doesn't exist
             print(f"⚡ Auto-generating simulation for event {event_id} (Tier: {user_tier}, Iterations: {assigned_iterations})")
-            
-            # Fetch event data
-            event = db.events.find_one({"event_id": event_id})
-            if not event:
-                raise HTTPException(status_code=404, detail=f"Event not found: {event_id}")
             
             # Initialize Monte Carlo engine
             from core.monte_carlo_engine import MonteCarloEngine
@@ -381,6 +384,9 @@ async def get_simulation(
                 "simulation_created_at": created_at_iso
             }
         
+        # Sanitize numpy types before returning
+        simulation = sanitize_mongo_doc(simulation)
+        
         return simulation
         
     except HTTPException:
@@ -452,6 +458,27 @@ async def run_simulation(
             "generated_at": datetime.now(timezone.utc).isoformat()
         }
         
+        # Log to audit trail (7-year retention, immutable)
+        try:
+            from db.audit_logger import get_audit_logger
+            audit_logger = get_audit_logger()
+            audit_logger.log_simulation(
+                game_id=request.event_id,
+                sport=result.get('sport_key', 'unknown').replace('basketball_', '').replace('americanfootball_', ''),
+                sim_count=assigned_iterations,
+                vegas_line=result.get('vegas_total', 0) or result.get('vegas_spread', 0),
+                model_total=result.get('median_total', 0) or result.get('predicted_spread', 0),
+                stddev=result.get('std_dev', 0),
+                rcl_passed=result.get('rcl_passed', True),
+                edge_flagged=result.get('pick_state') in ['PICK', 'LEAN']
+            )
+        except Exception as e:
+            # Non-blocking: audit logging failure doesn't break simulation
+            logger.debug(f"Audit logging skipped: {e}")
+        
+        # Sanitize numpy types
+        result = sanitize_mongo_doc(result)
+        
         return result
         
     except Exception as e:
@@ -505,6 +532,8 @@ async def get_period_simulation(
         # Convert ObjectId to string for JSON serialization
         if "_id" in simulation:
             simulation["_id"] = str(simulation["_id"])
+        # Sanitize numpy types
+        simulation = sanitize_mongo_doc(simulation)
         return simulation
     
     # Generate new period simulation
@@ -567,6 +596,9 @@ async def get_period_simulation(
         # Convert ObjectId to string if present
         if "_id" in simulation:
             simulation["_id"] = str(simulation["_id"])
+        
+        # Sanitize numpy types
+        simulation = sanitize_mongo_doc(simulation)
         
         return simulation
         

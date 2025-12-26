@@ -120,6 +120,12 @@ def ensure_indexes() -> None:
     db["prop_mispricings"].create_index([("edge_pct", -1)])  # Sort by biggest edges
     db["prop_mispricings"].create_index([("detected_at", -1)])
 
+    # NEW: Sport Edge Evaluation indexes
+    db["nhl_evaluations"].create_index("game_id", unique=True)
+    db["nhl_evaluations"].create_index([("updated_at", -1)])
+    db["mlb_evaluations"].create_index("game_id", unique=True)
+    db["mlb_evaluations"].create_index([("updated_at", -1)])
+
 
 def insert_many(collection: str, data: List[Dict[str, Any]]) -> Optional[List[Any]]:
     if not data:

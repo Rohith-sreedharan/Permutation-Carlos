@@ -1,5 +1,5 @@
 // FIX: Added 'leaderboard', 'profile', 'billing', 'earnings' to support more pages
-export type Page = 'dashboard' | 'community' | 'trust-loop' | 'architect' | 'daily-cards' | 'affiliates' | 'leaderboard' | 'profile' | 'wallet' | 'billing' | 'earnings' | 'settings' | 'gameDetail' | 'onboarding';
+export type Page = 'dashboard' | 'community' | 'trust-loop' | 'architect' | 'daily-cards' | 'affiliates' | 'leaderboard' | 'profile' | 'wallet' | 'billing' | 'earnings' | 'settings' | 'telegram' | 'gameDetail' | 'onboarding' | 'war-room' | 'war-room-leaderboard';
 
 export interface Bet {
   type: 'Moneyline' | 'Spread' | 'Total';
@@ -32,6 +32,7 @@ export interface Event {
   id: string;
   sport_key: string;
   commence_time: string;
+  local_date_est?: string; // EST date for display
   home_team: string;
   away_team: string;
   bets: Bet[];
@@ -96,10 +97,12 @@ export interface MonteCarloSimulation {
   over_probability?: number;
   under_probability?: number;
   total_line?: number;
+  spread?: number; // Vegas spread line
   volatility_index: number | string;
   volatility_score?: number;
   volatility?: string;
   confidence_score: number;
+  pick_state?: 'PICK' | 'LEAN' | 'AVOID' | 'PASS' | 'UNKNOWN'; // Truth Mode state
   outcome?: {
     recommended_bet?: string | null;
     confidence?: number;
@@ -114,6 +117,32 @@ export interface MonteCarloSimulation {
   }>;
   variance?: number;
   win_probability?: number;
+  // Canonical team anchor data (prevents UI bugs)
+  canonical_teams?: {
+    home_team: {
+      name: string;
+      team_id: string;
+      vegas_spread: number;
+      win_probability: number;
+    };
+    away_team: {
+      name: string;
+      team_id: string;
+      vegas_spread: number;
+      win_probability: number;
+    };
+    vegas_favorite: {
+      name: string;
+      team_id: string;
+      spread: number;
+    };
+    vegas_underdog: {
+      name: string;
+      team_id: string;
+      spread: number;
+    };
+    model_spread_home_perspective: number;
+  };
   injury_impact?: Array<{
     player: string;
     team: string;

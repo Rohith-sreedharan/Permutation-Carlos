@@ -102,6 +102,19 @@ from routes.recap_routes import router as recap_router
 from routes.community_enhanced_routes import router as community_enhanced_router
 from routes.truth_mode_routes import router as truth_mode_router
 from routes.debug_routes import router as debug_router
+from routes.daily_preview_routes import router as daily_preview_router
+from routes.tracking_routes import router as tracking_router
+from routes.war_room_routes import router as war_room_router
+from routes.telegram_routes import router as telegram_router
+from routes.stripe_webhook_routes import router as stripe_webhook_router
+from routes.signal_routes import router as signal_router
+from routes.autonomous_edge_routes import router as autonomous_edge_router
+from routes.ncaab_routes import router as ncaab_router
+from routes.ncaaf_routes import router as ncaaf_router
+from routes.nfl_routes import router as nfl_router
+from routes.nhl_routes import router as nhl_router
+from routes.mlb_routes import router as mlb_router
+from routes.analyzer import router as analyzer_router
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -112,6 +125,17 @@ app.include_router(ab_test_router)
 app.include_router(affiliate_router)
 app.include_router(community_router)
 app.include_router(community_enhanced_router)  # NEW: Enhanced community features
+app.include_router(war_room_router)  # NEW: War Room v1.0 - Intelligence workspace
+app.include_router(signal_router)  # NEW: Signal Locks - Immutable signal architecture
+app.include_router(autonomous_edge_router)  # NEW: Autonomous Edge Execution - Three-wave simulation system
+app.include_router(ncaab_router)  # NEW: NCAAB Edge Evaluation - Two-layer college basketball system
+app.include_router(ncaaf_router)  # NEW: NCAAF Edge Evaluation - Two-layer college football system
+app.include_router(nfl_router)  # NEW: NFL Edge Evaluation - Two-layer professional football system
+app.include_router(nhl_router)  # NEW: NHL Edge Evaluation - Locked spec with 6 protective gates
+app.include_router(mlb_router)  # NEW: MLB Edge Evaluation - Locked spec (moneyline primary, weather-aware totals)
+app.include_router(analyzer_router)  # NEW: AI Analyzer - LLM-powered game explanations
+app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
+app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)
@@ -136,6 +160,8 @@ app.include_router(clv_router)  # CLV Tracking & Performance
 app.include_router(recap_router)  # Post-Game Recap & Feedback Loop
 app.include_router(truth_mode_router)  # Truth Mode v1.0: Zero-Lies Enforcement
 app.include_router(debug_router)  # Debug endpoints for pick state diagnostics
+app.include_router(tracking_router)  # Pixel & event tracking (Phase 1.2)
+app.include_router(daily_preview_router)  # Daily Preview for marketing conversion
 
 
 @app.websocket("/ws")
@@ -222,6 +248,20 @@ async def startup_event():
     ensure_indexes()
     print("✓ Database indexes initialized")
     
+    # Initialize v0 audit tables (Phase 1 Option C)
+    try:
+        from db.audit_schemas import initialize_audit_collections
+        from db.audit_logger import get_audit_logger
+        
+        audit_status = initialize_audit_collections(db)
+        audit_logger = get_audit_logger(db)
+        
+        success_count = sum(1 for v in audit_status.values() if v)
+        print(f"✓ Audit tables initialized ({success_count}/4 collections ready)")
+    except Exception as e:
+        print(f"⚠️ Audit table initialization warning: {e}")
+        print("   Audit logging will be limited")
+    
     # Start background scheduler
     from services.scheduler import start_scheduler
     start_scheduler()
@@ -242,6 +282,15 @@ async def startup_event():
     except Exception as e:
         print(f"⚠️ Agent system startup error: {e}")
         print("   Agents will be unavailable but API will function")
+    
+    # Start Autonomous Edge Scheduler
+    try:
+        from services.autonomous_edge_scheduler import start_autonomous_scheduler
+        await start_autonomous_scheduler(db)
+        print("✓ Autonomous Edge Scheduler active (three-wave system)")
+    except Exception as e:
+        print(f"⚠️ Autonomous Edge Scheduler startup error: {e}")
+        print("   Manual simulation triggers still available")
 
 
 @app.on_event("shutdown")
@@ -255,6 +304,14 @@ async def shutdown_event():
         from core.agent_orchestrator import shutdown_orchestrator
         await shutdown_orchestrator()
         print("✓ Multi-Agent System shutdown complete")
+    except Exception:
+        pass
+    
+    # Shutdown autonomous edge scheduler
+    try:
+        from services.autonomous_edge_scheduler import stop_autonomous_scheduler
+        await stop_autonomous_scheduler()
+        print("✓ Autonomous Edge Scheduler shutdown complete")
     except Exception:
         pass
 
