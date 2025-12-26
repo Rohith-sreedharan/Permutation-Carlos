@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { loginUser, registerUser } from '../services/api';
+import { loginUser, registerUser, verify2FALogin } from '../services/api';
+import Swal from 'sweetalert2';
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
@@ -23,6 +24,48 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       if (isLogin) {
         // Login
         const response = await loginUser({ email, password });
+        
+        // Check if 2FA is required
+        if (response.requires_2fa && response.temp_token) {
+          setLoading(false);
+          
+          // Show 2FA prompt
+          const result = await Swal.fire({
+            title: 'Two-Factor Authentication',
+            html: '<input type="text" id="2fa-code" class="swal2-input" placeholder="Enter 6-digit code" maxlength="6" style="background: #1a2332; color: white; border: 1px solid #334155;">',
+            showCancelButton: true,
+            confirmButtonText: 'Verify',
+            confirmButtonColor: '#00ff88',
+            cancelButtonColor: '#ff4444',
+            background: '#0f1419',
+            color: '#ffffff',
+            preConfirm: () => {
+              const code = (document.getElementById('2fa-code') as HTMLInputElement).value;
+              if (!code || code.length !== 6) {
+                Swal.showValidationMessage('Please enter a 6-digit code');
+                return false;
+              }
+              return code;
+            }
+          });
+          
+          if (result.isConfirmed && result.value) {
+            setLoading(true);
+            try {
+              const verifyResponse = await verify2FALogin(response.temp_token, result.value);
+              if (verifyResponse.access_token) {
+                localStorage.setItem('token', verifyResponse.access_token);
+                onAuthSuccess();
+              }
+            } catch (err: any) {
+              setError(err.message || 'Invalid verification code');
+              setLoading(false);
+            }
+          }
+          return;
+        }
+        
+        // Normal login without 2FA
         if (response.access_token) {
           localStorage.setItem('token', response.access_token);
           onAuthSuccess();

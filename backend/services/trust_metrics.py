@@ -347,7 +347,12 @@ class TrustMetricsService:
         
         if cached:
             # Check if cache is fresh (< 6 hours old)
-            cache_age = (now_utc() - cached['calculated_at']).total_seconds() / 3600
+            # Ensure calculated_at is timezone-aware
+            calculated_at = cached['calculated_at']
+            if calculated_at.tzinfo is None:
+                calculated_at = calculated_at.replace(tzinfo=timezone.utc)
+            
+            cache_age = (now_utc() - calculated_at).total_seconds() / 3600
             
             if cache_age < 6:
                 return cached['metrics']

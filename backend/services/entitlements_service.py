@@ -4,10 +4,10 @@ Rule-based access control system (BeatVegas as source of truth)
 """
 from typing import Optional, Literal, Dict, List, Tuple
 from datetime import datetime, timezone
-from pymongo.database import Database
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
-from backend.db.schemas.telegram_schemas import (
+from db.schemas.telegram_schemas import (
     UserEntitlements,
     TelegramIntegration,
     TelegramSubscription,
@@ -39,7 +39,7 @@ class EntitlementsEngine:
     Implements tier-based access rules
     """
     
-    def __init__(self, db: Database):
+    def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
     
     # ========================================================================
@@ -112,7 +112,7 @@ class EntitlementsEngine:
         
         # Check BeatVegas platform subscription
         # (Assumes existing subscriptions collection with tier/status)
-        bv_sub = self.db[COLLECTIONS["subscriptions"]].find_one({
+        bv_sub = await self.db["subscriptions"].find_one({
             "user_id": user_id,
             "status": {"$in": ["active", "trialing"]}
         })
@@ -123,7 +123,7 @@ class EntitlementsEngine:
             ctx.beatvegas_stripe_sub_id = bv_sub.get("stripe_subscription_id")
         
         # Check Telegram-only subscription
-        tg_sub = self.db[COLLECTIONS["telegram_subscriptions"]].find_one({
+        tg_sub = await self.db[COLLECTIONS["telegram_subscriptions"]].find_one({
             "user_id": user_id,
             "status": "active"
         })
@@ -133,7 +133,7 @@ class EntitlementsEngine:
             ctx.telegram_stripe_sub_id = tg_sub["stripe_subscription_id"]
         
         # Check Telegram integration
-        tg_link = self.db[COLLECTIONS["telegram_integrations"]].find_one({
+        tg_link = await self.db[COLLECTIONS["telegram_integrations"]].find_one({
             "user_id": user_id
         })
         
@@ -145,7 +145,7 @@ class EntitlementsEngine:
     
     async def _save_entitlements(self, entitlements: UserEntitlements):
         """Upsert entitlements to database"""
-        self.db[COLLECTIONS["user_entitlements"]].update_one(
+        await self.db[COLLECTIONS["user_entitlements"]].update_one(
             {"user_id": entitlements.user_id},
             {"$set": entitlements.dict()},
             upsert=True
@@ -157,7 +157,7 @@ class EntitlementsEngine:
     
     async def get_entitlements(self, user_id: str) -> Optional[UserEntitlements]:
         """Get cached entitlements (does not recompute)"""
-        doc = self.db[COLLECTIONS["user_entitlements"]].find_one(
+        doc = await self.db[COLLECTIONS["user_entitlements"]].find_one(
             {"user_id": user_id}
         )
         return UserEntitlements(**doc) if doc else None
@@ -230,7 +230,7 @@ class EntitlementsEngine:
             current_period_end=telegram_sub_data["current_period_end"]
         )
         
-        self.db[COLLECTIONS["telegram_subscriptions"]].insert_one(
+        await self.db[COLLECTIONS["telegram_subscriptions"]].insert_one(
             telegram_sub.dict()
         )
         
@@ -257,15 +257,15 @@ class EntitlementsEngine:
         user_ids = set()
         
         # Users with BeatVegas subscriptions
-        for sub in list(self.db["subscriptions"].find()):
+        async for sub in self.db["subscriptions"].find():
             user_ids.add(sub["user_id"])
         
         # Users with Telegram subscriptions
-        for tg_sub in list(self.db[COLLECTIONS["telegram_subscriptions"]].find()):
+        async for tg_sub in self.db[COLLECTIONS["telegram_subscriptions"]].find():
             user_ids.add(tg_sub["user_id"])
         
         # Users with Telegram integrations
-        for tg_link in list(self.db[COLLECTIONS["telegram_integrations"]].find()):
+        async for tg_link in self.db[COLLECTIONS["telegram_integrations"]].find():
             user_ids.add(tg_link["user_id"])
         
         # Recompute for each user
@@ -352,7 +352,7 @@ class EntitlementsEngine:
 class EntitlementNotifier:
     """Creates access change events for user notifications"""
     
-    def __init__(self, db: Database):
+    def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
     
     async def create_access_change_event(
@@ -366,7 +366,7 @@ class EntitlementNotifier:
         context: Dict
     ):
         """Create in-app notification for access change"""
-        from backend.db.schemas.telegram_schemas import AccessChangeEvent
+        from db.schemas.telegram_schemas import AccessChangeEvent
         import uuid
         
         # Generate user-facing message
@@ -402,7 +402,7 @@ class EntitlementNotifier:
             cta_text=cta_text
         )
         
-        self.db[COLLECTIONS["access_change_events"]].insert_one(
+        await self.db[COLLECTIONS["access_change_events"]].insert_one(
             event.dict()
         )
         

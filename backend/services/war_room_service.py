@@ -124,6 +124,12 @@ class WarRoomService:
         # Check if muted
         if tracker.get("is_shadow_muted"):
             mute_expires = tracker.get("mute_expires_at")
+            # Ensure mute_expires is timezone-aware for comparison
+            if mute_expires:
+                if isinstance(mute_expires, str):
+                    mute_expires = datetime.fromisoformat(mute_expires.replace('Z', '+00:00'))
+                elif mute_expires.tzinfo is None:
+                    mute_expires = mute_expires.replace(tzinfo=timezone.utc)
             if mute_expires and datetime.now(timezone.utc) < mute_expires:
                 return False, "You are temporarily muted"
             else:
@@ -135,6 +141,12 @@ class WarRoomService:
         
         # Reset if new day
         reset_at = tracker.get("reset_at")
+        # Ensure reset_at is timezone-aware for comparison
+        if reset_at:
+            if isinstance(reset_at, str):
+                reset_at = datetime.fromisoformat(reset_at.replace('Z', '+00:00'))
+            elif reset_at.tzinfo is None:
+                reset_at = reset_at.replace(tzinfo=timezone.utc)
         if reset_at and datetime.now(timezone.utc) > reset_at:
             tracker["posts_today"] = 0
             tracker["market_callouts_today"] = 0
@@ -211,25 +223,32 @@ class WarRoomService:
         if game_room and game_room.get("status") == "completed":
             game_end = game_room.get("game_end_time")
             
-            if game_end and datetime.fromisoformat(game_end) < cutoff_time:
-                # Archive the room
-                db["war_room_game_rooms"].update_one(
-                    {"room_id": game_room_id},
-                    {
-                        "$set": {
-                            "status": "archived",
-                            "archived_at": datetime.now(timezone.utc).isoformat()
+            # Ensure game_end datetime is timezone-aware for comparison
+            if game_end:
+                if isinstance(game_end, str):
+                    game_end_dt = datetime.fromisoformat(game_end.replace('Z', '+00:00'))
+                else:
+                    game_end_dt = game_end if game_end.tzinfo else game_end.replace(tzinfo=timezone.utc)
+                
+                if game_end_dt < cutoff_time:
+                    # Archive the room
+                    db["war_room_game_rooms"].update_one(
+                        {"room_id": game_room_id},
+                        {
+                            "$set": {
+                                "status": "archived",
+                                "archived_at": datetime.now(timezone.utc).isoformat()
+                            }
                         }
-                    }
-                )
-                
-                # Mark threads as read-only
-                db["war_room_market_threads"].update_many(
-                    {"room_id": game_room_id},
-                    {"$set": {"is_locked": True}}
-                )
-                
-                logger.info(f"Archived game room {game_room_id}")
+                    )
+                    
+                    # Mark threads as read-only
+                    db["war_room_market_threads"].update_many(
+                        {"room_id": game_room_id},
+                        {"$set": {"is_locked": True}}
+                    )
+                    
+                    logger.info(f"Archived game room {game_room_id}")
     
     @staticmethod
     async def calculate_user_rank(user_id: str) -> Dict[str, Any]:

@@ -13,6 +13,17 @@ export default defineConfig(({ mode }) => {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
           'Pragma': 'no-cache',
           'Expires': '0'
+        },
+        proxy: {
+          '/api': {
+            target: 'http://localhost:8000',
+            changeOrigin: true,
+            secure: false
+          },
+          '/ws': {
+            target: 'ws://localhost:8000',
+            ws: true
+          }
         }
       },
       plugins: [react()],

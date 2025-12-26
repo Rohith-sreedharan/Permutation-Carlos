@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from pymongo.database import Database
 import uuid
 
-from backend.db.schemas.telegram_schemas import (
+from db.schemas.telegram_schemas import (
     Signal,
     SignalState,
     SharpSideAction,

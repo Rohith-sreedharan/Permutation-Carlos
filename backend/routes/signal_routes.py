@@ -13,8 +13,8 @@ import os
 
 load_dotenv()
 
-from backend.services.signal_manager import SignalManager
-from backend.db.schemas.signal_schemas import (
+from services.signal_manager import SignalManager
+from db.schemas.signal_schemas import (
     Signal,
     MarketSnapshot,
     SignalDelta,
@@ -27,7 +27,7 @@ from backend.db.schemas.signal_schemas import (
     GateResult,
     ReasonCode
 )
-from backend.middleware.auth import get_current_user  # Assumes existing auth
+from middleware.auth import get_current_user  # Assumes existing auth
 
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])

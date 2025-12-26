@@ -84,13 +84,13 @@ const WarRoomLeaderboard: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 bg-gradient-to-b from-charcoal to-midnight min-h-screen">
+    <div className="space-y-6 bg-gradient-to-b from-[#0f1117] to-[#1a1d2e] min-h-screen p-6">
       <PageHeader title="War Room Leaderboard" />
 
       {/* Explanation */}
-      <div className="bg-navy/50 border-l-4 border-electric-blue p-4 rounded-lg">
-        <h3 className="text-sm font-bold text-electric-blue mb-2">How It Works</h3>
-        <p className="text-xs text-light-gray">
+      <div className="bg-[#2a2e44]/50 border-l-4 border-cyan-500 p-4 rounded-lg">
+        <h3 className="text-sm font-bold text-cyan-400 mb-2">How It Works</h3>
+        <p className="text-xs text-gray-300">
           Leaderboard is <strong>risk-adjusted</strong>, not based on likes or hype. Ranked by volatility-adjusted
           score, which accounts for win rate, sample size, and drawdown. To get <strong>Verified</strong> status, you
           need 20+ graded picks (receipts) with 52%+ win rate.
@@ -109,8 +109,8 @@ const WarRoomLeaderboard: React.FC = () => {
             onClick={() => setSortBy(option.id as any)}
             className={`px-4 py-2 rounded-lg font-bold text-xs transition ${
               sortBy === option.id
-                ? 'bg-electric-blue text-charcoal'
-                : 'bg-navy hover:bg-navy/70 text-light-gray'
+                ? 'bg-cyan-500 text-gray-900'
+                : 'bg-[#2a2e44] hover:bg-[#3a3e54] text-gray-300'
             }`}
           >
             {option.label}
@@ -119,25 +119,25 @@ const WarRoomLeaderboard: React.FC = () => {
       </div>
 
       {/* Leaderboard Table */}
-      <div className="bg-charcoal rounded-lg border border-navy overflow-hidden">
+      <div className="bg-[#1a1d2e] rounded-lg border border-[#2a2e44] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-navy border-b border-navy">
-              <th className="px-4 py-3 text-left font-bold text-light-gray">#</th>
-              <th className="px-4 py-3 text-left font-bold text-light-gray">Username</th>
-              <th className="px-4 py-3 text-center font-bold text-light-gray">Rank</th>
-              <th className="px-4 py-3 text-right font-bold text-light-gray">Vol Score</th>
-              <th className="px-4 py-3 text-right font-bold text-light-gray">Win Rate</th>
-              <th className="px-4 py-3 text-right font-bold text-light-gray">Picks</th>
-              <th className="px-4 py-3 text-right font-bold text-light-gray">Compliance</th>
+            <tr className="bg-[#2a2e44] border-b border-[#3a3e54]">
+              <th className="px-4 py-3 text-left font-bold text-gray-300">#</th>
+              <th className="px-4 py-3 text-left font-bold text-gray-300">Username</th>
+              <th className="px-4 py-3 text-center font-bold text-gray-300">Rank</th>
+              <th className="px-4 py-3 text-right font-bold text-gray-300">Vol Score</th>
+              <th className="px-4 py-3 text-right font-bold text-gray-300">Win Rate</th>
+              <th className="px-4 py-3 text-right font-bold text-gray-300">Picks</th>
+              <th className="px-4 py-3 text-right font-bold text-gray-300">Compliance</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((entry, idx) => (
               <tr
                 key={entry.user_id}
-                className={`border-b border-navy/50 hover:bg-navy/30 transition ${
-                  idx < 3 ? 'bg-navy/50' : ''
+                className={`border-b border-[#2a2e44] hover:bg-[#2a2e44]/50 transition ${
+                  idx < 3 ? 'bg-[#2a2e44]/30' : ''
                 }`}
               >
                 {/* Position */}
@@ -148,7 +148,7 @@ const WarRoomLeaderboard: React.FC = () => {
                 {/* Username */}
                 <td className="px-4 py-3">
                   <div className="space-y-1">
-                    <p className="font-bold text-white">{entry.username}</p>
+                    <p className="font-bold text-gray-100">{entry.username}</p>
                     <div className="flex items-center gap-1 flex-wrap">
                       <span
                         className={`px-2 py-0.5 rounded-full text-xs font-bold ${getRankBgColor(
@@ -189,15 +189,15 @@ const WarRoomLeaderboard: React.FC = () => {
 
                 {/* Vol Score */}
                 <td className="px-4 py-3 text-right">
-                  <p className="font-bold text-electric-blue">{entry.volatility_adjusted_score.toFixed(1)}</p>
+                  <p className="font-bold text-cyan-400">{entry.volatility_adjusted_score.toFixed(1)}</p>
                 </td>
 
                 {/* Win Rate */}
                 <td className="px-4 py-3 text-right">
                   {entry.win_rate ? (
                     <div className="space-y-1">
-                      <p className="font-bold text-white">{(entry.win_rate * 100).toFixed(1)}%</p>
-                      <div className="w-16 bg-navy rounded-full h-1">
+                      <p className="font-bold text-gray-100">{(entry.win_rate * 100).toFixed(1)}%</p>
+                      <div className="w-16 bg-[#2a2e44] rounded-full h-1 ml-auto">
                         <div
                           className={`h-full rounded-full ${
                             entry.win_rate > 0.55
@@ -211,20 +211,20 @@ const WarRoomLeaderboard: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-light-gray text-xs">—</p>
+                    <p className="text-gray-400 text-xs">—</p>
                   )}
                 </td>
 
                 {/* Sample Size */}
                 <td className="px-4 py-3 text-right">
-                  <p className="font-bold text-white">{entry.sample_size}</p>
-                  <p className="text-xs text-light-gray">{entry.max_drawdown ? `DD: ${(entry.max_drawdown * 100).toFixed(1)}%` : ''}</p>
+                  <p className="font-bold text-gray-100">{entry.sample_size}</p>
+                  <p className="text-xs text-gray-400">{entry.max_drawdown ? `DD: ${(entry.max_drawdown * 100).toFixed(1)}%` : ''}</p>
                 </td>
 
                 {/* Compliance */}
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <span className="font-bold text-white">{entry.template_compliance_pct.toFixed(0)}%</span>
+                    <span className="font-bold text-gray-100">{entry.template_compliance_pct.toFixed(0)}%</span>
                     {entry.template_compliance_pct >= 95 && (
                       <CheckCircle size={14} className="text-green-400" />
                     )}
@@ -237,7 +237,7 @@ const WarRoomLeaderboard: React.FC = () => {
       </div>
 
       {/* Notes */}
-      <div className="bg-navy/30 border border-navy rounded-lg p-4 text-xs text-light-gray space-y-2">
+      <div className="bg-[#2a2e44]/30 border border-[#3a3e54] rounded-lg p-4 text-xs text-gray-300 space-y-2">
         <p>
           <strong>Volatility-Adjusted Score:</strong> Combines win rate, sample size, and drawdown to surface
           consistent, disciplined players.

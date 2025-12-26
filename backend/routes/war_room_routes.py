@@ -7,11 +7,25 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 import uuid
+import os
 from db.mongo import db
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from services.war_room_service import WarRoomService, RankEngine, LeaderboardEngine
 from middleware.auth import get_current_user
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter(prefix="/api/war-room", tags=["War Room"])
+
+
+# Async database connection helper
+async def get_db() -> AsyncIOMotorDatabase:
+    """Get async MongoDB database connection"""
+    mongodb_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    database_name = os.getenv("DATABASE_NAME", "beatvegas")
+    client = AsyncIOMotorClient(mongodb_uri)
+    return client[database_name]
 
 
 # ============================================================================
@@ -157,108 +171,125 @@ async def post_market_callout(
     current_user=Depends(get_current_user)
 ):
     """Post a market callout with validation"""
-    user_id = current_user["user_id"]
-    user_tier = current_user.get("subscription_tier", "free")
-    username = current_user["username"]
-    
-    # Check rate limits
-    allowed, reason = await WarRoomService.check_rate_limit(
-        user_id, user_tier, "live_sports", "market_callout"
-    )
-    if not allowed:
-        raise HTTPException(status_code=429, detail=reason)
-    
-    # Check duplicate within 30 minutes
-    allowed, reason = await WarRoomService.check_duplicate_market_callout(
-        user_id, request.market_type, 30
-    )
-    if not allowed:
-        raise HTTPException(status_code=429, detail=reason)
-    
-    # Validate template compliance
-    from db.schemas.war_room_schemas import MarketCalloutPost
-    from typing import cast, Literal
-    
-    callout_data = MarketCalloutPost(
-        post_id=str(uuid.uuid4()),
-        thread_id=request.thread_id,
-        user_id=user_id,
-        username=username,
-        game_matchup=request.game_matchup,
-        market_type=cast(Literal["spread", "total", "moneyline", "prop"], request.market_type),
-        line=request.line,
-        confidence=cast(Literal["low", "med", "high"], request.confidence),
-        reason=request.reason,
-        played_this=request.played_this,
-        receipt_url=request.receipt_url,
-        signal_id=request.signal_id
-    )
-    
-    is_valid, error_msg = WarRoomService.validate_market_callout(callout_data)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=error_msg)
-    
-    # Get model context if signal_id provided
-    model_context = None
-    if request.signal_id:
-        model_context = db["simulations"].find_one(
-            {"simulation_id": request.signal_id},
-            {"_id": 0, "prediction": 1, "volatility_index": 1}
+    try:
+        user_id = str(current_user["_id"])  # MongoDB ObjectId to string
+        user_tier = current_user.get("tier", current_user.get("subscription_tier", "free"))
+        username = current_user.get("username", current_user.get("email", "unknown"))
+        
+        # Check rate limits
+        allowed, reason = await WarRoomService.check_rate_limit(
+            user_id, user_tier, "live_sports", "market_callout"
         )
-    
-    # Create post document
-    post = {
-        "post_id": str(uuid.uuid4()),
-        "thread_id": request.thread_id,
-        "user_id": user_id,
-        "username": username,
-        "post_type": "market_callout",
-        "game_matchup": request.game_matchup,
-        "market_type": request.market_type,
-        "line": request.line,
-        "confidence": request.confidence,
-        "reason": request.reason,
-        "played_this": request.played_this,
-        "receipt_url": request.receipt_url,
-        "signal_id": request.signal_id,
-        "model_context": model_context,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "is_deleted": False,
-        "flag_count": 0,
-        "views": 0,
-        "replies": 0,
-        "moderation_status": "approved",
-        "user_rank": current_user.get("rank", "rookie")
-    }
-    
-    result = db["war_room_posts"].insert_one(post)
-    
-    # Update thread post count
-    db["war_room_market_threads"].update_one(
-        {"thread_id": request.thread_id},
-        {
-            "$inc": {"post_count": 1},
-            "$set": {"last_activity": datetime.now(timezone.utc).isoformat()}
+        if not allowed:
+            raise HTTPException(status_code=429, detail=reason)
+        
+        # Check duplicate within 30 minutes
+        allowed, reason = await WarRoomService.check_duplicate_market_callout(
+            user_id, request.market_type, 30
+        )
+        if not allowed:
+            raise HTTPException(status_code=429, detail=reason)
+        
+        # Validate template compliance
+        from db.schemas.war_room_schemas import MarketCalloutPost
+        from typing import cast, Literal
+        
+        callout_data = MarketCalloutPost(
+            post_id=str(uuid.uuid4()),
+            thread_id=request.thread_id,
+            user_id=user_id,
+            username=username,
+            game_matchup=request.game_matchup,
+            market_type=cast(Literal["spread", "total", "moneyline", "prop"], request.market_type),
+            line=request.line,
+            confidence=cast(Literal["low", "med", "high"], request.confidence),
+            reason=request.reason,
+            played_this=request.played_this,
+            receipt_url=request.receipt_url,
+            signal_id=request.signal_id
+        )
+        
+        is_valid, error_msg = WarRoomService.validate_market_callout(callout_data)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        # Get model context if signal_id provided
+        model_context = None
+        if request.signal_id:
+            try:
+                async_db = await get_db()
+                model_context = await async_db["simulations"].find_one(
+                    {"simulation_id": request.signal_id},
+                    {"_id": 0, "prediction": 1, "volatility_index": 1}
+                )
+            except Exception as e:
+                print(f"Failed to fetch model context: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue without model context
+        
+        # Create post document
+        post = {
+            "post_id": str(uuid.uuid4()),
+            "thread_id": request.thread_id,
+            "user_id": user_id,
+            "username": username,
+            "post_type": "market_callout",
+            "game_matchup": request.game_matchup,
+            "market_type": request.market_type,
+            "line": request.line,
+            "confidence": request.confidence,
+            "reason": request.reason,
+            "played_this": request.played_this,
+            "receipt_url": request.receipt_url,
+            "signal_id": request.signal_id,
+            "model_context": model_context,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "is_deleted": False,
+            "flag_count": 0,
+            "views": 0,
+            "replies": 0,
+            "moderation_status": "approved",
+            "user_rank": current_user.get("rank", "rookie")
         }
-    )
-    
-    # Record rate limit
-    await WarRoomService.record_post(user_id, user_tier, "market_callout")
-    
-    # Update user rank
-    await RankEngine.update_user_rank(user_id)
-    
-    return {
-        "post_id": post["post_id"],
-        "status": "posted",
-        "model_context_attached": model_context is not None
-    }
+        
+        # Use async db for insertion
+        async_db = await get_db()
+        result = await async_db["war_room_posts"].insert_one(post)
+        
+        # Update thread post count
+        await async_db["war_room_market_threads"].update_one(
+            {"thread_id": request.thread_id},
+            {
+                "$inc": {"post_count": 1},
+                "$set": {"last_activity": datetime.now(timezone.utc).isoformat()}
+            }
+        )
+        
+        # Record rate limit
+        await WarRoomService.record_post(user_id, user_tier, "market_callout")
+        
+        # Update user rank
+        await RankEngine.update_user_rank(user_id)
+        
+        return {
+            "post_id": post["post_id"],
+            "status": "posted",
+            "model_context_attached": model_context is not None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in post_market_callout: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to post market callout: {str(e)}")
 
 
 @router.post("/posts/receipt")
 async def post_receipt(request: ReceiptRequest, current_user=Depends(get_current_user)):
     """Post a winning/losing receipt"""
-    user_id = current_user["user_id"]
+    user_id = str(current_user["_id"])
     
     # Check rate limits
     allowed, reason = await WarRoomService.check_rate_limit(user_id, current_user.get("tier", "free"), "showcase")
@@ -269,7 +300,7 @@ async def post_receipt(request: ReceiptRequest, current_user=Depends(get_current
         "post_id": str(uuid.uuid4()),
         "thread_id": request.thread_id,
         "user_id": user_id,
-        "username": current_user["username"],
+        "username": current_user.get("username", current_user.get("email", "unknown")),
         "post_type": "receipt",
         "screenshot_url": request.screenshot_url,
         "market": request.market,
@@ -300,8 +331,8 @@ async def post_receipt(request: ReceiptRequest, current_user=Depends(get_current
 @router.post("/posts/parlay-build")
 async def post_parlay_build(request: ParlayBuildRequest, current_user=Depends(get_current_user)):
     """Post a parlay build"""
-    user_id = current_user["user_id"]
-    user_tier = current_user.get("subscription_tier", "free")
+    user_id = str(current_user["_id"])
+    user_tier = current_user.get("tier", current_user.get("subscription_tier", "free"))
     
     # Check rate limits
     allowed, reason = await WarRoomService.check_rate_limit(user_id, user_tier, "parlay_factory")
@@ -312,7 +343,7 @@ async def post_parlay_build(request: ParlayBuildRequest, current_user=Depends(ge
         "post_id": str(uuid.uuid4()),
         "thread_id": request.thread_id,
         "user_id": user_id,
-        "username": current_user["username"],
+        "username": current_user.get("username", current_user.get("email", "unknown")),
         "post_type": "parlay_build",
         "leg_count": request.leg_count,
         "legs": request.legs,
@@ -366,7 +397,7 @@ async def moderate_post(request: ModerationRequest, current_user=Depends(get_cur
     result = await WarRoomService.moderate_post(
         request.target_id,
         request.action,
-        current_user["user_id"],
+        str(current_user["_id"]),
         request.reason,
         request.duration_hours
     )
@@ -419,7 +450,7 @@ async def track_view(post_id: str, current_user=Depends(get_current_user)):
     event = {
         "event_id": str(uuid.uuid4()),
         "event_type": "view",
-        "user_id": current_user["user_id"],
+        "user_id": str(current_user["_id"]),
         "target_type": "post",
         "target_id": post_id,
         "timestamp": datetime.now(timezone.utc).isoformat()

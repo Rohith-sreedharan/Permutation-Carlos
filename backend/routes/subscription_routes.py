@@ -3,6 +3,7 @@ Subscription Routes - Fix for /api/subscription/* endpoints
 This module provides subscription status endpoints separate from payment routes
 """
 from fastapi import APIRouter, HTTPException, Header
+from fastapi.responses import RedirectResponse
 from typing import Optional
 from datetime import datetime, timezone
 from db.mongo import db
@@ -11,6 +12,7 @@ import stripe
 import os
 
 router = APIRouter(prefix="/api/subscription", tags=["Subscription"])
+stripe_router = APIRouter(prefix="/api/stripe", tags=["Stripe"])
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
@@ -138,3 +140,47 @@ async def get_subscription_usage(authorization: Optional[str] = Header(None)):
         "sims_remaining": max(0, limits["sims_per_day"] - sims_used_today),
         "last_reset": last_reset
     }
+
+
+# ========================================================================
+# STRIPE CUSTOMER PORTAL
+# ========================================================================
+
+@stripe_router.get("/customer-portal")
+async def get_customer_portal(authorization: Optional[str] = Header(None)):
+    """
+    Redirect to Stripe Customer Portal for subscription management
+    Allows users to update payment methods, view invoices, cancel subscription
+    """
+    user_id = _get_user_id_from_auth(authorization)
+    
+    try:
+        user = db["users"].find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    stripe_customer_id = user.get("stripe_customer_id")
+    
+    if not stripe_customer_id:
+        raise HTTPException(
+            status_code=400, 
+            detail="No Stripe customer found. Please subscribe first."
+        )
+    
+    try:
+        # Create portal session
+        session = stripe.billing_portal.Session.create(
+            customer=stripe_customer_id,
+            return_url=f"{os.getenv('FRONTEND_URL', 'http://127.0.0.1:3000')}/settings/billing"
+        )
+        
+        # Redirect to Stripe portal
+        return RedirectResponse(url=session.url, status_code=303)
+        
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=f"Stripe error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating portal session: {str(e)}")

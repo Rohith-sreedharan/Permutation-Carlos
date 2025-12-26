@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any, Tuple, cast, Literal
 from datetime import datetime, timezone, timedelta
 from pymongo.database import Database
 
-from backend.db.schemas.signal_schemas import (
+from db.schemas.signal_schemas import (
     Signal,
     MarketSnapshot,
     SimulationRun,

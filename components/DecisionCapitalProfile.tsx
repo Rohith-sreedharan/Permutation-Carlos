@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { RiskProfile } from '../types';
 import LoadingSpinner from './LoadingSpinner';
+import { getRiskProfile, updateRiskProfile } from '../services/api';
 
 interface DecisionCapitalProfileProps {
   onAuthError: () => void;
@@ -23,27 +24,11 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
   const loadProfile = async () => {
     try {
       setLoading(true);
-      
-      // Initialize with default profile for new users
-      const defaultProfile: RiskProfile = {
-        user_id: 'current_user',
-        starting_capital: 1000,
-        unit_strategy: 'percentage',
-        unit_size: 2,
-        risk_classification: 'balanced',
-        suggested_exposure_per_decision: 20,
-        volatility_tolerance: 0.15,
-        max_daily_exposure: 100,
-        total_decisions: 0,
-        winning_decisions: 0,
-        roi: 0,
-        sharpe_ratio: 0,
-      };
-      
-      setProfile(defaultProfile);
-      setStartingCapital(defaultProfile.starting_capital);
-      setUnitStrategy(defaultProfile.unit_strategy);
-      setUnitSize(defaultProfile.unit_size);
+      const data = await getRiskProfile();
+      setProfile(data);
+      setStartingCapital(data.starting_capital);
+      setUnitStrategy(data.unit_strategy);
+      setUnitSize(data.unit_size);
     } catch (err: any) {
       if (err.message?.includes('401') || err.message?.includes('Session expired')) {
         onAuthError();
@@ -56,37 +41,22 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
 
   const handleSave = async () => {
     try {
-      // Calculate risk classification based on unit size
-      let riskClassification: 'conservative' | 'balanced' | 'aggressive' = 'balanced';
-      if (unitStrategy === 'percentage') {
-        if (unitSize <= 1) riskClassification = 'conservative';
-        else if (unitSize >= 3) riskClassification = 'aggressive';
-      } else {
-        const percentOfCapital = (unitSize / startingCapital) * 100;
-        if (percentOfCapital <= 1) riskClassification = 'conservative';
-        else if (percentOfCapital >= 3) riskClassification = 'aggressive';
-      }
-
-      const updatedProfile: RiskProfile = {
-        ...profile!,
+      const updatedData = {
         starting_capital: startingCapital,
         unit_strategy: unitStrategy,
         unit_size: unitSize,
-        risk_classification: riskClassification,
-        suggested_exposure_per_decision: unitStrategy === 'percentage' 
-          ? (startingCapital * unitSize) / 100 
-          : unitSize,
-        max_daily_exposure: unitStrategy === 'percentage'
-          ? (startingCapital * unitSize * 5) / 100
-          : unitSize * 5,
+        volatility_tolerance: profile?.volatility_tolerance || 0.15,
       };
 
-      // TODO: Replace with actual API call
-      // await updateRiskProfile(updatedProfile);
+      const updatedProfile = await updateRiskProfile(updatedData);
       setProfile(updatedProfile);
       setIsEditing(false);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message?.includes('401') || err.message?.includes('Session expired')) {
+        onAuthError();
+      }
       console.error('Failed to save risk profile:', err);
+      alert('Failed to save profile. Please try again.');
     }
   };
 
@@ -121,11 +91,11 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="bg-gradient-to-r from-electric-blue/20 to-navy/30 rounded-lg p-6 border border-electric-blue/30">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-3xl font-bold text-white font-teko">Decision Capital Profile</h2>
+      <div className="bg-gradient-to-r from-electric-blue/20 to-navy/30 rounded-lg p-4 md:p-6 border border-electric-blue/30">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2">
+          <h2 className="text-2xl md:text-3xl font-bold text-white font-teko">Decision Capital Profile</h2>
           <button
             onClick={() => setIsEditing(!isEditing)}
             className="px-4 py-2 bg-electric-blue text-white rounded-lg font-semibold hover:bg-electric-blue/80 transition-colors text-sm"
@@ -148,7 +118,7 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
 
       {/* Configuration Form (if editing) */}
       {isEditing && (
-        <div className="bg-charcoal rounded-lg border border-navy p-6 space-y-6">
+        <div className="bg-charcoal rounded-lg border border-navy p-4 md:p-6 space-y-4 md:space-y-6">
           <h3 className="text-xl font-bold text-white font-teko mb-4">Configure Your Risk Framework</h3>
 
           {/* Starting Capital */}
@@ -234,7 +204,7 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
 
       {/* Current Settings Display */}
       {!isEditing && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
           {/* Starting Capital */}
           <div className="bg-charcoal rounded-lg border border-navy p-5">
             <p className="text-xs text-light-gray font-semibold mb-2">STARTING CAPITAL</p>
@@ -263,40 +233,40 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
       )}
 
       {/* Risk Metrics */}
-      <div className="bg-charcoal rounded-lg border border-navy p-6">
-        <h3 className="text-xl font-bold text-white font-teko mb-4">Risk Framework Metrics</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-charcoal rounded-lg border border-navy p-4 md:p-6">
+        <h3 className="text-lg md:text-xl font-bold text-white font-teko mb-4">Risk Framework Metrics</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
           <div className="text-center">
-            <p className="text-xs text-light-gray mb-1">VOLATILITY TOLERANCE</p>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-xs text-light-gray mb-1 font-semibold">VOLATILITY TOLERANCE</p>
+            <p className="text-xl md:text-2xl font-bold text-white">
               {profile.volatility_tolerance ? `${(profile.volatility_tolerance * 100).toFixed(0)}%` : 'N/A'}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-light-gray mb-1">MAX DAILY EXPOSURE</p>
-            <p className="text-2xl font-bold text-white">
+            <p className="text-xs text-light-gray mb-1 font-semibold">MAX DAILY EXPOSURE</p>
+            <p className="text-xl md:text-2xl font-bold text-white">
               ${profile.max_daily_exposure?.toFixed(0) || 'N/A'}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-light-gray mb-1">TOTAL DECISIONS</p>
-            <p className="text-2xl font-bold text-white">
-              {profile.total_decisions || 0}
+            <p className="text-xs text-light-gray mb-1 font-semibold">TOTAL DECISIONS</p>
+            <p className="text-xl md:text-2xl font-bold text-white">
+              {profile.total_decisions || '—'}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-light-gray mb-1">SHARPE RATIO</p>
-            <p className="text-2xl font-bold text-white">
-              {profile.sharpe_ratio?.toFixed(2) || 'N/A'}
+            <p className="text-xs text-light-gray mb-1 font-semibold">SHARPE RATIO</p>
+            <p className="text-xl md:text-2xl font-bold text-white">
+              {profile.sharpe_ratio?.toFixed(2) || '0.00'}
             </p>
           </div>
         </div>
       </div>
 
       {/* Performance Tracking */}
-      {profile.total_decisions && profile.total_decisions > 0 && (
-        <div className="bg-charcoal rounded-lg border border-navy p-6">
-          <h3 className="text-xl font-bold text-white font-teko mb-4">Performance vs Risk Style</h3>
+      {(profile.total_decisions && profile.total_decisions > 0) ? (
+        <div className="bg-charcoal rounded-lg border border-navy p-4 md:p-6">
+          <h3 className="text-lg md:text-xl font-bold text-white font-teko mb-4">Performance vs Risk Style</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Win Rate */}
             <div>
@@ -337,11 +307,11 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Decision Discipline Notice */}
-      <div className="bg-navy/30 rounded-lg border border-electric-blue/30 p-6">
-        <h3 className="text-lg font-bold text-white mb-3 flex items-center space-x-2">
+      <div className="bg-navy/30 rounded-lg border border-electric-blue/30 p-4 md:p-6">
+        <h3 className="text-base md:text-lg font-bold text-white mb-3 flex items-center space-x-2">
           <svg className="w-5 h-5 text-electric-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -361,37 +331,37 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
       </div>
 
       {/* Confidence Weight Tiers (Educational) */}
-      <div className="bg-charcoal rounded-lg border border-navy p-6">
-        <h3 className="text-xl font-bold text-white font-teko mb-4">Suggested Confidence Weight Tiers</h3>
+      <div className="bg-charcoal rounded-lg border border-navy p-4 md:p-6">
+        <h3 className="text-lg md:text-xl font-bold text-white font-teko mb-4">Suggested Confidence Weight Tiers</h3>
         <p className="text-sm text-light-gray mb-4">
           Use these guidelines to scale exposure based on forecast confidence levels:
         </p>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-navy/30 rounded-lg">
-            <div>
-              <p className="font-semibold text-white">High Confidence (65%+)</p>
+        <div className="space-y-2 md:space-y-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-navy/30 rounded-lg gap-2">
+            <div className="flex-1">
+              <p className="font-semibold text-white text-sm md:text-base">High Confidence (65%+)</p>
               <p className="text-xs text-light-gray">Strong model alignment</p>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-neon-green">2-3 Units</p>
+            <div className="text-left sm:text-right w-full sm:w-auto">
+              <p className="text-base md:text-lg font-bold text-neon-green">2-3 Units</p>
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 bg-navy/30 rounded-lg">
-            <div>
-              <p className="font-semibold text-white">Medium Confidence (58-64%)</p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-navy/30 rounded-lg gap-2">
+            <div className="flex-1">
+              <p className="font-semibold text-white text-sm md:text-base">Medium Confidence (58-64%)</p>
               <p className="text-xs text-light-gray">Moderate edge detected</p>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-vibrant-yellow">1-2 Units</p>
+            <div className="text-left sm:text-right w-full sm:w-auto">
+              <p className="text-base md:text-lg font-bold text-vibrant-yellow">1-2 Units</p>
             </div>
           </div>
-          <div className="flex items-center justify-between p-3 bg-navy/30 rounded-lg">
-            <div>
-              <p className="font-semibold text-white">Standard Confidence (52-57%)</p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-navy/30 rounded-lg gap-2">
+            <div className="flex-1">
+              <p className="font-semibold text-white text-sm md:text-base">Standard Confidence (52-57%)</p>
               <p className="text-xs text-light-gray">Slight edge, exploratory</p>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-electric-blue">0.5-1 Unit</p>
+            <div className="text-left sm:text-right w-full sm:w-auto">
+              <p className="text-base md:text-lg font-bold text-electric-blue">0.5-1 Unit</p>
             </div>
           </div>
         </div>

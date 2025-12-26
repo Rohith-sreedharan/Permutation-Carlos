@@ -20,7 +20,7 @@ import RiskAlert from './components/RiskAlert';
 import TrustLoop from './components/TrustLoop';  // NEW: Trust & Performance Loop
 import ParlayArchitect from './components/ParlayArchitect';  // PHASE 14: AI Parlay Architect
 import type { Page } from './types';
-import { getToken, removeToken, verifyToken } from './services/api';
+import { getToken, removeToken, verifyToken, getUserSettings } from './services/api';
 import { useWebSocket } from './utils/useWebSocket';
 
 const App: React.FC = () => {
@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [isAuthCheckComplete, setIsAuthCheckComplete] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'creator' | 'user'>('user'); // Track if user is a creator
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [riskAlert, setRiskAlert] = useState<{
     isOpen: boolean;
     betCount: number;
@@ -58,6 +59,14 @@ const App: React.FC = () => {
           
           // Token is valid and user exists
           setIsAuthenticated(true);
+
+          // Load user theme preference
+          try {
+            const userSettings = await getUserSettings();
+            setTheme(userSettings.theme || 'dark');
+          } catch (err) {
+            console.error('[Theme] Failed to load theme:', err);
+          }
 
           // Check if onboarding is complete
           const onboardingComplete = localStorage.getItem('onboarding_complete');
@@ -177,7 +186,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-dark-navy text-white font-sans">
+    <div className={`flex min-h-screen font-sans ${theme === 'light' ? 'bg-gray-100 text-gray-900' : 'bg-dark-navy text-white'}`}>
       {/* Tilt Protection Modal */}
       <RiskAlert 
         isOpen={riskAlert.isOpen}

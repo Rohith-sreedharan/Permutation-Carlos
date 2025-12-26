@@ -134,29 +134,38 @@ class ParlayArchitectService:
         # Step 2: Score all potential legs using simulations
         scored_legs = []
         for event in events:
-            # Get or generate simulation
-            simulation = db.monte_carlo_simulations.find_one(
-                {"event_id": event["event_id"]},
-                sort=[("created_at", -1)]
-            )
-            
-            if not simulation:
-                # Auto-generate simulation if missing
-                from integrations.player_api import get_team_data_with_roster
-                from integrations.odds_api import extract_market_lines
-                team_a = get_team_data_with_roster(event["home_team"], sport_key, True)
-                team_b = get_team_data_with_roster(event["away_team"], sport_key, False)
-                
-                # Extract real market lines from bookmakers
-                market_context = extract_market_lines(event)
-                
-                simulation = monte_carlo_engine.run_simulation(
-                    event_id=event["event_id"],
-                    team_a=team_a,
-                    team_b=team_b,
-                    market_context=market_context,
-                    iterations=10000
+            try:
+                # Get or generate simulation
+                simulation = db.monte_carlo_simulations.find_one(
+                    {"event_id": event["event_id"]},
+                    sort=[("created_at", -1)]
                 )
+                
+                if not simulation:
+                    # Auto-generate simulation if missing
+                    from integrations.player_api import get_team_data_with_roster
+                    from integrations.odds_api import extract_market_lines
+                    team_a = get_team_data_with_roster(event["home_team"], sport_key, True)
+                    team_b = get_team_data_with_roster(event["away_team"], sport_key, False)
+                    
+                    # Extract real market lines from bookmakers
+                    market_context = extract_market_lines(event)
+                    
+                    simulation = monte_carlo_engine.run_simulation(
+                        event_id=event["event_id"],
+                        team_a=team_a,
+                        team_b=team_b,
+                        market_context=market_context,
+                        iterations=10000
+                    )
+            except Exception as e:
+                # Skip events with stale odds, integrity failures, or other issues
+                error_msg = str(e)
+                if "STALE_LINE" in error_msg or "MARKET LINE INTEGRITY FAILURE" in error_msg:
+                    print(f"⏭️  Skipping {event['event_id']}: Stale or invalid market data")
+                else:
+                    print(f"⚠️ Error processing {event['event_id']}: {error_msg}")
+                continue
             
             # Calculate EV for each bet type
             win_prob = simulation.get("team_a_win_probability", 0.5)
@@ -724,13 +733,13 @@ class ParlayArchitectService:
         return {
             "sport": best['sport'],
             "event": best['event'],
-            "market": best['market_type'],
-            "pick": best['pick'],
+            "market": best['bet_type'],  # Use bet_type instead of market_type
+            "pick": best['line'],  # Use line instead of pick
             "confidence": round(best['confidence'] * 100, 1),
             "expected_value": round(best['ev'], 2),
             "volatility": best['volatility'],
             "edge_description": self._get_edge_description(best),
-            "american_odds": best['american_odds'],
+            "american_odds": best.get('american_odds', -110),  # Default odds if not available
             "pricing": {
                 "single_unlock": 399  # $3.99 in cents
             }

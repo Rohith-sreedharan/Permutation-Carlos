@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
-from backend.services.mlb_edge_evaluator import (
+from services.mlb_edge_evaluator import (
     MLBEdgeEvaluator,
     GameContext,
     SimulationOutput,

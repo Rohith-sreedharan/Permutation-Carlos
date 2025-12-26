@@ -87,7 +87,7 @@ from routes.user_routes import router as user_router
 from routes.creator_routes import router as creator_router
 from routes.enterprise_routes import router as enterprise_router
 from routes.predictions_routes import router as predictions_router
-from routes.subscription_routes import router as subscription_router
+from routes.subscription_routes import router as subscription_router, stripe_router
 from routes.risk_profile_routes import router as risk_profile_router
 from routes.admin_routes import router as admin_router
 from routes.verification_routes import router as verification_router
@@ -147,6 +147,7 @@ app.include_router(creator_router)
 app.include_router(enterprise_router)
 app.include_router(predictions_router, prefix="/api/admin", tags=["admin"])
 app.include_router(subscription_router)
+app.include_router(stripe_router)  # Stripe customer portal
 app.include_router(risk_profile_router)
 app.include_router(admin_router)  # Super-admin routes
 app.include_router(verification_router)  # Public Trust Loop data

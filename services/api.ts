@@ -80,6 +80,31 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
         throw new Error(errorData.detail || 'Login failed');
     }
     
+    const data = await response.json();
+    
+    // Check if 2FA is required
+    if (data.requires_2fa) {
+        return data; // Return the temp_token for 2FA verification
+    }
+    
+    // Normal login without 2FA
+    setToken(data.access_token);
+    return data;
+};
+
+export const verify2FALogin = async (tempToken: string, code: string): Promise<AuthResponse> => {
+    const response = await fetch(`${API_BASE_URL}/api/verify-2fa?temp_token=${encodeURIComponent(tempToken)}&code=${encodeURIComponent(code)}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Invalid verification code');
+    }
+    
     const data: AuthResponse = await response.json();
     setToken(data.access_token);
     return data;
@@ -323,6 +348,179 @@ export const updateUserSettings = async (settings: any) => {
     if (!res.ok) throw new Error('Failed to update settings');
     const data = await res.json();
     return data.settings || data;
+};
+
+// --- Account Management ---
+export const changePassword = async (currentPassword: string, newPassword: string) => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/account/change-password`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    if (res.status === 401) { 
+        const error = await res.json();
+        throw new Error(error.detail || 'Authentication failed'); 
+    }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to change password');
+    }
+    return res.json();
+};
+
+export const enable2FA = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/2fa/enable`, {
+        method: 'POST',
+        headers,
+    });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to enable 2FA');
+    }
+    return res.json();
+};
+
+export const verify2FA = async (code: string) => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/account/2fa/verify`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ code }),
+    });
+    if (res.status === 401) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Invalid verification code');
+    }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to verify 2FA');
+    }
+    return res.json();
+};
+
+export const disable2FA = async (password: string) => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/account/2fa/disable`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ password }),
+    });
+    if (res.status === 401) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Incorrect password');
+    }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to disable 2FA');
+    }
+    return res.json();
+};
+
+export const get2FAStatus = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/2fa/status`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to get 2FA status');
+    return res.json();
+};
+
+export const deleteAccount = async (password: string, confirmation: string) => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/account/delete`, {
+        method: 'DELETE',
+        headers,
+        body: JSON.stringify({ password, confirmation }),
+    });
+    if (res.status === 401) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Incorrect password');
+    }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to delete account');
+    }
+    return res.json();
+};
+
+// --- Passkey / Biometric Authentication ---
+export const beginPasskeyRegistration = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/passkey/register-begin`, {
+        method: 'POST',
+        headers,
+    });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to start passkey registration');
+    }
+    return res.json();
+};
+
+export const completePasskeyRegistration = async (credential: any) => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/account/passkey/register-complete`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(credential),
+    });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to complete passkey registration');
+    }
+    return res.json();
+};
+
+export const listPasskeys = async () => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/passkey/list`, { headers });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch passkeys');
+    return res.json();
+};
+
+export const deletePasskey = async (credentialId: string) => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/account/passkey/${credentialId}`, {
+        method: 'DELETE',
+        headers,
+    });
+    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to delete passkey');
+    }
+    return res.json();
+};
+
+export const beginPasskeyLogin = async (email: string) => {
+    const res = await fetch(`${API_BASE_URL}/api/passkey/login-begin?email=${encodeURIComponent(email)}`, {
+        method: 'POST',
+    });
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Failed to start passkey login');
+    }
+    return res.json();
+};
+
+export const completePasskeyLogin = async (email: string, credential: any) => {
+    const res = await fetch(`${API_BASE_URL}/api/passkey/login-complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, credential }),
+    });
+    if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Passkey authentication failed');
+    }
+    const data = await res.json();
+    setToken(data.access_token);
+    return data;
 };
 
 // --- Beat Vegas - Monte Carlo Simulation endpoints ---

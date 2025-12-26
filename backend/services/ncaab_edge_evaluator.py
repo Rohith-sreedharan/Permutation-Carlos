@@ -8,7 +8,7 @@ from enum import Enum
 from pymongo.database import Database
 import uuid
 
-from backend.db.schemas.signal_schemas import VolatilityBucket
+from db.schemas.signal_schemas import VolatilityBucket
 
 
 # ============================================================================

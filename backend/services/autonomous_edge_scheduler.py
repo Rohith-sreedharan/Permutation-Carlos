@@ -8,8 +8,8 @@ from typing import Dict, Any, List, Optional
 from pymongo.database import Database
 import logging
 
-from backend.services.autonomous_edge_engine import AutonomousEdgeEngine
-from backend.services.telegram_bot_service import TelegramBotService
+from services.autonomous_edge_engine import AutonomousEdgeEngine
+from services.telegram_bot_service import TelegramBotService
 
 
 logger = logging.getLogger(__name__)

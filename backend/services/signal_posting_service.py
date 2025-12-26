@@ -6,14 +6,14 @@ from typing import List, Dict, Optional
 from datetime import datetime, timezone
 from pymongo.database import Database
 
-from backend.db.schemas.telegram_schemas import (
+from db.schemas.telegram_schemas import (
     Signal,
     SignalState,
     TelegramChannel,
     COLLECTIONS
 )
-from backend.services.telegram_bot_service import TelegramBotService
-from backend.services.signal_generation_service import SignalFormatter
+from services.telegram_bot_service import TelegramBotService
+from services.signal_generation_service import SignalFormatter
 
 
 class SignalPostingService:
@@ -250,7 +250,7 @@ class SignalScheduler:
         Returns:
             Statistics
         """
-        from backend.services.signal_generation_service import SignalGenerationEngine
+        from services.signal_generation_service import SignalGenerationEngine
         
         signal_engine = SignalGenerationEngine(self.db)
         stats = {

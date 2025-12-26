@@ -2,13 +2,13 @@
 NCAAB Edge Evaluation API Routes
 Endpoints for college basketball edge analysis
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from pymongo.database import Database
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
-from backend.services.ncaab_edge_evaluator import (
+from services.ncaab_edge_evaluator import (
     NCAABEdgeEvaluator,
     NCAABEvaluationResult,
     NCAABState,
@@ -26,7 +26,7 @@ from pymongo.database import Database
 
 async def get_db() -> Database:
     """Get database connection"""
-    from backend.db.mongo import db
+    from db.mongo import db
     return db
 
 
@@ -203,7 +203,7 @@ async def get_recent_evaluations(
 
 @router.get("/stats/slate/{date}", response_model=Dict[str, Any])
 async def get_slate_stats(
-    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    date: str = Path(..., description="Date in YYYY-MM-DD format"),
     db: Database = Depends(get_db)
 ):
     """

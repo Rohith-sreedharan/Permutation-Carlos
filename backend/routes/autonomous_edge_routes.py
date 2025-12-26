@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
-from backend.services.autonomous_edge_engine import (
+from services.autonomous_edge_engine import (
     AutonomousEdgeEngine,
     EdgeGrade,
     WaveState,
@@ -26,7 +26,7 @@ from pymongo.database import Database
 
 async def get_db() -> Database:
     """Get database connection"""
-    from backend.db.mongo import db
+    from db.mongo import db
     return db
 
 
@@ -217,7 +217,7 @@ async def wave_3_final_lock_scan(
     telegram_service = None
     if request.publish_enabled:
         # TODO: Inject real TelegramBotService
-        from backend.services.telegram_bot_service import TelegramBotService
+        from services.telegram_bot_service import TelegramBotService
         telegram_service = TelegramBotService(db)
     
     entry_snapshot = await engine.wave_3_final_lock_scan(

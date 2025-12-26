@@ -3,7 +3,7 @@ Telegram Integration & Signal Distribution Schemas
 BeatVegas-centric identity and entitlements system
 """
 from datetime import datetime, timezone
-from typing import Optional, Literal, List, Dict, Any
+from typing import Optional, Literal, List, Dict, Any, ClassVar
 from pydantic import BaseModel, Field
 
 
@@ -15,7 +15,7 @@ class TelegramIntegration(BaseModel):
     """User's Telegram account link"""
     user_id: str = Field(..., description="BeatVegas user ID (source of truth)")
     provider: Literal["telegram"] = "telegram"
-    external_user_id: str = Field(..., description="Telegram user ID")
+    external_user_id: Optional[str] = Field(None, description="Telegram user ID")
     telegram_username: Optional[str] = None
     telegram_first_name: Optional[str] = None
     linked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -166,25 +166,25 @@ class AccessChangeEvent(BaseModel):
 class SignalState(BaseModel):
     """Signal state machine (locked enum)"""
     # Public states
-    QUALIFIED = "QUALIFIED"  # Actionable, posts to Telegram
-    LEAN = "LEAN"  # NO PLAY, platform only
-    NO_PLAY = "NO_PLAY"  # Market state update
+    QUALIFIED: ClassVar[str] = "QUALIFIED"  # Actionable, posts to Telegram
+    LEAN: ClassVar[str] = "LEAN"  # NO PLAY, platform only
+    NO_PLAY: ClassVar[str] = "NO_PLAY"  # Market state update
     
     # Internal states
-    PENDING = "PENDING"
-    INVALIDATED_LINE_MOVED = "INVALIDATED_LINE_MOVED"
-    INVALIDATED_GAME_STARTED = "INVALIDATED_GAME_STARTED"
-    INVALIDATED_DATA_MISSING = "INVALIDATED_DATA_MISSING"
-    POSTED = "POSTED"
-    CLOSED = "CLOSED"
+    PENDING: ClassVar[str] = "PENDING"
+    INVALIDATED_LINE_MOVED: ClassVar[str] = "INVALIDATED_LINE_MOVED"
+    INVALIDATED_GAME_STARTED: ClassVar[str] = "INVALIDATED_GAME_STARTED"
+    INVALIDATED_DATA_MISSING: ClassVar[str] = "INVALIDATED_DATA_MISSING"
+    POSTED: ClassVar[str] = "POSTED"
+    CLOSED: ClassVar[str] = "CLOSED"
 
 
 class SharpSideAction(BaseModel):
     """Sharp side action states (spreads only)"""
-    CONFIRMED = "CONFIRMED"  # Market aligns with model on recommended side
-    ABSENT = "ABSENT"  # Model edge exists, market neutral
-    CONTRARIAN = "CONTRARIAN"  # Market opposes public, aligns with model
-    CONFLICTED = "CONFLICTED"  # Market contradicts model (disallowed for Qualified)
+    CONFIRMED: ClassVar[str] = "CONFIRMED"  # Market aligns with model on recommended side
+    ABSENT: ClassVar[str] = "ABSENT"  # Model edge exists, market neutral
+    CONTRARIAN: ClassVar[str] = "CONTRARIAN"  # Market opposes public, aligns with model
+    CONFLICTED: ClassVar[str] = "CONFLICTED"  # Market contradicts model (disallowed for Qualified)
 
 
 class Signal(BaseModel):

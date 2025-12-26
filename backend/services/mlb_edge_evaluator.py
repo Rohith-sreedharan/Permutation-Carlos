@@ -100,7 +100,7 @@ class EvaluationResponse(BaseModel):
     internal_state: Dict[str, Any]
 
 
-from backend.config.sports.mlb import MLB_CONFIG
+from config.sports.mlb import MLB_CONFIG
 
 
 # ============================================================================

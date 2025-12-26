@@ -7,11 +7,11 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from typing import Optional
 import os
 
-from ..services.ai_analyzer_schemas import AnalyzerRequest, AnalyzerResponse
-from ..services.ai_analyzer_service import AnalyzerService
-from ..services.ai_analyzer_llm import AnalyzerLLMClient
-from ..services.ai_analyzer_audit import AnalyzerAuditLogger
-from ..db.mongo import db
+from services.ai_analyzer_schemas import AnalyzerRequest, AnalyzerResponse
+from services.ai_analyzer_service import AnalyzerService
+from services.ai_analyzer_llm import AnalyzerLLMClient
+from services.ai_analyzer_audit import AnalyzerAuditLogger
+from db.mongo import db
 
 
 router = APIRouter(prefix="/api/analyzer", tags=["AI Analyzer"])

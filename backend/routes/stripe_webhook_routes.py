@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.services.entitlements_service import EntitlementsEngine, EntitlementNotifier
-from backend.services.telegram_bot_service import TelegramBotService
-from backend.db.schemas.telegram_schemas import COLLECTIONS
+from services.entitlements_service import EntitlementsEngine, EntitlementNotifier
+from services.telegram_bot_service import TelegramBotService
+from db.schemas.telegram_schemas import COLLECTIONS
 
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -207,7 +207,7 @@ async def handle_telegram_subscription_event(
     subscription: dict
 ):
     """Handle Telegram-only subscription ($39) changes"""
-    from backend.db.schemas.telegram_schemas import TelegramSubscription
+    from db.schemas.telegram_schemas import TelegramSubscription
     
     if event_type == "customer.subscription.deleted":
         # Mark as canceled

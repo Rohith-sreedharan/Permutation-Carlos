@@ -40,8 +40,8 @@ class TrackEventRequest(BaseModel):
     event_id: Optional[str] = Field(default=None, description="Unique event ID (auto-generated if omitted)")
 
 
-@router.post("/event")
-async def track_event(request: TrackEventRequest, http_request: Optional[Request] = None):
+@router.post("/event", response_model=None)
+async def track_event(request: TrackEventRequest, http_request: Request):
     """
     Track event server-side
     
@@ -107,12 +107,12 @@ async def track_event(request: TrackEventRequest, http_request: Optional[Request
 
 
 # Convenience endpoints for specific events
-@router.post("/waitlist-submit")
+@router.post("/waitlist-submit", response_model=None)
 async def track_waitlist_submit(
     email: str,
+    http_request: Request,
     source: str = "unknown",
-    page_url: str = "",
-    http_request: Optional[Request] = None
+    page_url: str = ""
 ):
     """
     Track waitlist submission
@@ -132,15 +132,15 @@ async def track_waitlist_submit(
     )
 
 
-@router.post("/daily-preview-viewed")
+@router.post("/daily-preview-viewed", response_model=None)
 async def track_daily_preview_viewed(
     game_id: str,
     sport: str,
     edge_state: str,
     confidence_band: str,
+    http_request: Request,
     page_url: str = "",
-    user_id: Optional[str] = None,
-    http_request: Optional[Request] = None
+    user_id: Optional[str] = None
 ):
     """
     Track daily preview view
@@ -163,12 +163,12 @@ async def track_daily_preview_viewed(
     )
 
 
-@router.post("/telegram-join-click")
+@router.post("/telegram-join-click", response_model=None)
 async def track_telegram_join_click(
+    http_request: Request,
     source: str = "unknown",
     page_url: str = "",
-    user_id: Optional[str] = None,
-    http_request: Optional[Request] = None
+    user_id: Optional[str] = None
 ):
     """
     Track Telegram join CTA click
@@ -188,12 +188,12 @@ async def track_telegram_join_click(
     )
 
 
-@router.post("/parlay-unlock-attempt")
+@router.post("/parlay-unlock-attempt", response_model=None)
 async def track_parlay_unlock_attempt(
     lock_reason: str,
+    http_request: Request,
     page_url: str = "",
-    user_id: Optional[str] = None,
-    http_request: Optional[Request] = None
+    user_id: Optional[str] = None
 ):
     """
     Track parlay unlock attempt
@@ -213,13 +213,13 @@ async def track_parlay_unlock_attempt(
     )
 
 
-@router.post("/sim-run-complete")
+@router.post("/sim-run-complete", response_model=None)
 async def track_sim_run_complete(
     sim_count: int,
     market_type: str,
+    http_request: Request,
     page_url: str = "",
-    user_id: Optional[str] = None,
-    http_request: Optional[Request] = None
+    user_id: Optional[str] = None
 ):
     """
     Track simulation completion

@@ -51,6 +51,9 @@ export default function TelegramConnection() {
       const response = await fetch('/api/telegram/status', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
       setStatus(data);
       setLoading(false);
@@ -65,10 +68,16 @@ export default function TelegramConnection() {
       const response = await fetch('/api/telegram/notifications', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
-      setNotifications(data.filter((n: AccessNotification) => !n.is_read).slice(0, 3));
+      if (Array.isArray(data)) {
+        setNotifications(data.filter((n: AccessNotification) => !n.is_read).slice(0, 3));
+      }
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
+      setNotifications([]);
     }
   };
 
@@ -248,7 +257,7 @@ export default function TelegramConnection() {
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">BeatVegas Tier</span>
               <span className="text-white font-medium">
-                {status.entitlements.beatvegas_tier.toUpperCase()}
+                {status.entitlements?.beatvegas_tier?.toUpperCase() || 'FREE'}
               </span>
             </div>
             <div className="flex justify-between text-sm">

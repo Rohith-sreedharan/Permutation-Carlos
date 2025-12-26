@@ -10,7 +10,7 @@ import asyncio
 from pymongo.database import Database
 import aiohttp
 
-from backend.db.schemas.telegram_schemas import (
+from db.schemas.telegram_schemas import (
     TelegramIntegration,
     TelegramMembership,
     TelegramChannel,
@@ -46,7 +46,7 @@ class TelegramBotService:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         
         # Store token in integrations collection
-        self.db[COLLECTIONS["telegram_integrations"]].update_one(
+        await self.db[COLLECTIONS["telegram_integrations"]].update_one(
             {"user_id": user_id},
             {
                 "$set": {
@@ -73,7 +73,7 @@ class TelegramBotService:
             TelegramIntegration if successful, None if token invalid
         """
         # Find user by link token
-        integration_doc = self.db[COLLECTIONS["telegram_integrations"]].find_one({
+        integration_doc = await self.db[COLLECTIONS["telegram_integrations"]].find_one({
             "link_token": link_token,
             "link_token_expires_at": {"$gt": datetime.now(timezone.utc)}
         })
@@ -91,7 +91,7 @@ class TelegramBotService:
             linked_at=datetime.now(timezone.utc)
         )
         
-        self.db[COLLECTIONS["telegram_integrations"]].update_one(
+        await self.db[COLLECTIONS["telegram_integrations"]].update_one(
             {"user_id": integration.user_id},
             {
                 "$set": integration.dict(),
@@ -113,10 +113,21 @@ class TelegramBotService:
     
     async def get_telegram_integration(self, user_id: str) -> Optional[TelegramIntegration]:
         """Get Telegram integration for user"""
-        doc = self.db[COLLECTIONS["telegram_integrations"]].find_one(
+        doc = await self.db[COLLECTIONS["telegram_integrations"]].find_one(
             {"user_id": user_id}
         )
-        return TelegramIntegration(**doc) if doc else None
+        if not doc:
+            return None
+        
+        # Parse integration
+        integration = TelegramIntegration(**doc)
+        
+        # Only return if properly linked (has external_user_id)
+        # Incomplete/legacy integrations are treated as not linked
+        if not integration.external_user_id:
+            return None
+        
+        return integration
     
     # ========================================================================
     # CHANNEL MEMBERSHIP MANAGEMENT
@@ -162,7 +173,7 @@ class TelegramBotService:
             granted_by="system"
         )
         
-        self.db[COLLECTIONS["telegram_memberships"]].insert_one(
+        await self.db[COLLECTIONS["telegram_memberships"]].insert_one(
             membership.dict()
         )
         
@@ -220,7 +231,7 @@ class TelegramBotService:
         await self._kick_chat_member(channel.channel_id, integration.external_user_id)
         
         # Update membership record
-        self.db[COLLECTIONS["telegram_memberships"]].update_one(
+        await self.db[COLLECTIONS["telegram_memberships"]].update_one(
             {
                 "user_id": user_id,
                 "channel_name": channel_name,
@@ -277,7 +288,7 @@ class TelegramBotService:
             True if approved
         """
         # Find user integration
-        integration_doc = self.db[COLLECTIONS["telegram_integrations"]].find_one({
+        integration_doc = await self.db[COLLECTIONS["telegram_integrations"]].find_one({
             "external_user_id": telegram_user_id
         })
         
@@ -290,7 +301,7 @@ class TelegramBotService:
         user_id = integration_doc["user_id"]
         
         # Check entitlements
-        entitlements_doc = self.db[COLLECTIONS["user_entitlements"]].find_one({
+        entitlements_doc = await self.db[COLLECTIONS["user_entitlements"]].find_one({
             "user_id": user_id
         })
         
@@ -439,7 +450,7 @@ class TelegramBotService:
                 message_content=message
             )
             
-            self.db[COLLECTIONS["telegram_delivery_log"]].insert_one(
+            await self.db[COLLECTIONS["telegram_delivery_log"]].insert_one(
                 delivery_log.dict()
             )
         
@@ -451,14 +462,14 @@ class TelegramBotService:
     
     async def _get_channel_config(self, channel_name: str) -> Optional[TelegramChannel]:
         """Get channel configuration"""
-        doc = self.db[COLLECTIONS["telegram_channels"]].find_one({
+        doc = await self.db[COLLECTIONS["telegram_channels"]].find_one({
             "channel_name": channel_name
         })
         return TelegramChannel(**doc) if doc else None
     
     async def _get_channel_by_id(self, channel_id: str) -> Optional[TelegramChannel]:
         """Get channel by Telegram channel ID"""
-        doc = self.db[COLLECTIONS["telegram_channels"]].find_one({
+        doc = await self.db[COLLECTIONS["telegram_channels"]].find_one({
             "channel_id": channel_id
         })
         return TelegramChannel(**doc) if doc else None
@@ -523,4 +534,4 @@ class TelegramBotService:
             triggered_by=triggered_by
         )
         
-        self.db[COLLECTIONS["audit_events"]].insert_one(event.dict())
+        await self.db[COLLECTIONS["audit_events"]].insert_one(event.dict())

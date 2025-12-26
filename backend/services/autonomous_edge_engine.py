@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from pymongo.database import Database
 import uuid
 
-from backend.db.schemas.signal_schemas import (
+from db.schemas.signal_schemas import (
     Signal,
     MarketSnapshot,
     SignalState,
@@ -19,7 +19,7 @@ from backend.db.schemas.signal_schemas import (
     GateResult,
     ReasonCode
 )
-from backend.services.signal_manager import SignalManager
+from services.signal_manager import SignalManager
 
 
 # ============================================================================

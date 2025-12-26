@@ -61,6 +61,27 @@ const Profile: React.FC = () => {
           <p className="text-xs text-light-gray">Member since</p>
           <p className="text-sm text-white">{profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'N/A'}</p>
         </div>
+        
+        {/* Referral CTA */}
+        <div className="mt-6 pt-6 border-t border-navy">
+          <div className="bg-gradient-to-r from-neon-green/10 to-electric-blue/10 rounded-lg p-6 border border-neon-green/30">
+            <h3 className="text-xl font-bold text-neon-green mb-2 font-teko">
+              Beat Vegas Together
+            </h3>
+            <p className="text-sm text-light-gray mb-4">
+              Share your edge. Invite friends and earn rewards when they join the winning side.
+            </p>
+            <button 
+              className="bg-neon-green text-charcoal font-bold py-3 px-6 rounded-lg hover:bg-electric-blue hover:text-white transition-all duration-300 transform hover:scale-105 shadow-lg"
+              onClick={() => {
+                // TODO: Implement referral logic
+                alert('Referral feature coming soon!');
+              }}
+            >
+              Refer a Friend
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

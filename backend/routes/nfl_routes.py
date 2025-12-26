@@ -4,7 +4,7 @@ FastAPI endpoints for NFL edge evaluation system
 Locked specification implementation
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Path
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -220,7 +220,7 @@ async def get_recent_evaluations(
     summary="Get weekly statistics",
     description="Weekly statistics and system health check for NFL slate"
 )
-async def get_week_stats(week: int = Field(..., ge=1, le=18)):
+async def get_week_stats(week: int = Path(..., ge=1, le=18)):
     """
     Get weekly slate statistics and system health
     

@@ -3,6 +3,7 @@ import { AlertCircle, Lock, Zap, TrendingUp, Users, Eye } from 'lucide-react';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { swalSuccess, swalError } from '../utils/swal';
+import { verifyToken } from '../services/api';
 
 interface GameRoom {
   room_id: string;
@@ -52,9 +53,18 @@ const WarRoom: React.FC = () => {
 
   useEffect(() => {
     loadRooms();
-    const userTier = localStorage.getItem('subscription_tier') || 'free';
-    setUserTier(userTier);
+    loadUserTier();
   }, []);
+
+  const loadUserTier = async () => {
+    try {
+      const user = await verifyToken();
+      setUserTier(user?.tier || 'free');
+    } catch (err) {
+      console.error('Failed to load user tier:', err);
+      setUserTier('free');
+    }
+  };
 
   useEffect(() => {
     if (selectedRoom) {
@@ -109,7 +119,7 @@ const WarRoom: React.FC = () => {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6 h-full flex flex-col bg-gradient-to-b from-charcoal to-midnight">
+    <div className="space-y-6 flex flex-col bg-gradient-to-b from-charcoal to-midnight p-6 min-h-screen">
       <PageHeader title="War Room — Live Intelligence" />
 
       {/* Channel Banner */}
@@ -139,60 +149,72 @@ const WarRoom: React.FC = () => {
       </div>
 
       {/* Main Layout: Rooms | Threads | Posts */}
-      <div className="grid grid-cols-12 gap-4 flex-1 overflow-hidden">
+      <div className="grid grid-cols-12 gap-4 h-[calc(100vh-300px)] max-h-[800px]">
         {/* Rooms Sidebar */}
-        <div className="col-span-3 bg-charcoal rounded-lg p-4 overflow-y-auto border border-navy">
+        <div className="col-span-3 bg-charcoal rounded-lg p-4 overflow-y-auto border border-navy flex flex-col h-full">
           <h3 className="font-bold text-white font-teko mb-4">LIVE GAMES</h3>
-          <div className="space-y-2">
-            {rooms.map((room) => (
-              <button
-                key={room.room_id}
-                onClick={() => setSelectedRoom(room)}
-                className={`w-full text-left p-3 rounded-lg transition ${
-                  selectedRoom?.room_id === room.room_id
-                    ? 'bg-electric-blue text-charcoal font-bold'
-                    : 'bg-navy hover:bg-navy/70 text-white'
-                }`}
-              >
-                <div className="text-sm font-bold">{room.home_team.substring(0, 3).toUpperCase()}</div>
-                <div className="text-xs text-light-gray">vs {room.away_team.substring(0, 3).toUpperCase()}</div>
-                <div className="text-xs mt-1 font-teko">
-                  {room.status === 'live' && <span className="text-red-400">🔴 LIVE</span>}
-                  {room.status === 'scheduled' && <span className="text-yellow-400">⏱ SCHEDULED</span>}
-                </div>
-              </button>
-            ))}
+          <div className="space-y-2 flex-1">
+            {rooms.length === 0 ? (
+              <div className="text-center text-light-gray py-8 text-sm">
+                No live games available.
+              </div>
+            ) : (
+              rooms.map((room) => (
+                <button
+                  key={room.room_id}
+                  onClick={() => setSelectedRoom(room)}
+                  className={`w-full text-left p-3 rounded-lg transition ${
+                    selectedRoom?.room_id === room.room_id
+                      ? 'bg-electric-blue text-charcoal font-bold'
+                      : 'bg-navy hover:bg-navy/70 text-white'
+                  }`}
+                >
+                  <div className="text-sm font-bold">{room.home_team.substring(0, 3).toUpperCase()}</div>
+                  <div className="text-xs text-light-gray">vs {room.away_team.substring(0, 3).toUpperCase()}</div>
+                  <div className="text-xs mt-1 font-teko">
+                    {room.status === 'live' && <span className="text-red-400">🔴 LIVE</span>}
+                    {room.status === 'scheduled' && <span className="text-yellow-400">⏱ SCHEDULED</span>}
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
 
         {/* Market Threads */}
-        <div className="col-span-3 bg-charcoal rounded-lg p-4 overflow-y-auto border border-navy">
+        <div className="col-span-3 bg-charcoal rounded-lg p-4 overflow-y-auto border border-navy flex flex-col h-full">
           <h3 className="font-bold text-white font-teko mb-4">MARKETS</h3>
-          <div className="space-y-2">
-            {threads.map((thread) => (
-              <button
-                key={thread.thread_id}
-                onClick={() => setSelectedThread(thread)}
-                className={`w-full text-left p-3 rounded-lg transition ${
-                  selectedThread?.thread_id === thread.thread_id
-                    ? 'bg-electric-blue text-charcoal'
-                    : 'bg-navy hover:bg-navy/70 text-white'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-sm capitalize">{thread.market_type}</div>
-                    <div className="text-xs text-light-gray">{thread.post_count} posts</div>
+          <div className="space-y-2 flex-1">
+            {threads.length === 0 ? (
+              <div className="text-center text-light-gray py-8 text-sm">
+                {!selectedRoom ? 'Select a game to view markets' : 'No market threads available'}
+              </div>
+            ) : (
+              threads.map((thread) => (
+                <button
+                  key={thread.thread_id}
+                  onClick={() => setSelectedThread(thread)}
+                  className={`w-full text-left p-3 rounded-lg transition ${
+                    selectedThread?.thread_id === thread.thread_id
+                      ? 'bg-electric-blue text-charcoal'
+                      : 'bg-navy hover:bg-navy/70 text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-sm capitalize">{thread.market_type}</div>
+                      <div className="text-xs text-light-gray">{thread.post_count} posts</div>
+                    </div>
+                    {thread.is_locked && <Lock size={14} className="text-red-400" />}
                   </div>
-                  {thread.is_locked && <Lock size={14} className="text-red-400" />}
-                </div>
-              </button>
-            ))}
+                </button>
+              ))
+            )}
           </div>
         </div>
 
         {/* Posts Feed */}
-        <div className="col-span-6 bg-charcoal rounded-lg p-4 overflow-y-auto border border-navy flex flex-col">
+        <div className="col-span-6 bg-charcoal rounded-lg p-4 overflow-y-auto border border-navy flex flex-col h-full">
           {postingMode ? (
             <PostTemplateContainer
               type={postingMode}

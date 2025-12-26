@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from backend.services.entitlements_service import EntitlementsEngine, EntitlementNotifier
-from backend.services.telegram_bot_service import TelegramBotService
-from backend.services.signal_generation_service import SignalGenerationEngine
-from backend.services.signal_posting_service import SignalPostingService
-from backend.middleware.auth import get_current_user  # Assumes existing auth
+from services.entitlements_service import EntitlementsEngine, EntitlementNotifier
+from services.telegram_bot_service import TelegramBotService
+from services.signal_generation_service import SignalGenerationEngine
+from services.signal_posting_service import SignalPostingService
+from middleware.auth import get_current_user  # Assumes existing auth
 
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
@@ -105,7 +105,8 @@ async def generate_link_token(
     db = await get_db()
     telegram_service = TelegramBotService(db)
     
-    token = await telegram_service.generate_link_token(user["user_id"])
+    user_id = str(user["_id"])  # Convert ObjectId to string
+    token = await telegram_service.generate_link_token(user_id)
     
     return LinkTelegramResponse(
         link_token=token,
@@ -167,62 +168,70 @@ async def complete_telegram_link(
 @router.get("/status", response_model=TelegramStatusResponse)
 async def get_telegram_status(user = Depends(get_current_user)):
     """Get user's Telegram connection and entitlement status"""
-    db = await get_db()
-    telegram_service = TelegramBotService(db)
-    entitlements_engine = EntitlementsEngine(db)
-    
-    # Get integration
-    integration = await telegram_service.get_telegram_integration(user["user_id"])
-    
-    # Get entitlements
-    entitlements = await entitlements_engine.get_entitlements(user["user_id"])
-    
-    if not entitlements:
-        entitlements = await entitlements_engine.compute_entitlements(
-            user["user_id"],
-            recompute_reason="status_check"
+    try:
+        user_id = str(user["_id"])  # Convert ObjectId to string
+        db = await get_db()
+        telegram_service = TelegramBotService(db)
+        entitlements_engine = EntitlementsEngine(db)
+        
+        # Get integration
+        integration = await telegram_service.get_telegram_integration(user_id)
+        
+        # Get entitlements
+        entitlements = await entitlements_engine.get_entitlements(user_id)
+        
+        if not entitlements:
+            entitlements = await entitlements_engine.compute_entitlements(
+                user_id,
+                recompute_reason="status_check"
+            )
+        
+        # Get active channels
+        channels = []
+        if integration and entitlements.telegram_signals:
+            channels.append("signals")
+        if integration and entitlements.telegram_premium:
+            channels.append("premium")
+        
+        return TelegramStatusResponse(
+            linked=integration is not None,
+            telegram_username=integration.telegram_username if integration else None,
+            telegram_user_id=integration.external_user_id if integration else None,
+            has_access=entitlements.telegram_signals,
+            channels=channels,
+            entitlements=entitlements.dict()
         )
-    
-    # Get active channels
-    channels = []
-    if integration and entitlements.telegram_signals:
-        channels.append("signals")
-    if integration and entitlements.telegram_premium:
-        channels.append("premium")
-    
-    return TelegramStatusResponse(
-        linked=integration is not None,
-        telegram_username=integration.telegram_username if integration else None,
-        telegram_user_id=integration.external_user_id if integration else None,
-        has_access=entitlements.telegram_signals,
-        channels=channels,
-        entitlements=entitlements.dict()
-    )
+    except Exception as e:
+        print(f"Error in get_telegram_status: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get Telegram status: {str(e)}")
 
 
 @router.delete("/unlink")
 async def unlink_telegram(user = Depends(get_current_user)):
     """Unlink Telegram account"""
+    user_id = str(user["_id"])  # Convert ObjectId to string
     db = await get_db()
     telegram_service = TelegramBotService(db)
     
     # Get integration
-    integration = await telegram_service.get_telegram_integration(user["user_id"])
+    integration = await telegram_service.get_telegram_integration(user_id)
     
     if not integration:
         raise HTTPException(status_code=404, detail="No Telegram account linked")
     
     # Revoke channel access
     await telegram_service.revoke_channel_access(
-        user_id=user["user_id"],
+        user_id=user_id,
         channel_name="signals",
         reason="user_unlinked"
     )
     
     # Delete integration
-    from backend.db.schemas.telegram_schemas import COLLECTIONS
+    from db.schemas.telegram_schemas import COLLECTIONS
     await db[COLLECTIONS["telegram_integrations"]].delete_one({
-        "user_id": user["user_id"]
+        "user_id": user_id
     })
     
     return {"status": "unlinked"}
@@ -316,27 +325,35 @@ async def handle_bot_updates(request: Request):
 @router.get("/notifications", response_model=List[AccessChangeNotification])
 async def get_access_notifications(user = Depends(get_current_user)):
     """Get access change notifications for user"""
-    db = await get_db()
-    from backend.db.schemas.telegram_schemas import COLLECTIONS
-    
-    cursor = db[COLLECTIONS["access_change_events"]].find({
-        "user_id": user["user_id"]
-    }).sort("created_at", -1).limit(20)
-    
-    notifications = []
-    async for doc in cursor:
-        notifications.append(AccessChangeNotification(
-            event_id=doc["event_id"],
-            event_type=doc["event_type"],
-            title=doc["message_title"],
-            message=doc["message_body"],
-            cta_url=doc.get("cta_url"),
-            cta_text=doc.get("cta_text"),
-            created_at=doc["created_at"],
-            is_read=doc.get("is_read", False)
-        ))
-    
-    return notifications
+    try:
+        user_id = str(user["_id"])  # Convert ObjectId to string
+        db = await get_db()
+        from db.schemas.telegram_schemas import COLLECTIONS
+        
+        cursor = db[COLLECTIONS["access_change_events"]].find({
+            "user_id": user_id
+        }).sort("created_at", -1).limit(20)
+        
+        notifications = []
+        async for doc in cursor:
+            notifications.append(AccessChangeNotification(
+                event_id=doc["event_id"],
+                event_type=doc["event_type"],
+                title=doc["message_title"],
+                message=doc["message_body"],
+                cta_url=doc.get("cta_url"),
+                cta_text=doc.get("cta_text"),
+                created_at=doc["created_at"],
+                is_read=doc.get("is_read", False)
+            ))
+        
+        return notifications
+    except Exception as e:
+        print(f"Error in get_access_notifications: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return empty list instead of error to not break UI
+        return []
 
 
 @router.post("/notifications/{event_id}/read")
@@ -345,11 +362,12 @@ async def mark_notification_read(
     user = Depends(get_current_user)
 ):
     """Mark notification as read"""
+    user_id = str(user["_id"])  # Convert ObjectId to string
     db = await get_db()
-    from backend.db.schemas.telegram_schemas import COLLECTIONS
+    from db.schemas.telegram_schemas import COLLECTIONS
     
     await db[COLLECTIONS["access_change_events"]].update_one(
-        {"event_id": event_id, "user_id": user["user_id"]},
+        {"event_id": event_id, "user_id": user_id},
         {"$set": {"is_read": True}}
     )
     

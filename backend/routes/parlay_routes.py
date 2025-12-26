@@ -90,8 +90,8 @@ async def build_parlay(
         ]
         
         # Get orchestrator and request analysis
-        from backend.core.agent_orchestrator import get_orchestrator
-        from backend.db.mongo import client, db
+        from core.agent_orchestrator import get_orchestrator
+        from db.mongo import client, db
         orchestrator = await get_orchestrator(client)
         
         # Publish to event bus
@@ -101,8 +101,8 @@ async def build_parlay(
         # In production, would wait for agent response or use WebSocket
         
         # Quick calculation for immediate response
-        from backend.core.agents.parlay_agent import ParlayAgent
-        from backend.core.event_bus import get_event_bus
+        from core.agents.parlay_agent import ParlayAgent
+        from core.event_bus import get_event_bus
         
         bus = await get_event_bus()
         parlay_agent = ParlayAgent(bus)
@@ -135,7 +135,7 @@ async def build_parlay(
         recommendation = parlay_agent._get_recommendation(ev, risk_score)
         
         # Get bet sizing from risk agent
-        from backend.core.agents.risk_agent import RiskAgent
+        from core.agents.risk_agent import RiskAgent
         risk_agent = RiskAgent(bus, client)
         
         guidance = await risk_agent._generate_risk_guidance(user_id, {

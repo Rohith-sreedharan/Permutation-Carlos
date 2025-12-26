@@ -278,9 +278,10 @@ class MonteCarloEngine:
         margin_std = np.std(margins_array)
         avg_margin = results["team_a_total"] - results["team_b_total"]
         
-        # Calculate upset probability (underdog winning)
+        # Calculate upset probability (underdog winning) - distribute pushes
+        pushes = results.get("pushes", 0)
         team_a_favored = team_a_rating > team_b_rating
-        upset_probability = (results["team_b_wins"] / iterations) if team_a_favored else (results["team_a_wins"] / iterations)
+        upset_probability = ((results["team_b_wins"] + pushes / 2) / iterations) if team_a_favored else ((results["team_a_wins"] + pushes / 2) / iterations)
         
         # Calculate confidence intervals (1, 2, 3 standard deviations)
         ci_68 = [avg_margin / iterations - margin_std, avg_margin / iterations + margin_std]
@@ -505,8 +506,10 @@ class MonteCarloEngine:
         logger.info(f"O/U Analysis: {ou_analysis.sims_over}/{iterations} over {bookmaker_total_line} = {over_probability:.1%}")
         
         # Calculate Win Probabilities from simulation counts (NO HEURISTICS)
-        home_win_probability = float(results["team_a_wins"] / iterations)
-        away_win_probability = float(results["team_b_wins"] / iterations)
+        # Distribute pushes evenly between teams to ensure probabilities sum to 1.0
+        pushes = results.get("pushes", 0)
+        home_win_probability = float((results["team_a_wins"] + pushes / 2) / iterations)
+        away_win_probability = float((results["team_b_wins"] + pushes / 2) / iterations)
         
         # Validate probabilities sum to ~1.0
         prob_sum = home_win_probability + away_win_probability
@@ -514,9 +517,8 @@ class MonteCarloEngine:
             logger.warning(f"Win probability sum = {prob_sum:.4f} (expected 1.0)")
         
         
-        # Calculate win probabilities from simulation results
-        home_win_probability = results["team_a_wins"] / iterations
-        away_win_probability = results["team_b_wins"] / iterations
+        # Calculate win probabilities from simulation results (already calculated above)
+        # home_win_probability and away_win_probability are already set
         
         # Calculate tier-aware confidence score (NUMERICAL ACCURACY)
         tier_config = SimulationTierConfig.get_tier_config(iterations)
@@ -1674,7 +1676,8 @@ class MonteCarloEngine:
         - Outcome consistency (how stable are the results)
         - Sample size quality (iteration count reliability)
         """
-        win_prob = max(results["team_a_wins"], results["team_b_wins"]) / iterations
+        pushes = results.get("pushes", 0)
+        win_prob = max(results["team_a_wins"] + pushes / 2, results["team_b_wins"] + pushes / 2) / iterations
         margin_std = np.std(results["margins"])
         margins = results["margins"]
         
