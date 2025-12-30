@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Target, Activity, Zap, Brain } from 'lucide-react';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface BettingCommandCenterProps {
   onAuthError: () => void;
 }

@@ -9,6 +9,7 @@ from core.monte_carlo_engine import MonteCarloEngine
 from core.safety_engine import SafetyEngine, PublicCopyFormatter
 from core.ncaaf_championship_regime import detect_ncaaf_context, NCAAFChampionshipRegimeController
 from core.truth_mode import truth_mode_validator, BlockReason
+from core.market_line_integrity import MarketLineIntegrityError
 from db.mongo import db
 from middleware.auth import get_current_user_optional, get_user_tier
 from services.post_game_grader import post_game_grader
@@ -362,6 +363,19 @@ async def get_simulation(
                 
                 print(f"✓ Simulation generated successfully for {event_id} ({assigned_iterations} iterations)")
                 
+            except MarketLineIntegrityError as e:
+                # Handle stale odds data gracefully
+                print(f"⚠️ Market Line Integrity Error for {event_id}: {str(e)}")
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "error": "STALE_ODDS_DATA",
+                        "message": "Cannot generate simulation: odds data is too old",
+                        "details": str(e),
+                        "event_id": event_id,
+                        "user_action": "Please try again later when odds have been refreshed"
+                    }
+                )
             except Exception as e:
                 print(f"✗ Simulation generation failed for {event_id}: {str(e)}")
                 import traceback

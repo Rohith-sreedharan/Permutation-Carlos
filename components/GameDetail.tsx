@@ -54,6 +54,8 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart } from 'recharts';
 import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } from '../types';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface GameDetailProps {
   gameId: string;
   onBack: () => void;

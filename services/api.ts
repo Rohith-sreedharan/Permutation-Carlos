@@ -533,6 +533,14 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/simulations/${eventId}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 422) {
+        // Handle stale odds data gracefully
+        const error = await res.json();
+        if (error.detail?.error === 'STALE_ODDS_DATA') {
+            throw new Error(error.detail.message || 'Odds data is outdated. Please try again later.');
+        }
+        throw new Error(error.detail?.message || 'Cannot generate simulation');
+    }
     if (!res.ok) throw new Error('Failed to fetch simulation');
     return res.json();
 };

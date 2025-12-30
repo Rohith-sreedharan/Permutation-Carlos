@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import LoadingSpinner from './LoadingSpinner';
 import { getSubscriptionStatus } from '../services/api';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface SubscriptionData {
   tier: string;
   renewalDate: string;
@@ -34,9 +36,37 @@ const SubscriptionSettings: React.FC = () => {
     loadSubscription();
   }, []);
 
-  const handleManageSubscription = () => {
-    // Redirect to Stripe Customer Portal
-    window.location.href = '/api/stripe/customer-portal';
+  const handleManageSubscription = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        setError('Please log in to manage your subscription');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/stripe/customer-portal`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.detail || 'Failed to access customer portal');
+        return;
+      }
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setError('No portal URL returned');
+      }
+    } catch (err: any) {
+      console.error('Error accessing customer portal:', err);
+      setError('Failed to access customer portal');
+    }
   };
 
   if (loading) {

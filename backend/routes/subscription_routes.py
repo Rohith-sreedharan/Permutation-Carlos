@@ -149,7 +149,8 @@ async def get_subscription_usage(authorization: Optional[str] = Header(None)):
 @stripe_router.get("/customer-portal")
 async def get_customer_portal(authorization: Optional[str] = Header(None)):
     """
-    Redirect to Stripe Customer Portal for subscription management
+    Get Stripe Customer Portal URL for subscription management
+    Returns JSON with portal URL instead of redirecting
     Allows users to update payment methods, view invoices, cancel subscription
     """
     user_id = _get_user_id_from_auth(authorization)
@@ -177,8 +178,8 @@ async def get_customer_portal(authorization: Optional[str] = Header(None)):
             return_url=f"{os.getenv('FRONTEND_URL', 'http://127.0.0.1:3000')}/settings/billing"
         )
         
-        # Redirect to Stripe portal
-        return RedirectResponse(url=session.url, status_code=303)
+        # Return portal URL as JSON for frontend to handle redirect
+        return {"url": session.url}
         
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=f"Stripe error: {str(e)}")

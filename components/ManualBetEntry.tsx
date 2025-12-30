@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { PlusCircle, DollarSign, TrendingUp } from 'lucide-react';
 import Swal from 'sweetalert2';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface ManualBetEntryProps {
   onBetSubmitted?: () => void;
 }
@@ -124,7 +126,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
             placeholder="e.g., Lakers -5, Over 220.5, LeBron 25+ pts"
             value={selection}
             onChange={(e) => setSelection(e.target.value)}
-            className="w-full bg-[#0C1018] border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
+            className="w-full bg-dark-navy border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
           />
           <div className="text-xs text-gray-500 mt-1">
             Enter exactly as shown on your bet slip
@@ -145,7 +147,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
                 placeholder="50.00"
                 value={stake}
                 onChange={(e) => setStake(e.target.value)}
-                className="w-full bg-[#0C1018] border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
+                className="w-full bg-dark-navy border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
               />
             </div>
           </div>
@@ -160,7 +162,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
               placeholder="-110 or 1.91"
               value={odds}
               onChange={(e) => setOdds(e.target.value)}
-              className="w-full bg-[#0C1018] border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
+              className="w-full bg-dark-navy border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
             />
           </div>
         </div>
@@ -172,7 +174,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
             <select
               value={sport}
               onChange={(e) => setSport(e.target.value)}
-              className="w-full bg-[#0C1018] border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#D4A64A]"
+              className="w-full bg-dark-navy border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#D4A64A]"
             >
               <option value="NBA">NBA</option>
               <option value="NCAAB">NCAAB</option>
@@ -188,7 +190,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
             <select
               value={pickType}
               onChange={(e) => setPickType(e.target.value as any)}
-              className="w-full bg-[#0C1018] border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#D4A64A]"
+              className="w-full bg-dark-navy border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#D4A64A]"
             >
               <option value="single">Single</option>
               <option value="parlay">Parlay</option>
@@ -218,7 +220,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
       </form>
 
       {/* Helper Text */}
-      <div className="mt-4 p-3 bg-[#0C1018] rounded-lg border border-gray-800">
+      <div className="mt-4 p-3 bg-dark-navy rounded-lg border border-gray-800">
         <div className="text-xs text-gray-400">
           <strong className="text-[#D4A64A]">Pro Tip:</strong> Include event IDs when possible for AI edge analysis. 
           We'll compare your picks against our model predictions.
