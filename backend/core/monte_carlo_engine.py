@@ -1404,7 +1404,7 @@ class MonteCarloEngine:
         # Store period simulation in database - use update_one with upsert to avoid duplicate key errors
         db["monte_carlo_simulations"].update_one(
             {"simulation_id": simulation_result["simulation_id"]},
-            {"$set": simulation_result.copy()},
+            {"$set": simulation_result},
             upsert=True
         )
         
