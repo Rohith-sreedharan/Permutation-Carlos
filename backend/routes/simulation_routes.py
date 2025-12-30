@@ -629,6 +629,20 @@ async def get_period_simulation(
         
         return simulation
         
+    except MarketLineIntegrityError as e:
+        # Handle stale odds data gracefully for period simulations
+        print(f"⚠️ Market Line Integrity Error for {event_id} ({period}): {str(e)}")
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "STALE_ODDS_DATA",
+                "message": f"Cannot generate {period} simulation: odds data is too old",
+                "details": str(e),
+                "event_id": event_id,
+                "period": period,
+                "user_action": "Please try again later when odds have been refreshed"
+            }
+        )
     except Exception as e:
         import traceback
         traceback.print_exc()

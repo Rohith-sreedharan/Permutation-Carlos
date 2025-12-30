@@ -195,6 +195,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         },
       });
 
+      if (response.status === 422) {
+        // Stale odds data - silently skip
+        const error = await response.json();
+        console.warn('First half simulation unavailable:', error.detail?.message || 'Odds data is outdated');
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
         setFirstHalfSimulation(data);
