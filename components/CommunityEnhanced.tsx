@@ -5,6 +5,8 @@ import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import { swalSuccess, swalError } from '../utils/swal';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface Channel {
     id: string;
     name: string;
@@ -45,7 +47,7 @@ const CommunityEnhanced: React.FC = () => {
 
     const loadChannels = async () => {
         try {
-            const response = await fetch('http://localhost:8000/api/community/channels');
+            const response = await fetch(`${API_BASE_URL}/api/community/channels`);
             const data = await response.json();
             setChannels(data.channels);
         } catch (err) {
@@ -56,7 +58,7 @@ const CommunityEnhanced: React.FC = () => {
     const loadData = async () => {
         try {
             const [messagesResponse, analystData] = await Promise.all([
-                fetch(`http://localhost:8000/api/community/messages?channel=${selectedChannel}&limit=50`),
+                fetch(`${API_BASE_URL}/api/community/messages?channel=${selectedChannel}&limit=50`),
                 getTopAnalysts().catch(() => [])
             ]);
             
@@ -80,7 +82,7 @@ const CommunityEnhanced: React.FC = () => {
         try {
             setSending(true);
             const token = localStorage.getItem('authToken');
-            const response = await fetch('http://localhost:8000/api/community/messages', {
+            const response = await fetch(`${API_BASE_URL}/api/community/messages`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

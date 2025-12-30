@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
   const [email, setEmail] = useState('');
   const [founderCount, setFounderCount] = useState(243);
@@ -8,7 +10,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
 
   useEffect(() => {
     // Load founder count from backend
-    fetch('http://localhost:8000/api/waitlist/count')
+    fetch(`${API_BASE_URL}/api/waitlist/count`)
       .then(res => res.json())
       .then(data => setFounderCount(data.count || 243))
       .catch(() => setFounderCount(243));
@@ -18,7 +20,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
     e.preventDefault();
     
     try {
-      const response = await fetch('http://localhost:8000/api/waitlist/join', {
+      const response = await fetch(`${API_BASE_URL}/api/waitlist/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, referral_code: referralCode })

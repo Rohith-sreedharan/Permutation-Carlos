@@ -184,7 +184,7 @@ const WarRoom: React.FC = () => {
       // Fetch market states from registry
       let marketStates: MarketStateInfo[] = [];
       try {
-        const statesResponse = await fetch('http://localhost:8000/api/market-states/war-room-visible');
+        const statesResponse = await fetch(`${API_BASE_URL}/api/market-states/war-room-visible`);
         if (statesResponse.ok) {
           const statesData = await statesResponse.json();
           marketStates = statesData.states || [];
@@ -276,7 +276,7 @@ const WarRoom: React.FC = () => {
    */
   const loadThreads = async (roomId: string, marketType: string, game?: GameRoom) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/war-room/game-rooms/${roomId}?market=${marketType}`);
+      const response = await fetch(`${API_BASE_URL}/api/war-room/game-rooms/${roomId}?market=${marketType}`);
       if (response.ok) {
         const data = await response.json();
         const userThreads = data.threads || [];
@@ -946,7 +946,7 @@ const PostTemplateContainer: React.FC<PostTemplateContainerProps> = ({
     setSubmitting(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/war-room/posts/market-callout', {
+      const response = await fetch(`${API_BASE_URL}/api/war-room/posts/market-callout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

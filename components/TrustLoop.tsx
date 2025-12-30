@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 // SVG Icons (replacing lucide-react)
 const CheckCircle = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -109,21 +111,21 @@ const TrustLoop: React.FC = () => {
       setLoading(true);
 
       // Fetch Phase 17 metrics (7-day accuracy, 30-day ROI, Brier Score, by_sport, yesterday)
-      const metricsResponse = await fetch('http://localhost:8000/api/trust/metrics');
+      const metricsResponse = await fetch(`${API_BASE_URL}/api/trust/metrics`);
       if (metricsResponse.ok) {
         const metricsData = await metricsResponse.json();
         setMetrics(metricsData);
       }
 
       // Fetch 7-day accuracy trend for sparkline
-      const trendResponse = await fetch('http://localhost:8000/api/trust/trend?days=7');
+      const trendResponse = await fetch(`${API_BASE_URL}/api/trust/trend?days=7`);
       if (trendResponse.ok) {
         const trendData = await trendResponse.json();
         setTrend(trendData);
       }
 
       // Fetch recent graded predictions (last 20)
-      const historyResponse = await fetch('http://localhost:8000/api/trust/history?days=7&limit=20');
+      const historyResponse = await fetch(`${API_BASE_URL}/api/trust/history?days=7&limit=20`);
       if (historyResponse.ok) {
         const historyData = await historyResponse.json();
         // API returns {count: X, predictions: [...]}

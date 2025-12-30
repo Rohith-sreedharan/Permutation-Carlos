@@ -3,6 +3,8 @@ import { TrendingUp, Award, CheckCircle, Zap } from 'lucide-react';
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface LeaderboardEntry {
   user_id: string;
   username: string;
@@ -29,7 +31,7 @@ const WarRoomLeaderboard: React.FC = () => {
 
   const loadLeaderboard = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/war-room/leaderboard?limit=100');
+      const response = await fetch(`${API_BASE_URL}/api/war-room/leaderboard?limit=100`);
       const data = await response.json();
       setEntries(data.leaderboard);
       setLoading(false);

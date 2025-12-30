@@ -106,7 +106,7 @@ const ParlayArchitect: React.FC = () => {
       try {
         const userId = localStorage.getItem('user_id');
         if (userId) {
-          const response = await api.get(`http://localhost:8000/api/architect/tokens?user_id=${userId}`);
+          const response = await api.get(`/api/architect/tokens?user_id=${userId}`);
           setEliteTokens(response.data);
         }
       } catch (err) {
@@ -264,7 +264,7 @@ const ParlayArchitect: React.FC = () => {
       // Detect cross-sport mode
       const isMultiSport = sport === 'all';
 
-      const response = await api.post('http://localhost:8000/api/architect/generate', {
+      const response = await api.post('/api/architect/generate', {
         sport_key: sport,
         leg_count: legCount,
         risk_profile: riskProfile,
@@ -377,12 +377,12 @@ const ParlayArchitect: React.FC = () => {
       }
 
       // Check if Elite user has free tokens
-      const tokenResponse = await api.get(`http://localhost:8000/api/architect/tokens?user_id=${userId}`);
+      const tokenResponse = await api.get(`/api/architect/tokens?user_id=${userId}`);
       const { is_elite, tokens_remaining } = tokenResponse.data;
 
       if (is_elite && tokens_remaining > 0) {
         // Use free Elite token - no payment needed
-        const response = await api.post('http://localhost:8000/api/architect/unlock', {
+        const response = await api.post('/api/architect/unlock', {
           parlay_id: parlayData.parlay_id,
           user_id: userId,
           payment_intent_id: null
@@ -395,7 +395,7 @@ const ParlayArchitect: React.FC = () => {
         const legCount = parlayData.leg_count;
         const productId = legCount <= 4 ? 'parlay_3_leg' : 'parlay_5_leg';
 
-        const paymentResponse = await api.post('http://localhost:8000/api/payment/create-micro-charge', {
+        const paymentResponse = await api.post('/api/payment/create-micro-charge', {
           product_id: productId,
           user_id: userId,
           parlay_id: parlayData.parlay_id

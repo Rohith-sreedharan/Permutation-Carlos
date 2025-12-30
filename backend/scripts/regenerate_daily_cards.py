@@ -4,10 +4,11 @@ Run every 6 hours to refresh flagship content
 """
 import requests
 import sys
+import os
 from datetime import datetime
 
 # Backend API URL
-API_URL = "http://localhost:8000"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 def regenerate_cards():
     """Trigger daily cards regeneration"""
@@ -39,7 +40,8 @@ def regenerate_cards():
             return 1
     
     except requests.exceptions.ConnectionError:
-        print("❌ Connection error: Is the backend running on http://localhost:8000?")
+        print("❌ Connection error: Is the backend running?")
+        print(f"   API_URL: {API_URL}")
         return 1
     except Exception as e:
         print(f"❌ Error: {str(e)}")

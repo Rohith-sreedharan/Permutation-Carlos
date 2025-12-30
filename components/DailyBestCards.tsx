@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface DailyCard {
   event_id?: string;
   matchup?: string;
@@ -52,7 +54,7 @@ const DailyBestCards: React.FC = () => {
       setLoading(true);
       setError(null);
       console.log('[DailyCards] Fetching from API...');
-      const response = await api.get('http://localhost:8000/api/daily-cards');
+      const response = await api.get('/api/daily-cards');
       console.log('[DailyCards] Raw response:', response);
       console.log('[DailyCards] Response data:', response.data);
       console.log('[DailyCards] Cards:', response.data.cards);

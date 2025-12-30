@@ -1,6 +1,7 @@
+import os
 from pymongo import MongoClient
 
-client = MongoClient('mongodb://localhost:27017')
+client = MongoClient(os.getenv("MONGO_URI", "mongodb://localhost:27017"))
 db = client['beatvegas']
 
 print("=" * 70)

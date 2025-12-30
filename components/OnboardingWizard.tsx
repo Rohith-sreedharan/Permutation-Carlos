@@ -70,7 +70,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, onSkip 
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:8000/api/user/profile', {
+      const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -4,6 +4,8 @@ import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface CLVData {
   picks: Array<{
     event_id: string;
@@ -75,7 +77,7 @@ const SharpsRoom: React.FC = () => {
   const handleUpgradeClick = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:8000/api/payment/create-checkout-session', {
+      const response = await fetch(`${API_BASE_URL}/api/payment/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

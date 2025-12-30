@@ -66,7 +66,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       }
 
       // Fetch PnL metrics
-      const pnlRes = await fetch('http://localhost:8000/api/bets/pnl?days=30', {
+      const pnlRes = await fetch(`${API_BASE_URL}/api/bets/pnl?days=30`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -80,7 +80,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       }
 
       // Fetch edge analysis
-      const edgeRes = await fetch('http://localhost:8000/api/edge-analysis?days=7', {
+      const edgeRes = await fetch(`${API_BASE_URL}/api/edge-analysis?days=7`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -90,7 +90,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       }
 
       // Fetch recent bets
-      const betsRes = await fetch('http://localhost:8000/api/bets/history?limit=10', {
+      const betsRes = await fetch(`${API_BASE_URL}/api/bets/history?limit=10`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       

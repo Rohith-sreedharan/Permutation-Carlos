@@ -138,7 +138,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       const simCount = simulation.iterations || 50000;
       
       const response = await fetch(
-        `http://localhost:8000/api/analytics/confidence-tooltip?confidence_score=${confidenceScore}&volatility=${volatilityIndex}&sim_count=${simCount}`
+        `${API_BASE_URL}/api/analytics/confidence-tooltip?confidence_score=${confidenceScore}&volatility=${volatilityIndex}&sim_count=${simCount}`
       );
       
       if (response.ok) {
@@ -187,7 +187,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     try {
       setFirstHalfLoading(true);
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`http://localhost:8000/api/simulations/${gameId}/period/1H`, {
+      const response = await fetch(`${API_BASE_URL}/api/simulations/${gameId}/period/1H`, {
         headers: {
           'Authorization': token ? `Bearer ${token}` : '',
         },
@@ -253,7 +253,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:8000/api/user/follow-forecast', {
+      const response = await fetch(`${API_BASE_URL}/api/user/follow-forecast`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

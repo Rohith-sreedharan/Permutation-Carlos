@@ -6,6 +6,8 @@ import EventListItem from './EventListItem';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 // SVG Icons (replacing lucide-react)
 const Target = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -120,7 +122,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
     try {
       // Fetch user's decision log (forecasts they followed)
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:8000/api/user/decision-log', {
+      const response = await fetch(`${API_BASE_URL}/api/user/decision-log`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

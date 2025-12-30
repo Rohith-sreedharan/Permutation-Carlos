@@ -4,6 +4,8 @@ import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import type { Event as EventType } from '../types';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 interface ParlayLeg {
   event_id: string;
   pick_type: string;  // "spread", "total", "moneyline"
@@ -140,7 +142,7 @@ const ParlayBuilder: React.FC = () => {
       const token = localStorage.getItem('authToken');
       
       // Call NEW parlay calculator endpoint
-      const response = await fetch('http://localhost:8000/api/architect/calculate-parlay', {
+      const response = await fetch(`${API_BASE_URL}/api/architect/calculate-parlay`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -205,7 +207,7 @@ const ParlayBuilder: React.FC = () => {
         parlayConfidence = 'HIGH';
       }
       
-      const response = await fetch('http://localhost:8000/api/architect/analyze-stake', {
+      const response = await fetch(`${API_BASE_URL}/api/architect/analyze-stake`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

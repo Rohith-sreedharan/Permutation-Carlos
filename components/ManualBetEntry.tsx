@@ -33,7 +33,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
     try {
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch('http://localhost:8000/api/bets/manual', {
+      const response = await fetch(`${API_BASE_URL}/api/bets/manual`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
