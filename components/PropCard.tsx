@@ -114,7 +114,7 @@ const PropCard: React.FC<PropCardProps> = ({
             <div className="bg-electric-blue/20 text-electric-blue text-xs font-bold px-3 py-1 rounded-full">
               #{rank} PROP
             </div>
-            <div className="bg-gradient-to-r from-electric-blue/20 to-purple-600/20 text-white text-xs font-bold px-3 py-1 rounded-full border border-electric-blue/30">
+            <div className="bg-linear-to-r from-electric-blue/20 to-purple-600/20 text-white text-xs font-bold px-3 py-1 rounded-full border border-electric-blue/30">
               📊 MODEL ANALYTICS
             </div>
           </div>

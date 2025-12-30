@@ -53,7 +53,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, currentTie
       ></div>
 
       {/* Modal */}
-      <div className="relative bg-gradient-to-br from-charcoal to-navy rounded-xl border-2 border-gold/30 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-linear-to-br from-charcoal to-navy rounded-xl border-2 border-gold/30 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -86,7 +86,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, currentTie
                   key={tier.key}
                   className={`rounded-lg p-5 border-2 transition-all ${
                     tier.highlight
-                      ? 'bg-gradient-to-br from-gold/10 to-deepRed/10 border-gold/50'
+                      ? 'bg-linear-to-br from-gold/10 to-deepRed/10 border-gold/50'
                       : isCurrentTier
                       ? 'bg-navy/50 border-electric-blue/50'
                       : 'bg-navy/30 border-gold/20'
@@ -133,7 +133,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, currentTie
                       onClick={() => onSelectTier(tier.key)}
                       className={`w-full py-2 px-4 rounded font-bold text-sm transition-all ${
                         tier.highlight
-                          ? 'bg-gradient-to-r from-gold to-lightGold text-darkNavy hover:shadow-lg hover:shadow-gold/30'
+                          ? 'bg-linear-to-r from-gold to-lightGold text-darkNavy hover:shadow-lg hover:shadow-gold/30'
                           : 'bg-electric-blue/20 text-electric-blue border border-electric-blue/30 hover:bg-electric-blue/30'
                       }`}
                     >

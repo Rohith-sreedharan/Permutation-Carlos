@@ -175,9 +175,13 @@ class ParlayOptimizationEngine:
         """
         Build eligible candidate pool with DI+MV+Prop Integrity filtering
         
+        🚨 FIX #4: Uses PARLAY_POOL thresholds, NOT single-pick thresholds
+        
         STRICT MODE: Only PICK state
-        PARLAY MODE: PICK + LEAN (but DI+MV must still pass)
+        PARLAY MODE: PICK + LEAN that pass PARLAY_POOL thresholds
         """
+        from core.parlay_eligibility import check_parlay_pool_eligibility
+        
         eligible = []
         
         for candidate in candidates:
@@ -200,8 +204,28 @@ class ParlayOptimizationEngine:
                     continue
             
             elif mode == TruthMode.PARLAY:
-                # PARLAY: PICK or LEAN (NO_PLAY still blocked)
+                # PARLAY MODE: Check with PARLAY_POOL thresholds (NOT single-pick)
                 if strict_state == 'NO_PLAY':
+                    continue
+                
+                # 🚨 NEW: Use PARLAY_POOL eligibility check (53%/1.5/50)
+                probability = candidate.get('probability', 0) or candidate.get('win_probability', 0) or 0
+                edge = candidate.get('edge', 0) or candidate.get('edge_points', 0) or 0
+                confidence = candidate.get('confidence', 0) or candidate.get('confidence_score', 0) or 0
+                variance_z = candidate.get('variance_z', 0) or 0
+                
+                parlay_check = check_parlay_pool_eligibility(
+                    probability=probability,
+                    edge=edge,
+                    confidence=int(confidence),
+                    variance_z=variance_z
+                )
+                
+                if not parlay_check.is_eligible:
+                    logger.debug(
+                        f"❌ Candidate rejected by PARLAY_POOL thresholds: "
+                        f"{parlay_check.failed_checks}"
+                    )
                     continue
             
             # Market type filtering
@@ -223,7 +247,7 @@ class ParlayOptimizationEngine:
             
             eligible.append(candidate)
         
-        logger.info(f"✅ Eligible candidates: {len(eligible)} from {len(candidates)} total")
+        logger.info(f"✅ Eligible candidates: {len(eligible)} from {len(candidates)} total (using PARLAY_POOL thresholds)")
         return eligible
     
     def _compute_weights(

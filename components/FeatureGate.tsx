@@ -34,7 +34,7 @@ const FeatureGate: React.FC<FeatureGateProps> = ({
   const details = FEATURE_DETAILS[feature];
 
   return (
-    <div className="bg-gradient-to-br from-charcoal/80 to-navy/80 backdrop-blur-sm rounded-lg border-2 border-gold/30 p-8 text-center">
+    <div className="bg-linear-to-br from-charcoal/80 to-navy/80 backdrop-blur-sm rounded-lg border-2 border-gold/30 p-8 text-center">
       <div className="text-5xl mb-4">{details.icon}</div>
       <div className="text-3xl mb-2">🔒</div>
       <h3 className="text-xl font-bold text-gold mb-3">
@@ -49,7 +49,7 @@ const FeatureGate: React.FC<FeatureGateProps> = ({
       {onUpgradeClick && (
         <button
           onClick={onUpgradeClick}
-          className="px-6 py-3 bg-gradient-to-r from-gold to-lightGold text-darkNavy font-bold rounded-lg hover:shadow-xl hover:shadow-gold/30 transition-all transform hover:scale-105"
+          className="px-6 py-3 bg-linear-to-r from-gold to-lightGold text-darkNavy font-bold rounded-lg hover:shadow-xl hover:shadow-gold/30 transition-all transform hover:scale-105"
         >
           Upgrade to {requiredTier.charAt(0).toUpperCase() + requiredTier.slice(1)}
         </button>

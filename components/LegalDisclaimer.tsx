@@ -27,7 +27,7 @@ export default function LegalDisclaimer({
   return (
     <div className={`bg-gold/5 border border-gold/20 rounded-lg p-4 ${className}`}>
       <div className="flex items-start gap-3">
-        <span className="text-gold text-lg flex-shrink-0">🔶</span>
+        <span className="text-gold text-lg shrink-0">🔶</span>
         <div>
           <div className="text-gold font-bold text-sm mb-2">
             Institutional-Grade Interpretation Notice

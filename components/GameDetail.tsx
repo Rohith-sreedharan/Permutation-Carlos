@@ -39,10 +39,18 @@ import {
   classifyTotalEdge, 
   getEdgeStateStyling, 
   shouldHighlightSide, 
-  getBlockedSignalMessage,
+  getSignalMessage,
+  shouldShowRawMetrics,
   EdgeState,
+  PLATFORM_DISCLAIMER,
   type EdgeClassification 
 } from '../utils/edgeStateClassification';
+import { 
+  calculateSpreadContext, 
+  getSharpSideReasoning, 
+  getEdgeConfidenceLevel,
+  type SpreadContext 
+} from '../utils/modelSpreadLogic';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart } from 'recharts';
 import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } from '../types';
 
@@ -411,7 +419,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     expected_value: simulation.outcome?.expected_value_percent || 0,
     distribution_favor: winProb > 0.5 ? ((winProb - 0.5) * 2) * 100 : ((0.5 - winProb) * 2) * 100,
     injury_impact: simulation.injury_impact?.reduce((sum: number, inj: any) => sum + Math.abs(inj.offensive_impact || 0) + Math.abs(inj.defensive_impact || 0), 0) || 0,
-    model_spread: Math.abs(simulation.avg_margin || 0) // Model's predicted point spread
+    // CRITICAL: Model spread must preserve SIGN (+underdog, -favorite)
+    // DO NOT use Math.abs() - sign determines Sharp Side selection
+    model_spread: simulation.avg_margin || 0
   };
   
   const edgeValidation = validateEdge(edgeValidationInput);
@@ -571,7 +581,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       </button>
 
       {/* Game Header */}
-      <div className="bg-gradient-to-b from-navy/30 via-transparent to-transparent pb-4 -mb-4 rounded-t-xl">
+      <div className="bg-linear-to-b from-navy/30 via-transparent to-transparent pb-4 -mb-4 rounded-t-xl">
       <PageHeader title={`${event.away_team} @ ${event.home_team}`}>
         <div className="flex items-center space-x-4">
           <span className="bg-gold/20 text-gold text-xs font-bold px-3 py-1 rounded-full uppercase">
@@ -585,7 +595,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             onClick={handleFollowForecast}
             disabled={isFollowing}
             className={`${
-              followSuccess ? 'bg-neon-green' : 'bg-gradient-to-r from-gold to-purple-600'
+              followSuccess ? 'bg-neon-green' : 'bg-linear-to-r from-gold to-purple-600'
             } text-white font-bold px-4 py-2 rounded-lg hover:shadow-xl transition-all transform hover:scale-105 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             <span>{followSuccess ? '✓' : '⭐'}</span>
@@ -594,7 +604,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {/* Share Button (Blueprint Page 64) */}
           <button
             onClick={handleShare}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-4 py-2 rounded-lg hover:shadow-xl transition-all transform hover:scale-105 flex items-center space-x-2"
+            className="bg-linear-to-r from-purple-600 to-pink-600 text-white font-bold px-4 py-2 rounded-lg hover:shadow-xl transition-all transform hover:scale-105 flex items-center space-x-2"
           >
             <span>📤</span>
             <span>Share</span>
@@ -631,10 +641,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       {/* KEY DRIVERS BOX - Critical Context */}
       {simulation && (
-        <div className="mb-6 bg-gradient-to-br from-purple-900/20 to-blue-900/20 border-2 border-purple-500/40 rounded-xl p-4 shadow-lg shadow-purple-500/5">
+        <div className="mb-6 bg-linear-to-br from-purple-900/20 to-blue-900/20 border-2 border-purple-500/40 rounded-xl p-4 shadow-lg shadow-purple-500/5">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+            <div className="shrink-0">
+              <div className="w-10 h-10 bg-linear-to-br from-purple-500/20 to-blue-500/20 rounded-lg flex items-center justify-center border border-purple-500/30">
                 <span className="text-2xl">🔑</span>
               </div>
             </div>
@@ -646,25 +656,25 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               <div className="text-light-gray text-sm space-y-2">
                 {simulation.injury_impact && simulation.injury_impact.length > 0 && (
                   <div className="flex items-start gap-2">
-                    <span className="text-lg flex-shrink-0">🏥</span>
+                    <span className="text-lg shrink-0">🏥</span>
                     <div><span className="text-bold-red font-semibold">Injuries:</span> {simulation.injury_impact.length} players impacted ({simulation.injury_impact.reduce((sum: number, inj: any) => sum + Math.abs(inj.impact_points), 0).toFixed(1)} pts total effect)</div>
                   </div>
                 )}
                 {simulation.pace_factor && simulation.pace_factor !== 1.0 && (
                   <div className="flex items-start gap-2">
-                    <span className="text-lg flex-shrink-0">⚡</span>
+                    <span className="text-lg shrink-0">⚡</span>
                     <div><span className="text-electric-blue font-semibold">Tempo:</span> {simulation.pace_factor > 1 ? 'Fast-paced' : 'Slow-paced'} game expected ({((simulation.pace_factor - 1) * 100).toFixed(1)}% {simulation.pace_factor > 1 ? 'above' : 'below'} average)</div>
                   </div>
                 )}
                 {simulation.outcome?.confidence && (
                   <div className="flex items-start gap-2">
-                    <span className="text-lg flex-shrink-0">📊</span>
+                    <span className="text-lg shrink-0">📊</span>
                     <div><span className="text-gold font-semibold">Stability:</span> {getConfidenceTier((simulation.outcome.confidence || 0.65) * 100).label} ({((simulation.outcome.confidence || 0.65) * 100).toFixed(0)}% simulation convergence)</div>
                   </div>
                 )}
                 {simulation.metadata?.iterations_run && (
                   <div className="flex items-start gap-2">
-                    <span className="text-lg flex-shrink-0">🧬</span>
+                    <span className="text-lg shrink-0">🧬</span>
                     <div><span className="text-neon-green font-semibold">Analysis Depth:</span> {(simulation.metadata.iterations_run / 1000).toFixed(0)}K Monte Carlo simulations</div>
                   </div>
                 )}
@@ -677,7 +687,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       {/* MODEL OUTPUT SUMMARY - Neutral Statistical Display */}
       {simulation.outcome && (
         <div 
-          className="mb-6 bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border-2 animate-slide-up relative overflow-hidden"
+          className="mb-6 bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border-2 animate-slide-up relative overflow-hidden"
           style={{
             borderColor: getConfidenceTier((simulation.outcome?.confidence || 0.65) * 100).color,
             boxShadow: getConfidenceGlow((simulation.outcome?.confidence || 0.65) * 100)
@@ -754,7 +764,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       {/* HERO SECTION: BeatVegas Edge Detection */}
       {simulation && (
-        <div className="mb-6 p-6 bg-gradient-to-br from-purple-900/20 via-navy/40 to-electric-blue/20 rounded-xl border border-purple-500/30 relative overflow-hidden shadow-xl shadow-purple-500/10">
+        <div className="mb-6 p-6 bg-linear-to-br from-purple-900/20 via-navy/40 to-electric-blue/20 rounded-xl border border-purple-500/30 relative overflow-hidden shadow-xl shadow-purple-500/10">
           <div className="absolute top-0 right-0 w-32 h-32 bg-electric-blue/10 rounded-full blur-3xl"></div>
           <div className="absolute -bottom-8 -left-8 w-24 h-24 bg-gold/5 rounded-full blur-2xl"></div>
           <div className="relative z-10">
@@ -881,7 +891,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       
       {/* Sharp Analysis - Model vs Market */}
       {simulation?.sharp_analysis && (simulation.sharp_analysis.total?.has_edge || simulation.sharp_analysis.spread?.has_edge) && (
-        <div className="mb-6 p-6 bg-gradient-to-br from-purple-900/30 to-blue-900/30 rounded-xl border-2 border-purple-500/50 shadow-2xl">
+        <div className="mb-6 p-6 bg-linear-to-br from-purple-900/30 to-blue-900/30 rounded-xl border-2 border-purple-500/50 shadow-2xl">
           <div className="flex items-start gap-4">
             <div className="text-4xl">🎯</div>
             <div className="flex-1">
@@ -989,9 +999,48 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               )}
               
               {/* Spread Analysis (if exists) */}
-              {simulation.sharp_analysis.spread?.has_edge && (
+              {simulation.sharp_analysis.spread?.has_edge && (() => {
+                // Calculate spread context with team labels using LOCKED LOGIC
+                const vegasSpread = simulation.sharp_analysis.spread.vegas_spread || 0;
+                const modelSpread = simulation.sharp_analysis.spread.model_spread || 0;
+                
+                // Use locked sharp side logic for consistent display
+                const spreadContext = calculateSpreadContext(
+                  event.home_team,
+                  event.away_team,
+                  vegasSpread,  // From home team perspective
+                  modelSpread   // Signed model spread
+                );
+                
+                const edgeConfidence = getEdgeConfidenceLevel(spreadContext.edgePoints);
+                
+                return (
                 <div className="p-4 bg-charcoal/50 rounded-lg border border-purple-500/30">
-                  <div className="flex items-center gap-2 mb-2">
+                  {/* Sharp Side Callout - PROMINENT */}
+                  <div className="mb-4 p-4 bg-linear-to-r from-purple-900/50 to-blue-900/50 rounded-lg border-2 border-purple-400/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">🎯</span>
+                        <div>
+                          <div className="text-xs text-purple-300 uppercase font-bold mb-1">Sharp Side Selection</div>
+                          <div className="text-xl font-bold text-white">{spreadContext.sharpSideDisplay}</div>
+                        </div>
+                      </div>
+                      <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        edgeConfidence.level === 'HIGH' ? 'bg-green-600 text-white' :
+                        edgeConfidence.level === 'MEDIUM' ? 'bg-yellow-600 text-black' :
+                        'bg-gray-600 text-white'
+                      }`}>
+                        {edgeConfidence.label}
+                      </div>
+                    </div>
+                    <div className="text-xs text-purple-200 mt-2">
+                      {getSharpSideReasoning(spreadContext)}
+                    </div>
+                  </div>
+                  
+                  {/* Grade Badge */}
+                  <div className="flex items-center gap-2 mb-3">
                     <div className={`px-3 py-1 rounded-full text-xs font-bold ${
                       simulation.sharp_analysis.spread.edge_grade === 'S' ? 'bg-purple-600 text-white' :
                       simulation.sharp_analysis.spread.edge_grade === 'A' ? 'bg-green-600 text-white' :
@@ -999,35 +1048,48 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     }`}>
                       {simulation.sharp_analysis.spread.edge_grade} GRADE
                     </div>
-                    <div className="text-lg font-bold text-white">
-                      {simulation.sharp_analysis.spread.sharp_side_display}
-                    </div>
                     <div className="text-sm text-purple-300">
-                      ({simulation.sharp_analysis.spread.edge_points?.toFixed(1)} pt edge)
+                      ({spreadContext.edgePoints.toFixed(1)} pt edge)
                     </div>
                   </div>
                   
-                  {/* Vegas vs Model Spread Comparison Grid */}
-                  <div className="grid grid-cols-2 gap-3 mb-3">
+                  {/* Market vs Model Spread with TEAM LABELS */}
+                  <div className="grid grid-cols-3 gap-3 mb-3">
                     <div className="bg-navy/50 p-3 rounded">
-                      <div className="text-xs text-gray-400 mb-1">Vegas Spread</div>
+                      <div className="text-xs text-gray-400 mb-1">Market Spread</div>
                       <div className="text-base font-bold text-white">
-                        {simulation.sharp_analysis.spread.vegas_spread >= 0 ? '+' : ''}{simulation.sharp_analysis.spread.vegas_spread?.toFixed(1)}
+                        {spreadContext.marketSpreadDisplay}
                       </div>
                     </div>
                     <div className="bg-navy/50 p-3 rounded">
-                      <div className="text-xs text-gray-400 mb-1">BeatVegas Model</div>
+                      <div className="text-xs text-gray-400 mb-1">Model Spread</div>
                       <div className="text-base font-bold text-purple-300">
-                        {simulation.sharp_analysis.spread.model_spread >= 0 ? '+' : ''}{simulation.sharp_analysis.spread.model_spread?.toFixed(1)}
+                        {spreadContext.modelSpreadDisplay}
+                      </div>
+                    </div>
+                    <div className="bg-purple-900/50 p-3 rounded border border-purple-500/30">
+                      <div className="text-xs text-purple-300 mb-1 font-bold">🎯 Sharp Side</div>
+                      <div className="text-base font-bold text-white">
+                        {spreadContext.sharpSideDisplay}
                       </div>
                     </div>
                   </div>
                   
-                  <div className="text-sm text-gray-300 mt-2">
-                    {simulation.sharp_analysis.spread.sharp_side_reason}
+                  {/* Additional context */}
+                  <div className="text-sm text-gray-300 mt-3 p-3 bg-navy/30 rounded">
+                    <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                      <span>Edge Direction: {spreadContext.edgeDirection === 'FAV' ? 'Fade the Dog' : 'Take the Dog'}</span>
+                    </div>
+                    {simulation.sharp_analysis.spread.sharp_side_reason && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        {simulation.sharp_analysis.spread.sharp_side_reason}
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1035,7 +1097,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       
       {/* Why This Edge Exists - Explanation Panel */}
       {edgeValidation.classification !== 'NEUTRAL' && (
-        <div className="mb-6 p-5 bg-gradient-to-r from-navy/40 to-charcoal/60 rounded-xl border border-gold/30 shadow-lg">
+        <div className="mb-6 p-5 bg-linear-to-r from-navy/40 to-charcoal/60 rounded-xl border border-gold/30 shadow-lg">
           <div className="flex items-start gap-3">
             <div className="text-2xl">💡</div>
             <div className="flex-1">
@@ -1082,7 +1144,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       {/* Key Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 animate-slide-up">
         {/* Win Probability */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border ${
+        <div className={`bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border ${
           winProb > 0.65 ? 'border-neon-green/40 shadow-lg shadow-neon-green/10' :
           winProb < 0.45 ? 'border-bold-red/40 shadow-lg shadow-bold-red/10' :
           'border-gold/20'
@@ -1131,7 +1193,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Over/Under Total */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
+        <div className={`bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
           overProb > 55 ? 'border-neon-green/40' :
           underProb > 55 ? 'border-bold-red/40' :
           'border-gray-400/20'
@@ -1228,7 +1290,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Confidence Score */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
+        <div className={`bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
           (simulation.confidence_score || 0.65) * 100 >= 85 ? 'border-purple-500/40 shadow-lg shadow-purple-500/10' :
           (simulation.confidence_score || 0.65) * 100 >= 70 ? 'border-gold/40' :
           'border-gold/20'
@@ -1339,7 +1401,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Volatility Index */}
-        <div className={`bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border ${
+        <div className={`bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border ${
           getVolatilityColor(volatilityIndex).includes('neon-green') ? 'border-neon-green/20' : 
           getVolatilityColor(volatilityIndex).includes('bold-red') ? 'border-bold-red/40 shadow-lg shadow-bold-red/20' : 'border-yellow-500/20'
         } relative group`}>
@@ -1375,7 +1437,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
 
         {/* Injury Impact */}
-        <div className="bg-gradient-to-br from-charcoal to-navy p-4 rounded-xl border border-deep-red/20">
+        <div className="bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border border-deep-red/20">
           <h3 className="text-light-gray text-xs uppercase mb-2">Injury Impact</h3>
           {(() => {
             const sportLabels = getSportLabels(event?.sport_key || '');
@@ -1497,23 +1559,28 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         );
         
         // ===== MASTER EDGE BANNER LOGIC =====
-        // CRITICAL UX FIX: Only show "EDGE DETECTED" if at least one side is ACTIONABLE
-        const hasActionableEdge = spreadClassification.actionable || totalClassification.actionable;
-        const showEdgeBanner = hasActionableEdge;
+        // CRITICAL UX FIX: Only show "EDGE DETECTED" if OFFICIAL_EDGE
+        const hasOfficialEdge = spreadClassification.state === EdgeState.OFFICIAL_EDGE || 
+                                totalClassification.state === EdgeState.OFFICIAL_EDGE;
+        const showEdgeBanner = hasOfficialEdge;
+        
+        // Determine if we should show raw metrics (only for OFFICIAL_EDGE)
+        const showSpreadMetrics = shouldShowRawMetrics(spreadClassification);
+        const showTotalMetrics = shouldShowRawMetrics(totalClassification);
         
         // Styling based on edge state
         const spreadStyling = getEdgeStateStyling(spreadClassification.state);
         const totalStyling = getEdgeStateStyling(totalClassification.state);
         
         return (
-          <div className="mb-6 bg-gradient-to-br from-electric-blue/10 to-purple-900/10 border border-electric-blue/30 rounded-xl p-6">
+          <div className="mb-6 bg-linear-to-br from-electric-blue/10 to-purple-900/10 border border-electric-blue/30 rounded-xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="text-2xl">🎯</div>
               <h3 className="text-xl font-bold text-white font-teko">FINAL UNIFIED SUMMARY</h3>
-              {/* EDGE DETECTED BANNER - Only shows if actionable edge exists */}
+              {/* EDGE DETECTED BANNER - Only shows if OFFICIAL_EDGE exists */}
               {showEdgeBanner && (
                 <div className="ml-auto px-3 py-1 bg-neon-green/20 border border-neon-green rounded-lg text-neon-green font-bold text-xs animate-pulse">
-                  ✅ EDGE DETECTED
+                  ✅ OFFICIAL EDGE
                 </div>
               )}
             </div>
@@ -1525,26 +1592,26 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="text-light-gray text-xs uppercase font-bold">Spread Analysis</div>
                   <div className={`font-bold text-sm ${spreadStyling.textColor} flex items-center gap-2`}>
                     <span>{spreadStyling.icon}</span>
-                    {spreadClassification.state === EdgeState.ACTIONABLE_EDGE && spreadClassification.side ? (
+                    {spreadClassification.state === EdgeState.OFFICIAL_EDGE && spreadClassification.side ? (
                       <span>✅ {spreadClassification.side}</span>
-                    ) : spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? (
-                      <span>⚠️ {spreadStyling.label}</span>
+                    ) : spreadClassification.state === EdgeState.MODEL_LEAN ? (
+                      <span>⚠️ MODEL LEAN</span>
                     ) : (
-                      <span>⚖️ NEUTRAL</span>
+                      <span>⛔ NO ACTION</span>
                     )}
                   </div>
                 </div>
                 <div className="text-xs text-light-gray leading-relaxed">
-                  {spreadClassification.reason}
+                  {getSignalMessage(spreadClassification)}
                 </div>
-                {/* Show blocked signal message if applicable */}
-                {spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && (
+                {/* Show MODEL_LEAN info */}
+                {spreadClassification.state === EdgeState.MODEL_LEAN && (
                   <div className={`mt-2 text-xs ${spreadStyling.textColor} ${spreadStyling.bgColor} border ${spreadStyling.borderColor} rounded px-2 py-1`}>
-                    {getBlockedSignalMessage(spreadClassification)}
+                    📊 Model Signal Detected — Blocked by Risk Controls
                   </div>
                 )}
-                {/* Show value explanation if actionable */}
-                {spreadClassification.actionable && valueExplanation && (
+                {/* Show value explanation if OFFICIAL_EDGE */}
+                {spreadClassification.state === EdgeState.OFFICIAL_EDGE && showSpreadMetrics && valueExplanation && (
                   <div className="mt-2 text-xs text-neon-green bg-neon-green/10 border border-neon-green/30 rounded px-2 py-1">
                     💡 {valueExplanation}
                   </div>
@@ -1557,26 +1624,26 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="text-light-gray text-xs uppercase font-bold">Total Analysis</div>
                   <div className={`font-bold text-sm ${totalStyling.textColor} flex items-center gap-2`}>
                     <span>{totalStyling.icon}</span>
-                    {totalClassification.state === EdgeState.ACTIONABLE_EDGE && totalClassification.side ? (
+                    {totalClassification.state === EdgeState.OFFICIAL_EDGE && totalClassification.side ? (
                       <span>✅ {totalClassification.side} {totalLine.toFixed(1)}</span>
-                    ) : totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? (
-                      <span>⚠️ {totalStyling.label}</span>
+                    ) : totalClassification.state === EdgeState.MODEL_LEAN ? (
+                      <span>⚠️ MODEL LEAN</span>
                     ) : (
-                      <span>⚖️ NEUTRAL</span>
+                      <span>⛔ NO ACTION</span>
                     )}
                   </div>
                 </div>
                 <div className="text-xs text-light-gray leading-relaxed">
-                  {totalClassification.reason}
+                  {getSignalMessage(totalClassification)}
                 </div>
-                {/* Show blocked signal message if applicable */}
-                {totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && (
+                {/* Show MODEL_LEAN info */}
+                {totalClassification.state === EdgeState.MODEL_LEAN && (
                   <div className={`mt-2 text-xs ${totalStyling.textColor} ${totalStyling.bgColor} border ${totalStyling.borderColor} rounded px-2 py-1`}>
-                    {getBlockedSignalMessage(totalClassification)}
+                    📊 Model Signal Detected — Blocked by Risk Controls
                   </div>
                 )}
-                {/* Show edge details if actionable */}
-                {totalClassification.actionable && (
+                {/* Show edge details ONLY if OFFICIAL_EDGE */}
+                {totalClassification.state === EdgeState.OFFICIAL_EDGE && showTotalMetrics && (
                   <div className="mt-2 text-xs text-electric-blue bg-electric-blue/10 border border-electric-blue/30 rounded px-2 py-1">
                     💡 Edge: {totalEdge.toFixed(1)} pts | Probability: {(totalClassification.probability * 100).toFixed(0)}% | EV: +{totalEV.toFixed(1)}%
                   </div>
@@ -1599,25 +1666,39 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 </div>
               </div>
               
-              {/* Action Recommendation */}
-              <div className="bg-gradient-to-r from-gold/10 to-purple-500/10 border border-gold/40 rounded-lg p-4">
+              {/* Action Recommendation - 3-State Logic */}
+              <div className="bg-linear-to-r from-gold/10 to-purple-500/10 border border-gold/40 rounded-lg p-4">
                 <div className="text-light-gray text-xs uppercase mb-2 font-bold">Action Summary</div>
                 <div className="text-white font-semibold text-sm leading-relaxed">
-                  {!spreadClassification.actionable && !totalClassification.actionable ? 
-                    '⚖️ Market appears efficient on both spread and total. No actionable edges detected.' :
-                    spreadClassification.actionable && totalClassification.actionable ? 
-                    '✅ Statistical edges detected on both spread and total — use as part of your decision framework.' :
-                    spreadClassification.actionable ? 
-                    `✅ Actionable spread edge detected. Total shows ${totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? 'signal but blocked by risk controls' : 'no edge'}.` :
-                    `✅ Actionable total edge detected. Spread shows ${spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE ? 'signal but blocked by risk controls' : 'no edge'}.`}
+                  {spreadClassification.state === EdgeState.OFFICIAL_EDGE && totalClassification.state === EdgeState.OFFICIAL_EDGE ? 
+                    '✅ Official edges detected on both spread and total — risk-adjusted execution approved.' :
+                    spreadClassification.state === EdgeState.OFFICIAL_EDGE ? 
+                    `✅ Official spread edge. Total: ${totalClassification.state === EdgeState.MODEL_LEAN ? 'Model lean (informational only)' : 'No action'}.` :
+                    totalClassification.state === EdgeState.OFFICIAL_EDGE ? 
+                    `✅ Official total edge. Spread: ${spreadClassification.state === EdgeState.MODEL_LEAN ? 'Model lean (informational only)' : 'No action'}.` :
+                    spreadClassification.state === EdgeState.MODEL_LEAN || totalClassification.state === EdgeState.MODEL_LEAN ?
+                    '⚠️ Model signals detected but blocked by risk controls. Informational only — not official plays.' :
+                    '⛔ No actionable edges. Market appears efficient on both spread and total.'}
                 </div>
-                {/* Show master risk control message if both sides blocked */}
-                {spreadClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && 
-                 totalClassification.state === EdgeState.MODEL_SIGNAL_HIGH_VARIANCE && (
+                {/* Show both sides blocked message */}
+                {spreadClassification.state === EdgeState.MODEL_LEAN && 
+                 totalClassification.state === EdgeState.MODEL_LEAN && (
                   <div className="mt-2 text-xs text-vibrant-yellow bg-vibrant-yellow/10 border border-vibrant-yellow/30 rounded px-2 py-1">
-                    ⚠️ Both spread and total signals detected but blocked by risk controls (high volatility/low confidence). Informational only — not actionable.
+                    ⚠️ Model Lean on both spread and total — not official plays. View Model Diagnostics for raw analysis.
                   </div>
                 )}
+                {/* NO_ACTION on both */}
+                {spreadClassification.state === EdgeState.NO_ACTION && 
+                 totalClassification.state === EdgeState.NO_ACTION && (
+                  <div className="mt-2 text-xs text-gray-400 bg-gray-600/10 border border-gray-600/30 rounded px-2 py-1">
+                    ⛔ Risk controls active. No betting language displayed.
+                  </div>
+                )}
+              </div>
+              
+              {/* Platform Disclaimer */}
+              <div className="text-xs text-light-gray/70 text-center pt-2 border-t border-navy/50">
+                {PLATFORM_DISCLAIMER}
               </div>
               
               {/* 1H Quick Reference */}
@@ -1641,7 +1722,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       {/* SIMULATION TIER NUDGE - Mandatory upgrade messaging */}
       {simulation && (
-        <div className="mb-6 bg-gradient-to-r from-gold/10 to-purple-500/10 border border-gold/30 rounded-xl p-4">
+        <div className="mb-6 bg-linear-to-r from-gold/10 to-purple-500/10 border border-gold/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="text-2xl">🧪</div>
@@ -1881,7 +1962,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             
             {/* TEAM IMPACT SUMMARY */}
             {simulation.injury_summary && simulation.injury_impact && simulation.injury_impact.length > 0 && (
-              <div className="bg-gradient-to-r from-navy/50 to-charcoal/50 rounded-lg p-6 border border-gold/30 mb-6">
+              <div className="bg-linear-to-r from-navy/50 to-charcoal/50 rounded-lg p-6 border border-gold/30 mb-6">
                 <h4 className="text-gold font-bold text-sm uppercase tracking-wider mb-4 flex items-center">
                   📊 Team Injury Impact Summary
                   <span className="ml-2 text-xs text-light-gray normal-case">
@@ -2074,7 +2155,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       };
                       
                       return (
-                        <div key={idx} className="bg-gradient-to-r from-navy/50 to-charcoal/50 rounded-lg p-5 border border-gold/20 hover:border-gold transition">
+                        <div key={idx} className="bg-linear-to-r from-navy/50 to-charcoal/50 rounded-lg p-5 border border-gold/20 hover:border-gold transition">
                           {/* Header: Player Name + Confidence Badge */}
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex-1">
@@ -2206,7 +2287,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 <Line type="monotone" dataKey="fairValue" stroke="#7CFC00" strokeWidth={3} name="Model Estimate" />
               </LineChart>
             </ResponsiveContainer>
-            <div className="bg-gradient-to-r from-electric-blue/10 to-purple-600/10 rounded-lg p-4 border border-electric-blue/30">
+            <div className="bg-linear-to-r from-electric-blue/10 to-purple-600/10 rounded-lg p-4 border border-electric-blue/30">
               <p className="text-light-gray text-sm">
                 💡 <span className="font-bold text-white">Model Comparison:</span> Model estimate ({lineMovementData[lineMovementData.length - 1]?.fairValue.toFixed(2)}) is {lineMovementData[lineMovementData.length - 1]?.fairValue > lineMovementData[lineMovementData.length - 1]?.odds ? 'above' : 'below'} market odds ({lineMovementData[lineMovementData.length - 1]?.odds.toFixed(2)}), showing a variance of {Math.abs(lineMovementData[lineMovementData.length - 1]?.fairValue - lineMovementData[lineMovementData.length - 1]?.odds).toFixed(2)} points.
               </p>
@@ -2257,7 +2338,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 </div>
               </div>
             ))}
-            <div className="bg-gradient-to-r from-neon-green/10 to-gold/10 rounded-lg p-4 border border-neon-green/30 mt-6">
+            <div className="bg-linear-to-r from-neon-green/10 to-gold/10 rounded-lg p-4 border border-neon-green/30 mt-6">
               <p className="text-light-gray text-sm">
                 📊 <span className="font-bold text-white">Consensus:</span> {communityPulseData[0].picks}% of the community is backing {event.home_team}. Sharp money appears to be {simulation.volatility_index === 'HIGH' ? 'conflicted' : 'aligned with'} the public.
               </p>

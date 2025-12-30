@@ -207,13 +207,13 @@ const FirstHalfAnalysis: React.FC<FirstHalfAnalysisProps> = ({ eventId, simulati
         </div>
         <div className="h-6 bg-charcoal rounded-full overflow-hidden flex border-2 border-gold/40 shadow-lg">
           <div
-            className="bg-gradient-to-r from-neon-green to-green-400 h-full transition-all duration-500 relative"
+            className="bg-linear-to-r from-neon-green to-green-400 h-full transition-all duration-500 relative"
             style={{ width: `${calculatedOver * 100}%` }}
           >
             <div className="absolute inset-0 bg-neon-green/20 animate-pulse"></div>
           </div>
           <div
-            className="bg-gradient-to-r from-purple-600 to-purple-400 h-full transition-all duration-500 relative"
+            className="bg-linear-to-r from-purple-600 to-purple-400 h-full transition-all duration-500 relative"
             style={{ width: `${calculatedUnder * 100}%` }}
           >
             <div className="absolute inset-0 bg-purple-400/20 animate-pulse"></div>

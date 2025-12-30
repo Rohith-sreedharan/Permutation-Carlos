@@ -40,7 +40,7 @@ const SimulationPowerBadge: React.FC<SimulationPowerBadgeProps> = ({
           {!isMaxTier && onUpgradeClick && (
             <button
               onClick={onUpgradeClick}
-              className="px-3 py-1.5 bg-gradient-to-r from-gold to-lightGold text-darkNavy text-xs font-bold rounded hover:shadow-lg transition-all"
+              className="px-3 py-1.5 bg-linear-to-r from-gold to-lightGold text-darkNavy text-xs font-bold rounded hover:shadow-lg transition-all"
             >
               🔓 Upgrade to {nextTier?.label}
             </button>

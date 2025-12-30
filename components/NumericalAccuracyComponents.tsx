@@ -114,7 +114,7 @@ export const StrengthScoreTooltip: React.FC<StrengthScoreTooltipProps> = ({
   return (
     <div className="group relative inline-block">
       <div className="flex items-center gap-1 cursor-help">
-        <span className="text-2xl font-bold bg-gradient-to-r from-gold to-lightGold bg-clip-text text-transparent">
+        <span className="text-2xl font-bold bg-linear-to-r from-gold to-lightGold bg-clip-text text-transparent">
           {strengthScore}
         </span>
         <span className="text-sm text-gray-400">/ 100</span>
@@ -192,25 +192,25 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({
   const getColorClasses = (prob: number): { bg: string; text: string; border: string } => {
     if (prob >= 0.60) {
       return {
-        bg: 'bg-gradient-to-r from-green-500/20 to-green-600/20',
+        bg: 'bg-linear-to-r from-green-500/20 to-green-600/20',
         text: 'text-green-400',
         border: 'border-green-500/40'
       };
     } else if (prob >= 0.45) {
       return {
-        bg: 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/20',
+        bg: 'bg-linear-to-r from-yellow-500/20 to-yellow-600/20',
         text: 'text-yellow-400',
         border: 'border-yellow-500/40'
       };
     } else if (prob >= 0.30) {
       return {
-        bg: 'bg-gradient-to-r from-orange-500/20 to-orange-600/20',
+        bg: 'bg-linear-to-r from-orange-500/20 to-orange-600/20',
         text: 'text-orange-400',
         border: 'border-orange-500/40'
       };
     } else {
       return {
-        bg: 'bg-gradient-to-r from-red-500/20 to-red-600/20',
+        bg: 'bg-linear-to-r from-red-500/20 to-red-600/20',
         text: 'text-red-400',
         border: 'border-red-500/40'
       };

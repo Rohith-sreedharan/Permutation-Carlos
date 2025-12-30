@@ -69,7 +69,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
   const isMaxTier = userTier === 'elite' || userTier === 'founder';
 
   return (
-    <div className="bg-gradient-to-br from-charcoal to-navy rounded-lg p-4 border border-gold/20 hover:border-gold/40 transition-all">
+    <div className="bg-linear-to-br from-charcoal to-navy rounded-lg p-4 border border-gold/20 hover:border-gold/40 transition-all">
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-xs text-lightGold/70 mb-1">Simulation Power</div>
@@ -80,7 +80,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
         {!isMaxTier && onUpgradeClick && (
           <button
             onClick={onUpgradeClick}
-            className="px-3 py-1.5 bg-gradient-to-r from-gold to-lightGold text-darkNavy text-xs font-bold rounded hover:shadow-lg hover:shadow-gold/30 transition-all"
+            className="px-3 py-1.5 bg-linear-to-r from-gold to-lightGold text-darkNavy text-xs font-bold rounded hover:shadow-lg hover:shadow-gold/30 transition-all"
           >
             Upgrade
           </button>
@@ -91,7 +91,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
       <div className="mb-3">
         <div className="h-2 bg-navy/50 rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-electric-blue via-purple-500 to-gold transition-all duration-500"
+            className="h-full bg-linear-to-r from-electric-blue via-purple-500 to-gold transition-all duration-500"
             style={{ width: `${progressPercent}%` }}
           ></div>
         </div>

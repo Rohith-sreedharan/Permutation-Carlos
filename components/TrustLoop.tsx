@@ -167,7 +167,7 @@ const TrustLoop: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-6 border border-purple-500/30">
+      <div className="bg-linear-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-6 border border-purple-500/30">
         <div className="flex items-center gap-3 mb-2">
           <TrendingUp className="w-8 h-8 text-purple-400" />
           <h2 className="text-2xl font-bold text-white">Trust & Performance Loop</h2>
@@ -182,7 +182,7 @@ const TrustLoop: React.FC = () => {
 
       {/* Yesterday's Performance Hero */}
       {metrics?.yesterday && (
-        <div className="bg-gradient-to-r from-green-900/20 to-emerald-900/20 rounded-lg p-6 border border-green-500/30">
+        <div className="bg-linear-to-r from-green-900/20 to-emerald-900/20 rounded-lg p-6 border border-green-500/30">
           <div className="flex items-center gap-3 mb-2">
             <Award className="w-6 h-6 text-green-400" />
             <h3 className="text-xl font-bold text-white">Yesterday's Performance</h3>

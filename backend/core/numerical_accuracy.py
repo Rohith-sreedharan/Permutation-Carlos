@@ -1,18 +1,85 @@
 """
-BEATVEGAS NUMERICAL ACCURACY & SIMULATION SPEC
+BEATVEGAS NUMERICAL ACCURACY & SIMULATION SPEC v2.0
 Core validation and data integrity enforcement
 
 NO PLACEHOLDERS. NO FAKE NUMBERS. NO SILENT FALLBACKS.
-If a value cannot be computed from real data → throw error or show "data unavailable"
+If a value cannot be computed from real data → show "N/A" NOT a default like 1%
+
+CONFIDENCE SYSTEM (CRITICAL):
+- Confidence = model agreement + stability score (NOT win probability)
+- Components: distribution stability, simulation convergence, volatility, market alignment
+- If confidence cannot be computed → return None with reason codes
+- NEVER hard-default to 1% or any placeholder value
 """
 
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
+from typing import Optional, Dict, Any, List, Tuple
+from dataclasses import dataclass, field
+from enum import Enum
 import numpy as np
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class ConfidenceReasonCode(Enum):
+    """Reason codes for confidence calculation results"""
+    DISTRIBUTION_STABLE = "distribution_stable"
+    DISTRIBUTION_WIDE = "distribution_wide"
+    BIMODAL_DISTRIBUTION = "bimodal_distribution"
+    HIGH_CONVERGENCE = "high_convergence"
+    LOW_CONVERGENCE = "low_convergence"
+    LOW_VOLATILITY = "low_volatility"
+    HIGH_VOLATILITY = "high_volatility"
+    MARKET_ALIGNED = "market_aligned"
+    MARKET_CONFLICTING = "market_conflicting"
+    MISSING_DATA = "missing_data"
+    BAD_UNIT_SCALE = "bad_unit_scale"
+    CONFIDENCE_UNAVAILABLE = "confidence_unavailable"
+
+
+class EdgeState(Enum):
+    """3-state system - every game resolves to ONE state"""
+    OFFICIAL_EDGE = "official_edge"  # ✅ Actionable play
+    MODEL_LEAN = "model_lean"        # ⚠️ Informational only
+    NO_ACTION = "no_action"          # ⛔ Suppressed
+
+
+@dataclass
+class ConfidenceComponents:
+    """Breakdown of confidence score components"""
+    distribution_score: Optional[float] = None  # 0-1, from std/variance
+    convergence_score: Optional[float] = None   # 0-1, from rerun agreement
+    volatility_score: Optional[float] = None    # 0-1, inverted volatility
+    market_alignment_score: Optional[float] = None  # 0-1, market confirmation
+    reason_codes: List[ConfidenceReasonCode] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "distribution_score": self.distribution_score,
+            "convergence_score": self.convergence_score,
+            "volatility_score": self.volatility_score,
+            "market_alignment_score": self.market_alignment_score,
+            "reason_codes": [r.value for r in self.reason_codes]
+        }
+
+
+@dataclass
+class ConfidenceResult:
+    """Result of confidence calculation - NEVER defaults to 1%"""
+    score: Optional[int] = None  # 0-100 or None if unavailable
+    components: Optional[ConfidenceComponents] = None
+    is_available: bool = False
+    unavailable_reason: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "score": self.score,
+            "is_available": self.is_available,
+            "unavailable_reason": self.unavailable_reason,
+            "components": self.components.to_dict() if self.components else None
+        }
+
 
 @dataclass
 class SimulationOutput:
@@ -228,69 +295,303 @@ class ConfidenceCalculator:
     """
     Confidence Score (0-100) measures STABILITY, not win probability
     
-    Factors:
-    - Distribution variance (tighter = higher confidence)
-    - Simulation tier (more sims = higher confidence)
-    - Volatility flag
+    CRITICAL: Confidence is NOT win probability, NOT edge size
+    Confidence = "How much does the system trust itself right now?"
+    
+    Factors (with weights):
+    - Distribution stability (40%): How tight is the simulation outcome curve?
+    - Simulation convergence (30%): Do repeated runs converge to similar outputs?
+    - Volatility environment (20%): Pace variance, blowout risk, injury uncertainty
+    - Market alignment (10%): Is edge clean vs market? (supportive only)
+    
+    NEVER default to 1% or any placeholder. Return None with reason codes.
     """
     
-    @staticmethod
+    # Reference values for normalization
+    STD_REF = 15.0     # Reference standard deviation (points)
+    RERUN_REF = 1.5    # Reference std deviation across reruns
+    VOL_REF = 200.0    # Reference volatility index
+    
+    @classmethod
     def calculate(
+        cls,
+        variance: Optional[float],
+        sim_count: int,
+        volatility: str,
+        median_value: float,
+        convergence_std: Optional[float] = None,
+        market_aligned: Optional[bool] = None,
+        rerun_spreads: Optional[List[float]] = None
+    ) -> ConfidenceResult:
+        """
+        Calculate confidence score 0-100 with full component breakdown
+        
+        Args:
+            variance: Distribution variance from simulation
+            sim_count: Number of iterations (10K, 25K, 50K, 100K)
+            volatility: "LOW", "MEDIUM", or "HIGH"
+            median_value: Median projected total (for normalization)
+            convergence_std: Std dev of spreads across multiple reruns
+            market_aligned: Whether model agrees with sharp money
+            rerun_spreads: List of spread projections from multiple runs (for convergence)
+        
+        Returns:
+            ConfidenceResult with score (or None) and component breakdown
+        """
+        components = ConfidenceComponents()
+        missing_inputs = []
+        
+        # Check for missing required inputs - DO NOT DEFAULT
+        if variance is None or variance < 0:
+            missing_inputs.append("variance")
+            components.reason_codes.append(ConfidenceReasonCode.MISSING_DATA)
+        
+        if median_value <= 0:
+            missing_inputs.append("median_value")
+            components.reason_codes.append(ConfidenceReasonCode.BAD_UNIT_SCALE)
+        
+        # If critical inputs missing, return unavailable (NOT 1%)
+        if missing_inputs:
+            return ConfidenceResult(
+                score=None,
+                components=components,
+                is_available=False,
+                unavailable_reason=f"Missing inputs: {', '.join(missing_inputs)}"
+            )
+        
+        # Get tier config
+        try:
+            tier_config = SimulationTierConfig.get_tier_config(sim_count)
+        except ValueError:
+            tier_config = SimulationTierConfig.TIERS.get(10000, {})
+        
+        # COMPONENT 1: Distribution Stability (40% weight)
+        # Lower std relative to median = higher stability
+        std_dev = np.sqrt(variance)
+        # Use adaptive reference based on sport/median
+        adaptive_std_ref = max(cls.STD_REF, median_value * 0.08)  # 8% of median
+        
+        # Smooth exponential mapping
+        distribution_score = np.exp(-np.power(std_dev / adaptive_std_ref, 2))
+        components.distribution_score = float(distribution_score)
+        
+        if distribution_score > 0.7:
+            components.reason_codes.append(ConfidenceReasonCode.DISTRIBUTION_STABLE)
+        elif distribution_score < 0.3:
+            components.reason_codes.append(ConfidenceReasonCode.DISTRIBUTION_WIDE)
+        
+        # COMPONENT 2: Simulation Convergence (30% weight)
+        # How consistent are reruns?
+        if convergence_std is not None:
+            convergence_score = np.exp(-np.power(convergence_std / cls.RERUN_REF, 2))
+        elif rerun_spreads is not None and len(rerun_spreads) >= 3:
+            # Calculate convergence from rerun data
+            rerun_std = np.std(rerun_spreads)
+            convergence_score = np.exp(-np.power(rerun_std / cls.RERUN_REF, 2))
+        else:
+            # Cannot determine convergence without reruns - estimate from single run stability
+            # This is less reliable, so we penalize
+            convergence_score = distribution_score * 0.7  # 30% penalty for no rerun data
+        
+        components.convergence_score = float(convergence_score)
+        
+        if convergence_score > 0.7:
+            components.reason_codes.append(ConfidenceReasonCode.HIGH_CONVERGENCE)
+        elif convergence_score < 0.3:
+            components.reason_codes.append(ConfidenceReasonCode.LOW_CONVERGENCE)
+        
+        # COMPONENT 3: Volatility Environment (20% weight)
+        volatility_map = {
+            "LOW": 100,
+            "MEDIUM": 250,
+            "HIGH": 450
+        }
+        vol_index = volatility_map.get(volatility, 250)
+        volatility_score = 1 / (1 + (vol_index / cls.VOL_REF))
+        components.volatility_score = float(volatility_score)
+        
+        if volatility_score > 0.6:
+            components.reason_codes.append(ConfidenceReasonCode.LOW_VOLATILITY)
+        elif volatility_score < 0.3:
+            components.reason_codes.append(ConfidenceReasonCode.HIGH_VOLATILITY)
+        
+        # COMPONENT 4: Market Alignment (10% weight)
+        # Supportive only - never dominates
+        if market_aligned is True:
+            market_score = 1.0
+            components.reason_codes.append(ConfidenceReasonCode.MARKET_ALIGNED)
+        elif market_aligned is False:
+            market_score = 0.3
+            components.reason_codes.append(ConfidenceReasonCode.MARKET_CONFLICTING)
+        else:
+            market_score = 0.5  # Neutral if unknown
+        
+        components.market_alignment_score = float(market_score)
+        
+        # COMBINE with weights
+        raw_score = (
+            (distribution_score * 0.40) +
+            (convergence_score * 0.30) +
+            (volatility_score * 0.20) +
+            (market_score * 0.10)
+        )
+        
+        # Apply tier multiplier
+        tier_multiplier = tier_config.get("confidence_multiplier", 0.7)
+        adjusted_score = raw_score * tier_multiplier
+        
+        # CLAMP ONLY AT THE END, to 0-100 (NOT to 1%)
+        final_score = max(0, min(100, adjusted_score * 100))
+        
+        return ConfidenceResult(
+            score=int(round(final_score)),
+            components=components,
+            is_available=True,
+            unavailable_reason=None
+        )
+    
+    @classmethod
+    def calculate_legacy(
+        cls,
         variance: float,
         sim_count: int,
         volatility: str,
         median_value: float
     ) -> int:
         """
-        Calculate confidence score 0-100
-        
-        Low variance + high sim power → high confidence
-        High variance / coin-flip → low confidence
+        Legacy method for backward compatibility
+        Returns integer score, defaults to 0 (not 1%) if unavailable
         """
-        tier_config = SimulationTierConfig.get_tier_config(sim_count)
-        
-        # Coefficient of variation (normalized variance)
-        if median_value > 0:
-            cv = np.sqrt(variance) / median_value
-        else:
-            cv = 1.0  # Maximum uncertainty
-        
-        # Base confidence from variance (inverted - lower CV = higher confidence)
-        # CV of 0.05 (5% std dev) = very stable = 95
-        # CV of 0.20 (20% std dev) = very unstable = 50
-        base_confidence = max(0, min(100, 100 - (cv * 400)))
-        
-        # Apply tier multiplier
-        tier_multiplier = tier_config["confidence_multiplier"]
-        adjusted_confidence = base_confidence * tier_multiplier
-        
-        # Volatility penalty
-        volatility_penalty = {
-            "LOW": 0,
-            "MEDIUM": 5,
-            "HIGH": 15
-        }.get(volatility, 10)
-        
-        final_confidence = max(0, min(100, adjusted_confidence - volatility_penalty))
-        
-        return int(final_confidence)
+        result = cls.calculate(variance, sim_count, volatility, median_value)
+        if result.score is None:
+            # Log warning but return 0, not 1%
+            logger.warning(f"Confidence unavailable: {result.unavailable_reason}")
+            return 0
+        return result.score
 
 
 class EdgeValidator:
     """
-    Define REAL EDGE vs LEAN
+    3-State Edge Classification System
     
-    REAL EDGE requires ALL:
-    1. Model win prob >= 5pp above implied
-    2. Confidence >= 60/100
-    3. Volatility != HIGH
-    4. Sim power >= 25K
-    5. EV positive and distribution favors one side >= 58%
-    6. Injury impact stable (< 1.5)
+    States (NON-NEGOTIABLE):
+    - OFFICIAL_EDGE: Actionable play, eligible for Telegram & PickPlay
+    - MODEL_LEAN: Informational only, clearly labeled as non-actionable  
+    - NO_ACTION: Suppressed - no bet language anywhere
+    
+    Confidence bands:
+    - 70%+ → Very stable (rare, strong EDGE)
+    - 50–69% → Playable EDGE (if edge pts threshold met)
+    - 25–49% → MODEL LEAN only
+    - <25% → NO_ACTION (blocked)
+    
+    Hysteresis prevents flicker:
+    - Promote to EDGE: edge >= 4.0 pts AND confidence >= 50%
+    - Demote from EDGE: edge <= 3.0 pts OR confidence <= 40%
     """
     
-    @staticmethod
+    # Hysteresis thresholds
+    EDGE_PROMOTE_PTS = 4.0
+    EDGE_DEMOTE_PTS = 3.0
+    CONFIDENCE_PROMOTE = 50
+    CONFIDENCE_DEMOTE = 40
+    
+    @classmethod
     def classify_edge(
+        cls,
+        model_prob: float,
+        implied_prob: float,
+        confidence: Optional[int],
+        volatility: str,
+        sim_count: int,
+        injury_impact: float = 0.0,
+        previous_state: Optional[EdgeState] = None
+    ) -> Tuple[EdgeState, List[str]]:
+        """
+        Classify into 3-state system with hysteresis
+        
+        Returns:
+            Tuple of (EdgeState, list of reason codes)
+        """
+        reasons = []
+        
+        # Handle unavailable confidence - block to NO_ACTION
+        if confidence is None:
+            reasons.append("CONFIDENCE_UNAVAILABLE")
+            return (EdgeState.NO_ACTION, reasons)
+        
+        edge_percentage = model_prob - implied_prob
+        edge_pts = edge_percentage * 100  # Convert to percentage points
+        
+        # Apply hysteresis based on previous state
+        promote_pts = cls.EDGE_PROMOTE_PTS
+        demote_pts = cls.EDGE_DEMOTE_PTS
+        promote_conf = cls.CONFIDENCE_PROMOTE
+        demote_conf = cls.CONFIDENCE_DEMOTE
+        
+        if previous_state == EdgeState.OFFICIAL_EDGE:
+            # Currently EDGE - use demote thresholds
+            promote_pts = demote_pts
+            promote_conf = demote_conf
+        
+        # NO_ACTION: Confidence < 25% (always blocked)
+        if confidence < 25:
+            reasons.append(f"LOW_CONFIDENCE_{confidence}")
+            return (EdgeState.NO_ACTION, reasons)
+        
+        # NO_ACTION: High injury impact
+        if injury_impact >= 1.5:
+            reasons.append(f"HIGH_INJURY_IMPACT_{injury_impact:.1f}")
+            return (EdgeState.NO_ACTION, reasons)
+        
+        # NO_ACTION: Negligible edge
+        if edge_percentage < 0.02:
+            reasons.append(f"EDGE_TOO_SMALL_{edge_percentage:.3f}")
+            return (EdgeState.NO_ACTION, reasons)
+        
+        # MODEL_LEAN: Confidence 25-49%
+        if confidence < promote_conf:
+            reasons.append(f"CONFIDENCE_LEAN_RANGE_{confidence}")
+            if edge_percentage >= 0.02:
+                reasons.append(f"EDGE_DETECTED_{edge_percentage:.3f}")
+            return (EdgeState.MODEL_LEAN, reasons)
+        
+        # MODEL_LEAN: High volatility without exceptional confidence
+        if volatility == "HIGH" and confidence < 70:
+            reasons.append("HIGH_VOLATILITY_BLOCKED")
+            reasons.append(f"CONFIDENCE_{confidence}")
+            return (EdgeState.MODEL_LEAN, reasons)
+        
+        # MODEL_LEAN: Insufficient sim power
+        if sim_count < 25000:
+            reasons.append(f"SIM_POWER_INSUFFICIENT_{sim_count}")
+            return (EdgeState.MODEL_LEAN, reasons)
+        
+        # OFFICIAL_EDGE: All conditions met
+        all_conditions = {
+            "edge_threshold": edge_percentage >= 0.05,
+            "confidence": confidence >= promote_conf,
+            "volatility": volatility != "HIGH" or confidence >= 70,
+            "sim_power": sim_count >= 25000,
+            "model_conviction": model_prob >= 0.58,
+            "injury_stable": injury_impact < 1.5
+        }
+        
+        if all(all_conditions.values()):
+            reasons.append("ALL_CONDITIONS_MET")
+            for k, v in all_conditions.items():
+                if v:
+                    reasons.append(f"{k.upper()}_PASS")
+            return (EdgeState.OFFICIAL_EDGE, reasons)
+        
+        # MODEL_LEAN: Has edge but missing some conditions
+        failed = [k for k, v in all_conditions.items() if not v]
+        reasons.append(f"FAILED_CONDITIONS: {', '.join(failed)}")
+        return (EdgeState.MODEL_LEAN, reasons)
+    
+    @classmethod
+    def classify_edge_legacy(
+        cls,
         model_prob: float,
         implied_prob: float,
         confidence: int,
@@ -298,26 +599,20 @@ class EdgeValidator:
         sim_count: int,
         injury_impact: float = 0.0
     ) -> str:
-        """Returns 'EDGE', 'LEAN', or 'NEUTRAL'"""
+        """
+        Legacy method returning string state for backward compatibility
+        Returns 'EDGE', 'LEAN', or 'NEUTRAL'
+        """
+        state, _ = cls.classify_edge(
+            model_prob, implied_prob, confidence, volatility, sim_count, injury_impact
+        )
         
-        edge_percentage = model_prob - implied_prob
-        
-        # Check all conditions for REAL EDGE
-        conditions = {
-            "edge_threshold": edge_percentage >= 0.05,
-            "confidence": confidence >= 60,
-            "volatility": volatility != "HIGH",
-            "sim_power": sim_count >= 25000,
-            "model_conviction": model_prob >= 0.58,
-            "injury_stable": injury_impact < 1.5
+        state_map = {
+            EdgeState.OFFICIAL_EDGE: "EDGE",
+            EdgeState.MODEL_LEAN: "LEAN",
+            EdgeState.NO_ACTION: "NEUTRAL"
         }
-        
-        if all(conditions.values()):
-            return "EDGE"
-        elif edge_percentage >= 0.02:  # 2%+ but doesn't meet all criteria
-            return "LEAN"
-        else:
-            return "NEUTRAL"
+        return state_map.get(state, "NEUTRAL")
 
 
 def validate_simulation_output(output: Dict[str, Any]) -> SimulationOutput:

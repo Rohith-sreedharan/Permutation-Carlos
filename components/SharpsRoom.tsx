@@ -126,7 +126,7 @@ const SharpsRoom: React.FC = () => {
       {/* Upgrade CTA Overlay */}
       {showUpgradeCTA && (
         <div className="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-lg bg-[#0a0e1a]/90">
-          <div className="bg-gradient-to-br from-charcoal to-navy border-2 border-electric-blue rounded-2xl p-8 max-w-lg mx-4 text-center shadow-2xl">
+          <div className="bg-linear-to-br from-charcoal to-navy border-2 border-electric-blue rounded-2xl p-8 max-w-lg mx-4 text-center shadow-2xl">
             <div className="text-6xl mb-4">🔒</div>
             <h2 className="text-3xl font-bold text-white font-teko mb-4">SHARPS ROOM ACCESS REQUIRED</h2>
             <p className="text-light-gray mb-6">Unlock elite analytics, CLV tracking, and volatility indices available only to Sharps Room+ members.</p>
@@ -150,7 +150,7 @@ const SharpsRoom: React.FC = () => {
             </div>
             <button 
               onClick={handleUpgradeClick}
-              className="w-full bg-gradient-to-r from-electric-blue to-purple-600 text-white font-bold py-4 px-8 rounded-lg text-lg hover:shadow-lg hover:shadow-electric-blue/50 transition-all"
+              className="w-full bg-linear-to-r from-electric-blue to-purple-600 text-white font-bold py-4 px-8 rounded-lg text-lg hover:shadow-lg hover:shadow-electric-blue/50 transition-all"
             >
               UPGRADE TO SHARPS ROOM+
             </button>
@@ -169,7 +169,7 @@ const SharpsRoom: React.FC = () => {
       {/* Header with Elite Badge */}
       <PageHeader title="🏆 Sharps Room">
         <div className="flex items-center space-x-4">
-          <span className="bg-gradient-to-r from-electric-blue to-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+          <span className="bg-linear-to-r from-electric-blue to-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">
             SHARPS ROOM+
           </span>
           <select
@@ -188,7 +188,7 @@ const SharpsRoom: React.FC = () => {
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Brier Score */}
-        <div className="bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border border-electric-blue/20">
+        <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-electric-blue/20">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-light-gray text-sm uppercase tracking-wider">Brier Score</h3>
             <span className={`text-xs font-bold px-2 py-1 rounded ${perfData.brier_score < 0.20 ? 'bg-neon-green/20 text-neon-green' : 'bg-yellow-500/20 text-yellow-500'}`}>
@@ -200,7 +200,7 @@ const SharpsRoom: React.FC = () => {
         </div>
 
         {/* Log Loss */}
-        <div className="bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border border-purple-500/20">
+        <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-purple-500/20">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-light-gray text-sm uppercase tracking-wider">Log Loss</h3>
             <span className={`text-xs font-bold px-2 py-1 rounded ${perfData.log_loss < 0.60 ? 'bg-neon-green/20 text-neon-green' : 'bg-yellow-500/20 text-yellow-500'}`}>
@@ -212,7 +212,7 @@ const SharpsRoom: React.FC = () => {
         </div>
 
         {/* Average CLV */}
-        <div className="bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border border-neon-green/20">
+        <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-neon-green/20">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-light-gray text-sm uppercase tracking-wider">Average CLV</h3>
             <span className={`text-xs font-bold px-2 py-1 rounded ${clvData.stats.average_clv > 2 ? 'bg-neon-green/20 text-neon-green' : 'bg-bold-red/20 text-bold-red'}`}>
@@ -224,7 +224,7 @@ const SharpsRoom: React.FC = () => {
         </div>
 
         {/* ROI */}
-        <div className="bg-gradient-to-br from-charcoal to-navy p-6 rounded-xl border border-yellow-500/20">
+        <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-yellow-500/20">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-light-gray text-sm uppercase tracking-wider">ROI</h3>
             <span className={`text-xs font-bold px-2 py-1 rounded ${perfData.roi > 8 ? 'bg-neon-green/20 text-neon-green' : 'bg-gray-500/20 text-gray-400'}`}>
@@ -332,7 +332,7 @@ const SharpsRoom: React.FC = () => {
       </div>
 
       {/* Elite Insights Panel */}
-      <div className="bg-gradient-to-r from-electric-blue/10 to-purple-600/10 border border-electric-blue/30 rounded-xl p-6">
+      <div className="bg-linear-to-r from-electric-blue/10 to-purple-600/10 border border-electric-blue/30 rounded-xl p-6">
         <h3 className="text-xl font-bold text-white font-teko mb-3 flex items-center">
           <span className="mr-2">💡</span>
           Sharp Insights

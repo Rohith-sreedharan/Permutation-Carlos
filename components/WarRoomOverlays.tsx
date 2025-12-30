@@ -44,7 +44,7 @@ export const ModelContextCard: React.FC<ModelContextCardProps> = ({
     typeof volatilityIndex === 'number' ? volatilityIndex > 0.3 : volatilityIndex?.includes('high');
 
   return (
-    <div className="bg-gradient-to-r from-electric-blue/10 to-purple-500/10 border-l-2 border-electric-blue p-3 rounded-lg space-y-2 my-2">
+    <div className="bg-linear-to-r from-electric-blue/10 to-purple-500/10 border-l-2 border-electric-blue p-3 rounded-lg space-y-2 my-2">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">

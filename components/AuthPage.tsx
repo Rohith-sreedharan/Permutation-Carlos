@@ -160,7 +160,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   return (
     <div className="min-h-screen bg-[#0a0f1e] relative overflow-hidden flex items-center justify-center">
       {/* Animated background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1a1f35] via-[#0a0f1e] to-black opacity-90" />
+      <div className="absolute inset-0 bg-linear-to-br from-[#1a1f35] via-[#0a0f1e] to-black opacity-90" />
       
       {/* Floating particles */}
       <div className="absolute inset-0 overflow-hidden">
@@ -192,7 +192,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       <div className="relative z-10 w-full max-w-md mx-4">
         {/* AIBETS logo */}
         <div className="text-center mb-8">
-          <h1 className="text-6xl font-black mb-2 bg-gradient-to-r from-gold via-yellow-300 to-gold bg-clip-text text-transparent animate-pulse">
+          <h1 className="text-6xl font-black mb-2 bg-linear-to-r from-gold via-yellow-300 to-gold bg-clip-text text-transparent animate-pulse">
             AIBETS
           </h1>
           <p className="text-sm text-gray-400 tracking-wider uppercase">
@@ -201,14 +201,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         </div>
 
         {/* Card */}
-        <div className="bg-gradient-to-b from-navy/80 to-[#0a0f1e]/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-gold/20 p-8">
+        <div className="bg-linear-to-b from-navy/80 to-[#0a0f1e]/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-gold/20 p-8">
           {/* Tab selector */}
           <div className="flex mb-8 bg-black/30 rounded-lg p-1">
             <button
               onClick={() => setIsLogin(true)}
               className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
                 isLogin
-                  ? 'bg-gradient-to-r from-gold to-yellow-500 text-black'
+                  ? 'bg-linear-to-r from-gold to-yellow-500 text-black'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -218,7 +218,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               onClick={() => setIsLogin(false)}
               className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
                 !isLogin
-                  ? 'bg-gradient-to-r from-gold to-yellow-500 text-black'
+                  ? 'bg-linear-to-r from-gold to-yellow-500 text-black'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -296,7 +296,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-gold via-yellow-400 to-gold text-black font-bold py-4 rounded-lg hover:shadow-2xl hover:shadow-gold/50 transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-linear-to-r from-gold via-yellow-400 to-gold text-black font-bold py-4 rounded-lg hover:shadow-2xl hover:shadow-gold/50 transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center justify-center">
@@ -327,7 +327,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                   type="button"
                   onClick={handleBiometricLogin}
                   disabled={loading || !email}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white font-semibold py-4 rounded-lg hover:shadow-xl hover:shadow-blue-500/30 transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full bg-linear-to-r from-blue-600 to-blue-500 text-white font-semibold py-4 rounded-lg hover:shadow-xl hover:shadow-blue-500/30 transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <span className="text-xl">🔐</span>
                   Sign In with Face ID / Touch ID

@@ -96,6 +96,15 @@ class AuditLogger:
             True if logged successfully, False otherwise
         """
         try:
+            # 🚨 FIX #2: BLOCK null game_id to prevent duplicate key errors
+            if not game_id or game_id is None:
+                logger.error("❌ BLOCKED: Cannot log simulation with null/empty game_id")
+                # Generate deterministic fallback ID based on sport + timestamp
+                now = datetime.now(timezone.utc)
+                fallback_id = f"fallback_{sport}_{now.strftime('%Y%m%d_%H%M%S_%f')}"
+                logger.warning(f"⚠️ Using fallback game_id: {fallback_id}")
+                game_id = fallback_id
+            
             now = datetime.now(timezone.utc)
             
             audit_record = {

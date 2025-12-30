@@ -101,7 +101,7 @@ export const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({
         </div>
         {errors.screenshot_url && <p className="text-xs text-red-400 mt-1">{errors.screenshot_url}</p>}
         <p className="text-xs text-light-gray mt-2 flex items-start space-x-1">
-          <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+          <AlertCircle size={12} className="mt-0.5 shrink-0" />
           <span>We suggest blurring personal info before uploading</span>
         </p>
       </div>

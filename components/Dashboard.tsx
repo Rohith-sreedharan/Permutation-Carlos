@@ -214,7 +214,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
       {/* Modern Horizontal Loading Bar */}
       {polling && (
         <div className="fixed top-0 left-0 right-0 z-50">
-          <div className="h-1 bg-gradient-to-r from-electric-blue via-neon-green to-vibrant-yellow animate-[shimmer_2s_ease-in-out_infinite] bg-[length:200%_100%]"></div>
+          <div className="h-1 bg-linear-to-r from-electric-blue via-neon-green to-vibrant-yellow animate-[shimmer_2s_ease-in-out_infinite] bg-size-[200%_100%]"></div>
           <div className="bg-navy/98 backdrop-blur-md border-b border-electric-blue/30 px-4 py-2.5 text-center shadow-lg">
             <span className="text-sm text-neon-green font-bold animate-pulse flex items-center justify-center gap-2">
               <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -244,7 +244,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
       </PageHeader>
       
       {/* DATE & TIME SORT CONTROLS - Command Center Vibe */}
-      <div className="bg-gradient-to-r from-charcoal via-navy to-charcoal rounded-lg p-4 border border-electric-blue/20 shadow-xl">
+      <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-lg p-4 border border-electric-blue/20 shadow-xl">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
           {/* Date Filter */}
           <div className="flex items-center space-x-3">

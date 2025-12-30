@@ -64,7 +64,7 @@ const Profile: React.FC = () => {
         
         {/* Referral CTA */}
         <div className="mt-6 pt-6 border-t border-navy">
-          <div className="bg-gradient-to-r from-neon-green/10 to-electric-blue/10 rounded-lg p-6 border border-neon-green/30">
+          <div className="bg-linear-to-r from-neon-green/10 to-electric-blue/10 rounded-lg p-6 border border-neon-green/30">
             <h3 className="text-xl font-bold text-neon-green mb-2 font-teko">
               Beat Vegas Together
             </h3>

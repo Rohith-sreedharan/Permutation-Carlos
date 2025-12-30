@@ -135,7 +135,7 @@ const SubscriptionPlans: React.FC<SubscriptionPlansProps> = ({ currentTier, onSe
                   {tier.features.map((feature, idx) => (
                     <li key={idx} className="flex items-start text-sm">
                       <svg
-                        className="w-5 h-5 text-neon-green mr-2 flex-shrink-0 mt-0.5"
+                        className="w-5 h-5 text-neon-green mr-2 shrink-0 mt-0.5"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"

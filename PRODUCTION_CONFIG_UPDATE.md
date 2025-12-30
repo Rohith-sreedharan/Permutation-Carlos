@@ -82,50 +82,96 @@ import App from './App';
 import './src/index.css';  // ADD THIS LINE
 ```
 
-## Deployment Steps (CRITICAL - DO THIS NOW!)
+## Deployment Steps (DO THIS NOW - EXACT COMMANDS!)
 
-### On Your Production Server (beta.beatvegas.app):
+**Copy-paste these commands on your production server:**
 
-1. **Create the new files:**
-   ```bash
-   cd ~/permu
-   
-   # Create tailwind.config.js (copy from above)
-   nano tailwind.config.js
-   
-   # Create postcss.config.js (copy from above)
-   nano postcss.config.js
-   
-   # Create src/index.css (copy from above)
-   mkdir -p src
-   nano src/index.css
-   ```
+```bash
+cd ~/permu
 
-2. **Update existing files:**
-   ```bash
-   # Update index.html (copy from above)
-   nano index.html
-   
-   # Update index.tsx (add the import line)
-   nano index.tsx
-   ```
+# 1. Install required package
+npm install @tailwindcss/postcss
 
-3. **Update services/api.ts and utils/useWebSocket.ts** (see sections below for code)
+# 2. Create postcss.config.js
+cat > postcss.config.js << 'EOF'
+export default {
+  plugins: {
+    '@tailwindcss/postcss': {},
+    autoprefixer: {},
+  },
+}
+EOF
 
-4. **Rebuild everything:**
-   ```bash
-   npm run build
-   ```
+# 3. Create src/index.css
+mkdir -p src
+cat > src/index.css << 'EOF'
+@import "tailwindcss";
 
-5. **Restart your server:**
-   ```bash
-   pm2 restart all
-   # or whatever command you use
-   ```
+@theme {
+  --color-dark-navy: #0C1018;
+  --color-navy: #1A1F27;
+  --color-card-gray: #1A1F27;
+  --color-charcoal: #343a40;
+  --color-border-gray: #2D3542;
+  --color-gold: #D4A64A;
+  --color-light-gold: #E7C776;
+  --color-deep-red: #A03333;
+  --color-light-red: #CC4A45;
+  --color-off-white: #F3F2ED;
+  --color-muted-text: #8B97A7;
+  --color-light-gray: #adb5bd;
+  --color-neon-green: #4CAF50;
+  --color-vibrant-yellow: #FFEB3B;
+  --color-bold-red: #F52D2D;
+  --color-electric-blue: #D4A64A;
+  
+  --font-family-sans: 'Roboto', sans-serif;
+  --font-family-teko: 'Teko', sans-serif;
+}
+EOF
 
-6. **Clear browser cache and test:**
-   - Hard refresh: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac)
-   - Should load in under 2 seconds now!
+# 4. Update index.html (REMOVE CDN TAILWIND)
+cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BEATVEGAS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Teko:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+  </head>
+  <body class="bg-navy text-white font-sans">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
+EOF
+
+# 5. Update index.tsx to import CSS
+sed -i "3i import './src/index.css';" index.tsx
+
+# 6. Update services/api.ts for production URLs
+sed -i "s|const API_BASE_URL = 'http://localhost:8000';|const API_BASE_URL = import.meta.env.VITE_API_URL || (\n  window.location.hostname === 'localhost' \n    ? 'http://localhost:8000' \n    : \`\${window.location.protocol}//\${window.location.host}\`\n);|" services/api.ts
+
+# 7. Rebuild
+npm run build
+
+# 8. Restart
+pm2 restart all
+
+echo "✅ Done! Clear browser cache and refresh"
+```
+
+**Then in your browser:**
+1. Press **Ctrl+Shift+Delete** (or Cmd+Shift+Delete on Mac)
+2. Clear cache
+3. Hard refresh: **Ctrl+Shift+R** (or Cmd+Shift+R)
+
+Should load in **under 3 seconds** now!
 
 ## What This Fixes
 

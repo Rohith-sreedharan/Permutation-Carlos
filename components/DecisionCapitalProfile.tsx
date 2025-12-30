@@ -93,7 +93,7 @@ const DecisionCapitalProfile: React.FC<DecisionCapitalProfileProps> = ({ onAuthE
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="bg-gradient-to-r from-electric-blue/20 to-navy/30 rounded-lg p-4 md:p-6 border border-electric-blue/30">
+      <div className="bg-linear-to-r from-electric-blue/20 to-navy/30 rounded-lg p-4 md:p-6 border border-electric-blue/30">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-2">
           <h2 className="text-2xl md:text-3xl font-bold text-white font-teko">Decision Capital Profile</h2>
           <button

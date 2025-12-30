@@ -97,7 +97,7 @@ const UpgradePrompt: React.FC<UpgradePromptProps> = ({
       
       case 'medium':
         return (
-          <div className="bg-gradient-to-r from-gold/10 to-purple-600/10 rounded-lg p-3 border border-gold/30">
+          <div className="bg-linear-to-r from-gold/10 to-purple-600/10 rounded-lg p-3 border border-gold/30">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-white text-sm font-semibold mb-1">
@@ -119,7 +119,7 @@ const UpgradePrompt: React.FC<UpgradePromptProps> = ({
       
       case 'long':
         return (
-          <div className="bg-gradient-to-r from-gold/10 to-purple-600/10 rounded-lg p-4 border border-gold/30">
+          <div className="bg-linear-to-r from-gold/10 to-purple-600/10 rounded-lg p-4 border border-gold/30">
             <div className="text-gold text-xs uppercase font-bold mb-2">
               ⚡ Unlock Full Power
             </div>
@@ -186,7 +186,7 @@ const UpgradePrompt: React.FC<UpgradePromptProps> = ({
       
       case 'share':
         return (
-          <div className="bg-gradient-to-r from-gold/10 to-purple-600/10 rounded-lg p-4 border border-gold/30 text-center">
+          <div className="bg-linear-to-r from-gold/10 to-purple-600/10 rounded-lg p-4 border border-gold/30 text-center">
             <div className="text-gold text-sm font-bold mb-2">
               📤 Share Premium Projections
             </div>

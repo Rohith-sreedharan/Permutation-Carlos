@@ -14,6 +14,32 @@ interface Leg {
   tier?: string;  // A, B, or C tier classification
 }
 
+// PARLAY_BLOCKED state response structure
+interface ParlayBlockedState {
+  status: 'BLOCKED';
+  message: string;
+  reason: string;
+  passed_count: number;
+  failed_count: number;
+  minimum_required: number;
+  failed: Array<{
+    game: string;
+    reason: string;
+  }>;
+  best_single: {
+    event: string;
+    line: string;
+    confidence: number;
+    ev: number;
+  } | null;
+  next_best_actions: {
+    market_filters: Array<{ option: string; label: string }>;
+    risk_profiles: Array<{ profile: string; label: string }>;
+  };
+  next_refresh_seconds: number;
+  next_refresh_eta: string;
+}
+
 interface ParlayData {
   parlay_id: string;
   sport: string;
@@ -42,6 +68,7 @@ const ParlayArchitect: React.FC = () => {
   const [sport, setSport] = useState('basketball_nba');
   const [legCount, setLegCount] = useState(4);
   const [riskProfile, setRiskProfile] = useState('balanced');
+  const [blockedState, setBlockedState] = useState<ParlayBlockedState | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [parlayData, setParlayData] = useState<ParlayData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +255,7 @@ const ParlayArchitect: React.FC = () => {
     setIsGenerating(true);
     setError(null);
     setParlayData(null);
+    setBlockedState(null);  // Clear blocked state
 
     try {
       // Get user_id from localStorage if available
@@ -251,25 +279,61 @@ const ParlayArchitect: React.FC = () => {
       console.log('🔑 [User Tier]', userTier);
       console.log('🔓 [Is Unlocked]', response.data.is_unlocked);
       
+      // 🚨 CHECK FOR PARLAY_BLOCKED STATE (NOT AN ERROR)
+      if (response.data.status === 'BLOCKED') {
+        // This is a valid state, not an error
+        setBlockedState(response.data as ParlayBlockedState);
+        setParlayData(null);
+        setError(null);
+        return;
+      }
+      
       // CLIENT-SIDE FILTERING: Apply pick_state filtering based on toggle
       const originalLegs = response.data.legs || [];
       const { filtered, blocked, hasLeanLegs } = filterParlayLegs(originalLegs);
       
       if (filtered.length < 2) {
-        // Not enough legs after filtering
+        // Not enough legs after filtering - show as blocked state, NOT error
+        const blockedResponse: ParlayBlockedState = {
+          status: 'BLOCKED',
+          message: 'No Valid Parlay Available',
+          reason: !includeHigherRisk && blocked.length > 0
+            ? 'LEAN legs excluded by Truth Mode filter'
+            : 'Insufficient PICK-state legs for parlay construction',
+          passed_count: filtered.length,
+          failed_count: blocked.length,
+          minimum_required: 2,
+          failed: blocked.slice(0, 5).map(leg => ({
+            game: leg.event,
+            reason: leg.pick_state === 'LEAN' ? 'LEAN state (lower certainty)' : 'Blocked by Truth Mode'
+          })),
+          best_single: filtered.length > 0 ? {
+            event: filtered[0].event,
+            line: filtered[0].line,
+            confidence: filtered[0].confidence,
+            ev: filtered[0].ev
+          } : null,
+          next_best_actions: {
+            market_filters: [
+              { option: 'totals_only', label: 'Re-run with Totals Only' },
+              { option: 'spreads_only', label: 'Re-run with Spreads Only' },
+              { option: 'all_sports', label: 'Try ALL SPORTS (Multi-Sport)' }
+            ],
+            risk_profiles: [
+              { profile: 'balanced', label: 'Switch to Balanced Risk' },
+              { profile: 'high_volatility', label: 'Switch to High Volatility' }
+            ]
+          },
+          next_refresh_seconds: 300,
+          next_refresh_eta: new Date(Date.now() + 300000).toISOString()
+        };
+        
+        // Add hint about LEAN toggle
         if (!includeHigherRisk && blocked.length > 0) {
-          // User has toggle OFF and legs were blocked
-          setError(
-            `No parlay qualifies under Truth Mode today.\n\n` +
-            `${blocked.length} leg(s) are LEAN state (lower certainty).\n\n` +
-            `💡 Turn on "Include Higher Risk Legs" to see speculative parlays with LEAN legs.`
-          );
-        } else {
-          setError(
-            `No valid parlay available.\n\n` +
-            `Insufficient PICK-state legs for parlay construction.`
-          );
+          blockedResponse.reason += '\n\n💡 Turn on "Include Higher Risk Legs" to see speculative parlays with LEAN legs.';
         }
+        
+        setBlockedState(blockedResponse);
         setParlayData(null);
         return;
       }
@@ -285,8 +349,16 @@ const ParlayArchitect: React.FC = () => {
       
       setParlayData(filteredParlay);
     } catch (err: any) {
-      // Handle error message from our custom api wrapper or fetch API
-      const errorMessage = err.message || err.response?.data?.detail || 'Failed to generate parlay';
+      // Check if error response contains BLOCKED state
+      const errorData = err.response?.data;
+      if (errorData?.status === 'BLOCKED') {
+        setBlockedState(errorData as ParlayBlockedState);
+        setError(null);
+        return;
+      }
+      
+      // Handle actual error - but never show "Generation Failed" for expected states
+      const errorMessage = err.message || err.response?.data?.detail || 'Unable to build parlay at this time';
       setError(errorMessage);
       console.error('Parlay generation error:', err);
     } finally {
@@ -345,7 +417,7 @@ const ParlayArchitect: React.FC = () => {
     <div className="min-h-screen bg-darkNavy px-4 py-8">
       {/* FOUNDER/SHARPS ROOM TIER BENEFIT BANNER */}
       {eliteTokens && eliteTokens.tokens_remaining > 100 && (
-        <div className="max-w-6xl mx-auto mb-6 bg-gradient-to-r from-red-900/30 to-amber-900/30 border-2 border-gold rounded-xl p-4">
+        <div className="max-w-6xl mx-auto mb-6 bg-linear-to-r from-red-900/30 to-amber-900/30 border-2 border-gold rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <span className="text-3xl">👑</span>
@@ -491,15 +563,107 @@ const ParlayArchitect: React.FC = () => {
           className={`w-full py-4 rounded-lg font-bold text-lg transition-all ${
             isGenerating
               ? 'bg-navy/50 text-lightGold/50 cursor-not-allowed'
-              : 'bg-gradient-to-r from-gold to-lightGold text-darkNavy hover:shadow-lg hover:shadow-gold/30'
+              : 'bg-linear-to-r from-gold to-lightGold text-darkNavy hover:shadow-lg hover:shadow-gold/30'
           }`}
         >
           {isGenerating ? 'SCANNING SIMULATIONS...' : 'GENERATE OPTIMAL PARLAY'}
         </button>
 
-        {error && (
+        {/* 🚨 PARLAY_BLOCKED STATE (NOT AN ERROR) */}
+        {blockedState && !isGenerating && (
+          <div className="mt-6 p-6 bg-navy/40 border border-amber-500/30 rounded-xl">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-3xl">🚫</span>
+              <div>
+                <h3 className="text-xl font-bold text-amber-400">{blockedState.message}</h3>
+                <p className="text-sm text-lightGold/80">Truth Mode blocked parlay construction</p>
+              </div>
+            </div>
+            
+            {/* Explanation */}
+            <div className="bg-navy/60 rounded-lg p-4 mb-4">
+              <p className="text-lightGold/90 text-sm whitespace-pre-line">{blockedState.reason}</p>
+            </div>
+            
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-green-400">{blockedState.passed_count}</div>
+                <div className="text-xs text-green-400/80">Passed</div>
+              </div>
+              <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-red-400">{blockedState.failed_count}</div>
+                <div className="text-xs text-red-400/80">Failed</div>
+              </div>
+              <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-blue-400">{blockedState.minimum_required}</div>
+                <div className="text-xs text-blue-400/80">Required</div>
+              </div>
+            </div>
+            
+            {/* Best Single Pick (if available) */}
+            {blockedState.best_single && (
+              <div className="bg-gold/10 border border-gold/30 rounded-lg p-4 mb-4">
+                <div className="text-xs text-gold font-semibold mb-2">💡 BEST SINGLE PICK AVAILABLE</div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-lightGold font-semibold">{blockedState.best_single.event}</div>
+                    <div className="text-sm text-lightGold/70">{blockedState.best_single.line}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-green-400 font-bold">{(blockedState.best_single.confidence * 100).toFixed(0)}%</div>
+                    <div className="text-xs text-lightGold/60">Confidence</div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Next Best Actions */}
+            <div className="mb-4">
+              <div className="text-xs text-lightGold/60 font-semibold mb-2">TRY THESE OPTIONS:</div>
+              <div className="flex flex-wrap gap-2">
+                {blockedState.next_best_actions.market_filters.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      if (action.option === 'all_sports') {
+                        setSport('all');
+                      }
+                      generateParlay();
+                    }}
+                    className="px-3 py-2 bg-navy/60 border border-gold/30 rounded-lg text-sm text-lightGold hover:border-gold/60 transition-all"
+                  >
+                    {action.label}
+                  </button>
+                ))}
+                {blockedState.next_best_actions.risk_profiles.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setRiskProfile(action.profile);
+                      generateParlay();
+                    }}
+                    className="px-3 py-2 bg-navy/60 border border-amber-500/30 rounded-lg text-sm text-amber-400 hover:border-amber-500/60 transition-all"
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Refresh Timer */}
+            <div className="flex items-center gap-2 text-xs text-lightGold/60">
+              <span>⏳</span>
+              <span>New simulations available in ~{Math.ceil(blockedState.next_refresh_seconds / 60)} minutes</span>
+            </div>
+          </div>
+        )}
+
+        {/* Error State (only for actual errors, not blocked state) */}
+        {error && !blockedState && (
           <div className="mt-4 p-4 bg-deepRed/20 border border-deepRed rounded-lg">
-            <div className="text-deepRed font-semibold mb-2">⚠️ Generation Failed</div>
+            <div className="text-deepRed font-semibold mb-2">⚠️ Unable to Build Parlay</div>
             <div className="text-deepRed/90 text-sm mb-2 whitespace-pre-line font-mono leading-relaxed">
               {error}
             </div>
@@ -521,7 +685,7 @@ const ParlayArchitect: React.FC = () => {
       )}
 
       {/* Parlay Result */}
-      {parlayData && !isGenerating && (
+      {parlayData && !isGenerating && !blockedState && (
         <div className="max-w-4xl mx-auto">
           {/* Speculative Parlay Warning (LEAN legs included) */}
           {parlayData.is_speculative && (
@@ -538,7 +702,7 @@ const ParlayArchitect: React.FC = () => {
 
           {/* Enhanced Scarcity Timer with Pulsing Animation */}
           {!parlayData.is_unlocked && (
-            <div className="bg-gradient-to-r from-deepRed/20 to-orange-500/20 border border-deepRed/50 rounded-lg p-4 mb-4 flex items-center justify-between relative overflow-hidden">
+            <div className="bg-linear-to-r from-deepRed/20 to-orange-500/20 border border-deepRed/50 rounded-lg p-4 mb-4 flex items-center justify-between relative overflow-hidden">
               {/* Pulsing background effect */}
               <div className="absolute inset-0 bg-deepRed/10 animate-pulse"></div>
               
@@ -557,7 +721,7 @@ const ParlayArchitect: React.FC = () => {
           )}
 
           {/* Overview Card */}
-          <div className="bg-gradient-to-br from-charcoal to-navy rounded-xl p-8 border-2 border-gold/30 mb-6">
+          <div className="bg-linear-to-br from-charcoal to-navy rounded-xl p-8 border-2 border-gold/30 mb-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-3xl font-bold text-gold">
                 {parlayData.is_unlocked ? 'YOUR OPTIMIZED PARLAY' : 'PREVIEW'}
@@ -752,9 +916,9 @@ const ParlayArchitect: React.FC = () => {
             {/* Parlay Strength Score + Risk Level Gauges */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {/* Strength Gauge with Premium Glow */}
-              <div className="bg-gradient-to-r from-navy/50 to-charcoal/50 rounded-lg p-5 border border-gold/20 relative overflow-hidden group">
+              <div className="bg-linear-to-r from-navy/50 to-charcoal/50 rounded-lg p-5 border border-gold/20 relative overflow-hidden group">
                 {/* Subtle gradient glow behind score */}
-                <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-electric-blue/5 to-transparent opacity-50"></div>
+                <div className="absolute inset-0 bg-linear-to-br from-gold/5 via-electric-blue/5 to-transparent opacity-50"></div>
                 <div className="relative z-10">
                   <div className="flex items-center justify-between mb-3">
                     <div>
@@ -791,14 +955,14 @@ const ParlayArchitect: React.FC = () => {
                 {/* Strength Gauge Bar */}
                 <div className="h-3 bg-navy/50 rounded-full overflow-hidden relative">
                   <div 
-                    className="h-full bg-gradient-to-r from-gold via-electric-blue to-green-400 transition-all duration-500"
+                    className="h-full bg-linear-to-r from-gold via-electric-blue to-green-400 transition-all duration-500"
                     style={{ width: `${calculateParlayStrength()}%` }}
                   ></div>
                 </div>
               </div>
 
               {/* Risk Level Gauge - Fixed Thresholds */}
-              <div className="bg-gradient-to-r from-charcoal/50 to-navy/50 rounded-lg p-5 border border-gold/20">
+              <div className="bg-linear-to-r from-charcoal/50 to-navy/50 rounded-lg p-5 border border-gold/20">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <div className="text-sm font-semibold text-lightGold mb-1">
@@ -1033,8 +1197,8 @@ const ParlayArchitect: React.FC = () => {
                   </div>
                   
                   {/* Enhanced Locked Summary - Engineered Feel */}
-                  <div className="bg-gradient-to-r from-electric-blue/10 to-gold/10 border border-gold/40 rounded-lg p-6 mb-4 text-center relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent"></div>
+                  <div className="bg-linear-to-r from-electric-blue/10 to-gold/10 border border-gold/40 rounded-lg p-6 mb-4 text-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-linear-to-br from-gold/5 to-transparent"></div>
                     <div className="relative z-10">
                       <div className="text-3xl mb-3">🔒</div>
                       <h3 className="text-2xl font-bold text-gold mb-2">
@@ -1081,7 +1245,7 @@ const ParlayArchitect: React.FC = () => {
 
                   {/* Tier Upgrade Prompt for Multi-Leg Parlays */}
                   {upgradePrompt.show && (
-                    <div className="bg-gradient-to-r from-purple-900/20 to-gold/20 border border-purple-500/40 rounded-lg p-4 mb-4">
+                    <div className="bg-linear-to-r from-purple-900/20 to-gold/20 border border-purple-500/40 rounded-lg p-4 mb-4">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="text-sm font-semibold text-lightGold mb-1">
@@ -1096,7 +1260,7 @@ const ParlayArchitect: React.FC = () => {
                         </div>
                         <button
                           onClick={() => setShowUpgradeModal(true)}
-                          className="ml-4 px-4 py-2 bg-gradient-to-r from-purple-500 to-gold text-white text-xs font-bold rounded hover:shadow-lg hover:shadow-purple-500/30 transition-all whitespace-nowrap"
+                          className="ml-4 px-4 py-2 bg-linear-to-r from-purple-500 to-gold text-white text-xs font-bold rounded hover:shadow-lg hover:shadow-purple-500/30 transition-all whitespace-nowrap"
                         >
                           Upgrade Tier
                         </button>
@@ -1133,9 +1297,9 @@ const ParlayArchitect: React.FC = () => {
 
                   {/* Enhanced Premium Unlock CTA - Only show for non-elite/founder/internal users */}
                   {!['elite', 'founder', 'internal'].includes(userTier.toLowerCase()) && (
-                    <div className="mt-6 p-8 bg-gradient-to-br from-gold/20 to-deepRed/20 rounded-xl border-2 border-gold/50 text-center relative overflow-hidden">
+                    <div className="mt-6 p-8 bg-linear-to-br from-gold/20 to-deepRed/20 rounded-xl border-2 border-gold/50 text-center relative overflow-hidden">
                       {/* Background accent */}
-                      <div className="absolute inset-0 bg-gradient-to-tr from-gold/5 to-transparent pointer-events-none"></div>
+                      <div className="absolute inset-0 bg-linear-to-tr from-gold/5 to-transparent pointer-events-none"></div>
                       
                       <div className="relative z-10">
                         <h3 className="text-2xl font-bold text-gold mb-2">
@@ -1174,7 +1338,7 @@ const ParlayArchitect: React.FC = () => {
 
                         <button
                           onClick={unlockParlay}
-                          className="group relative px-10 py-4 bg-gradient-to-r from-gold to-lightGold text-darkNavy font-bold text-lg rounded-lg hover:shadow-2xl hover:shadow-gold/50 transition-all transform hover:scale-105"
+                          className="group relative px-10 py-4 bg-linear-to-r from-gold to-lightGold text-darkNavy font-bold text-lg rounded-lg hover:shadow-2xl hover:shadow-gold/50 transition-all transform hover:scale-105"
                         >
                           <span className="relative z-10">
                             UNLOCK PARLAY NOW — ${((parlayData.unlock_price || 999) / 100).toFixed(2)}

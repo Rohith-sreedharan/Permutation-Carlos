@@ -201,7 +201,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full bg-gradient-to-r from-[#D4A64A] to-[#B8923D] text-white font-bold py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full bg-linear-to-r from-[#D4A64A] to-[#B8923D] text-white font-bold py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {submitting ? (
             <>

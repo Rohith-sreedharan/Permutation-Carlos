@@ -121,10 +121,10 @@ const CreatorProfile: React.FC<CreatorProfileProps> = ({ username, onTailParlay,
       </button>
 
       {/* Creator Header */}
-      <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-2 border-purple-500/30 rounded-xl p-8 mb-6">
+      <div className="bg-linear-to-r from-purple-900/30 to-pink-900/30 border-2 border-purple-500/30 rounded-xl p-8 mb-6">
         <div className="flex items-center space-x-6">
           {/* Avatar */}
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-4xl font-bold text-white">
+          <div className="w-24 h-24 rounded-full bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center text-4xl font-bold text-white">
             {stats.avatar_url ? (
               <img src={stats.avatar_url} alt={stats.username} className="w-full h-full rounded-full" />
             ) : (
@@ -142,7 +142,7 @@ const CreatorProfile: React.FC<CreatorProfileProps> = ({ username, onTailParlay,
                 {stats.badges.map((badge) => (
                   <div
                     key={badge}
-                    className="bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1"
+                    className="bg-linear-to-r from-yellow-600 to-orange-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center space-x-1"
                     title={getBadgeDescription(badge)}
                   >
                     <span>{getBadgeIcon(badge)}</span>
@@ -233,7 +233,7 @@ const CreatorProfile: React.FC<CreatorProfileProps> = ({ username, onTailParlay,
               {/* Tail This Button */}
               <button
                 onClick={() => handleTailThis(slip.slip_id)}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold px-6 py-3 rounded-lg transition-all transform hover:scale-105 flex items-center space-x-2"
+                className="bg-linear-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold px-6 py-3 rounded-lg transition-all transform hover:scale-105 flex items-center space-x-2"
               >
                 <span>📋</span>
                 <span>{copiedSlipId === slip.slip_id ? 'Copied!' : 'Tail This'}</span>

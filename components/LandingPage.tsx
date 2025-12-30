@@ -55,7 +55,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
           {/* Logo */}
           <div className="mb-8">
             <div className="inline-flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-gold to-light-gold rounded-lg flex items-center justify-center">
+              <div className="w-12 h-12 bg-linear-to-br from-gold to-light-gold rounded-lg flex items-center justify-center">
                 <svg className="w-8 h-8 text-dark-navy" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
@@ -78,7 +78,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
           </p>
 
           {/* Founder Counter */}
-          <div className="bg-gradient-to-br from-card-gray to-charcoal border border-gold/30 rounded-2xl p-8 mb-8">
+          <div className="bg-linear-to-br from-card-gray to-charcoal border border-gold/30 rounded-2xl p-8 mb-8">
             <div className="flex items-center justify-between mb-4">
               <div className="text-left">
                 <div className="text-4xl font-bold text-gold font-teko">{founderCount} / 300</div>
@@ -93,7 +93,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
             {/* Progress Bar */}
             <div className="w-full h-3 bg-charcoal rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-gold to-light-gold transition-all duration-1000"
+                className="h-full bg-linear-to-r from-gold to-light-gold transition-all duration-1000"
                 style={{ width: `${founderPercentage}%` }}
               ></div>
             </div>
@@ -113,7 +113,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
                 />
                 <button
                   type="submit"
-                  className="px-8 py-4 bg-gradient-to-r from-gold to-light-gold text-dark-navy font-bold rounded-lg hover:shadow-lg hover:shadow-gold/50 transition-all transform hover:scale-105 whitespace-nowrap"
+                  className="px-8 py-4 bg-linear-to-r from-gold to-light-gold text-dark-navy font-bold rounded-lg hover:shadow-lg hover:shadow-gold/50 transition-all transform hover:scale-105 whitespace-nowrap"
                 >
                   Join Waitlist
                 </button>
@@ -123,7 +123,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
               </p>
             </form>
           ) : (
-            <div className="max-w-md mx-auto bg-gradient-to-br from-gold/10 to-light-gold/10 border border-gold/50 rounded-2xl p-6">
+            <div className="max-w-md mx-auto bg-linear-to-br from-gold/10 to-light-gold/10 border border-gold/50 rounded-2xl p-6">
               <div className="text-6xl mb-4">✓</div>
               <h3 className="text-2xl font-bold text-gold mb-3">You're In!</h3>
               <p className="text-muted-text mb-6">
@@ -182,14 +182,14 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
           </p>
           
           {/* Placeholder for animated distribution curve */}
-          <div className="bg-gradient-to-br from-card-gray to-charcoal border border-gold/30 rounded-2xl p-12">
+          <div className="bg-linear-to-br from-card-gray to-charcoal border border-gold/30 rounded-2xl p-12">
             <div className="h-64 flex items-end justify-center gap-1">
               {Array.from({ length: 50 }).map((_, i) => {
                 const height = Math.exp(-Math.pow((i - 25) / 10, 2)) * 100;
                 return (
                   <div
                     key={i}
-                    className="w-full bg-gradient-to-t from-gold to-light-gold rounded-t-sm transition-all duration-300 hover:from-light-gold hover:to-gold"
+                    className="w-full bg-linear-to-t from-gold to-light-gold rounded-t-sm transition-all duration-300 hover:from-light-gold hover:to-gold"
                     style={{ height: `${height}%` }}
                   ></div>
                 );

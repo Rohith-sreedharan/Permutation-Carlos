@@ -249,7 +249,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
       {/* Modern Horizontal Loading Bar */}
       {polling && (
         <div className="fixed top-0 left-0 right-0 z-50">
-          <div className="h-1 bg-gradient-to-r from-gold via-lightGold to-deepRed animate-[shimmer_2s_ease-in-out_infinite] bg-[length:200%_100%]"></div>
+          <div className="h-1 bg-linear-to-r from-gold via-lightGold to-deepRed animate-[shimmer_2s_ease-in-out_infinite] bg-size-[200%_100%]"></div>
           <div className="bg-navy/98 backdrop-blur-md border-b border-gold/30 px-4 py-2.5 text-center shadow-lg">
             <span className="text-sm text-lightGold font-bold animate-pulse flex items-center justify-center gap-2">
               <Activity className="animate-spin h-4 w-4" />
@@ -260,7 +260,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
       )}
 
       {/* Command Center Header */}
-      <div className="bg-gradient-to-r from-purple-900/40 via-blue-900/40 to-purple-900/40 rounded-lg p-6 border border-purple-500/30">
+      <div className="bg-linear-to-r from-purple-900/40 via-blue-900/40 to-purple-900/40 rounded-lg p-6 border border-purple-500/30">
         <div className="flex items-center gap-3 mb-2">
           <Target className="w-8 h-8 text-purple-400" />
           <h1 className="text-3xl font-bold text-white">Decision Command Center</h1>
@@ -272,7 +272,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
 
       {/* Key Metrics Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-5 border border-blue-500/30">
+        <div className="bg-linear-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-5 border border-blue-500/30">
           <div className="flex items-center gap-2 mb-2">
             <Brain className="w-5 h-5 text-blue-400" />
             <div className="text-sm text-gray-400">AI Alignment Score</div>
@@ -283,7 +283,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-lg p-5 border border-green-500/30">
+        <div className="bg-linear-to-br from-green-500/10 to-emerald-500/10 rounded-lg p-5 border border-green-500/30">
           <div className="flex items-center gap-2 mb-2">
             <TrendingUp className="w-5 h-5 text-green-400" />
             <div className="text-sm text-gray-400">Analytical Performance ROI</div>
@@ -296,7 +296,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg p-5 border border-purple-500/30">
+        <div className="bg-linear-to-br from-purple-500/10 to-pink-500/10 rounded-lg p-5 border border-purple-500/30">
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle className="w-5 h-5 text-purple-400" />
             <div className="text-sm text-gray-400">Decisions Logged</div>
@@ -326,7 +326,7 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
       </PageHeader>
       
       {/* DATE & TIME SORT CONTROLS */}
-      <div className="bg-gradient-to-r from-charcoal via-navy to-charcoal rounded-lg p-4 border border-gold/20 shadow-xl">
+      <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-lg p-4 border border-gold/20 shadow-xl">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
           {/* Date Filter */}
           <div className="flex items-center space-x-3">

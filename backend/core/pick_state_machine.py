@@ -284,12 +284,25 @@ class PickStateMachine:
         
         # If meets LEAN thresholds → LEAN
         if meets_lean:
+            # 🚨 FIX #4: LEAN picks CAN be parlay-eligible using PARLAY_POOL thresholds
+            # Check parlay pool eligibility with LOOSER thresholds
+            from core.parlay_eligibility import check_parlay_pool_eligibility
+            parlay_check = check_parlay_pool_eligibility(
+                probability=probability,
+                edge=edge,
+                confidence=int(confidence_score),
+                variance_z=variance_z
+            )
+            
             return PickClassification(
                 state=PickState.LEAN,
                 can_publish=True,
-                can_parlay=False,  # BLOCKED from parlays
+                can_parlay=parlay_check.is_eligible,  # 🚨 NOW USES PARLAY POOL THRESHOLDS
                 confidence_tier="WEAK",
-                reasons=reasons + ["Meets LEAN thresholds, NOT parlay-eligible"],
+                reasons=reasons + [
+                    "Meets LEAN thresholds",
+                    f"Parlay eligible: {parlay_check.is_eligible} (using PARLAY_POOL thresholds)"
+                ],
                 thresholds_met=thresholds_met
             )
         

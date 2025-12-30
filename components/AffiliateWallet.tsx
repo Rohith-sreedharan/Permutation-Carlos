@@ -59,7 +59,7 @@ const AffiliateWallet: React.FC = () => {
 
       {/* Earnings Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-neon-green to-green-600 rounded-lg shadow-lg p-6">
+        <div className="bg-linear-to-br from-neon-green to-green-600 rounded-lg shadow-lg p-6">
           <p className="text-sm text-white/70 uppercase tracking-wider">Lifetime Earnings</p>
           <h2 className="text-4xl font-bold text-white mt-2">
             ${earnings?.lifetimeEarnings?.toFixed(2) || '0.00'}
@@ -67,7 +67,7 @@ const AffiliateWallet: React.FC = () => {
           <p className="text-sm text-white/80 mt-1">Total revenue earned</p>
         </div>
 
-        <div className="bg-gradient-to-br from-electric-blue to-blue-600 rounded-lg shadow-lg p-6">
+        <div className="bg-linear-to-br from-electric-blue to-blue-600 rounded-lg shadow-lg p-6">
           <p className="text-sm text-white/70 uppercase tracking-wider">Pending Payout</p>
           <h2 className="text-4xl font-bold text-white mt-2">
             ${earnings?.pendingPayout?.toFixed(2) || '0.00'}
@@ -75,7 +75,7 @@ const AffiliateWallet: React.FC = () => {
           <p className="text-sm text-white/80 mt-1">Ready for transfer</p>
         </div>
 
-        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6">
+        <div className="bg-linear-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6">
           <p className="text-sm text-white/70 uppercase tracking-wider">Next Payout</p>
           <h2 className="text-2xl font-bold text-white mt-2">
             {earnings?.nextPayoutDate

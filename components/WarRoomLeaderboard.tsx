@@ -84,7 +84,7 @@ const WarRoomLeaderboard: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 bg-gradient-to-b from-[#0f1117] to-[#1a1d2e] min-h-screen p-6">
+    <div className="space-y-6 bg-linear-to-b from-[#0f1117] to-[#1a1d2e] min-h-screen p-6">
       <PageHeader title="War Room Leaderboard" />
 
       {/* Explanation */}
@@ -174,7 +174,7 @@ const WarRoomLeaderboard: React.FC = () => {
                 {/* Rank Badge */}
                 <td className="px-4 py-3 text-center">
                   <div
-                    className={`inline-flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br ${getRankColor(
+                    className={`inline-flex items-center justify-center w-8 h-8 rounded-full bg-linear-to-br ${getRankColor(
                       entry.rank
                     )}`}
                   >

@@ -220,18 +220,31 @@ async def get_simulation(
                     # If subtraction fails, force regeneration
                     age_hours = 999
                 
+                # 🚨 FIX #3: Cache tier LOCKED per run
                 # Regenerate if:
                 # 1. Simulation is older than 2 hours (market lines change)
-                # 2. Cached tier doesn't match current user's tier (tier upgrade/downgrade)
+                # 2. User UPGRADED tier (free → elite allowed)
+                # 3. NEVER downgrade (elite → free FORBIDDEN - use cached elite)
                 cached_tier = simulation.get("metadata", {}).get("user_tier", "free")
                 cached_iterations = simulation.get("metadata", {}).get("iterations_run", 10000)
+                
+                # Tier hierarchy: free < starter < pro < elite
+                TIER_HIERARCHY = {"free": 0, "starter": 1, "pro": 2, "elite": 3}
+                cached_tier_level = TIER_HIERARCHY.get(cached_tier, 0)
+                current_tier_level = TIER_HIERARCHY.get(user_tier, 0)
                 
                 if age_hours > 2:
                     print(f"♻️ Cache expired: {age_hours:.1f}h old (regenerating)")
                     should_regenerate = True
-                elif cached_tier != user_tier:
-                    print(f"🔄 Tier mismatch: cached={cached_tier}, current={user_tier} (regenerating)")
+                elif current_tier_level > cached_tier_level:
+                    # UPGRADE: User upgraded, regenerate with more sims
+                    print(f"⬆️ Tier UPGRADE: cached={cached_tier}, current={user_tier} (regenerating)")
                     should_regenerate = True
+                elif current_tier_level < cached_tier_level:
+                    # 🚨 DOWNGRADE BLOCKED: Keep the elite simulation
+                    print(f"🔒 Tier DOWNGRADE blocked: cached={cached_tier} (keeping superior sim)")
+                    should_regenerate = False
+                    is_fresh_generation = False
                 elif cached_iterations != assigned_iterations:
                     print(f"🔄 Iteration mismatch: cached={cached_iterations}, required={assigned_iterations} (regenerating)")
                     should_regenerate = True

@@ -129,7 +129,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
   return (
     <div className="min-h-screen bg-[#0C1018] p-6 space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-[#1A1F27] via-[#0C1018] to-[#1A1F27] rounded-lg p-6 border border-[#D4A64A]/20">
+      <div className="bg-linear-to-r from-[#1A1F27] via-[#0C1018] to-[#1A1F27] rounded-lg p-6 border border-[#D4A64A]/20">
         <div className="flex items-center gap-3 mb-2">
           <Target className="w-8 h-8 text-[#D4A64A]" />
           <h1 className="text-3xl font-bold text-white">Betting Command Center</h1>
@@ -142,7 +142,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* PnL Card */}
-        <div className="bg-gradient-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               {pnl && pnl.total_profit >= 0 ? (
@@ -162,7 +162,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
         </div>
 
         {/* ROI Card */}
-        <div className="bg-gradient-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-5 h-5 text-[#D4A64A]" />
             <div className="text-sm text-gray-400">ROI</div>
@@ -176,7 +176,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
         </div>
 
         {/* Tilt Meter */}
-        <div className="bg-gradient-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-5 h-5" style={{ color: getTiltColor() }} />
             <div className="text-sm text-gray-400">Tilt Meter</div>
@@ -202,7 +202,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
         </div>
 
         {/* Edge Analysis */}
-        <div className="bg-gradient-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center gap-2 mb-2">
             <Brain className="w-5 h-5 text-[#8B5CF6]" />
             <div className="text-sm text-gray-400">AI Edge</div>

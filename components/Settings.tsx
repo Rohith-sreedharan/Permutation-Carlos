@@ -485,7 +485,7 @@ const Settings: React.FC = () => {
         ) : (
           <button
             onClick={handleRegisterPasskey}
-            className="w-full px-4 py-3 bg-gradient-to-r from-neon-green/20 to-electric-blue/20 rounded-lg text-white hover:from-neon-green/30 hover:to-electric-blue/30 transition-colors border border-neon-green/30"
+            className="w-full px-4 py-3 bg-linear-to-r from-neon-green/20 to-electric-blue/20 rounded-lg text-white hover:from-neon-green/30 hover:to-electric-blue/30 transition-colors border border-neon-green/30"
           >
             🚀 Enable Biometric Login (Face ID / Touch ID)
           </button>

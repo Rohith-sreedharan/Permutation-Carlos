@@ -101,7 +101,7 @@ const DailyBestCards: React.FC = () => {
 
     return (
       <div
-        className={`bg-gradient-to-br from-charcoal to-navy rounded-xl p-6 border-2 cursor-pointer transition-all hover:scale-105 ${
+        className={`bg-linear-to-br from-charcoal to-navy rounded-xl p-6 border-2 cursor-pointer transition-all hover:scale-105 ${
           isFlagship
             ? 'border-gold shadow-lg shadow-gold/30'
             : 'border-gold/30 hover:border-gold/60'
@@ -193,7 +193,7 @@ const DailyBestCards: React.FC = () => {
 
     return (
       <div
-        className="bg-gradient-to-br from-purple-900/50 to-navy rounded-xl p-6 border-2 border-purple-500/30 cursor-pointer transition-all hover:scale-105 hover:border-purple-500/60"
+        className="bg-linear-to-br from-purple-900/50 to-navy rounded-xl p-6 border-2 border-purple-500/30 cursor-pointer transition-all hover:scale-105 hover:border-purple-500/60"
         onClick={() => setSelectedCard('top_prop_mispricing')}
       >
         {/* Header */}
@@ -259,7 +259,7 @@ const DailyBestCards: React.FC = () => {
 
     return (
       <div
-        className="bg-gradient-to-br from-gold/20 to-navy rounded-xl p-6 border-2 border-gold/50 cursor-pointer transition-all hover:scale-105 hover:border-gold"
+        className="bg-linear-to-br from-gold/20 to-navy rounded-xl p-6 border-2 border-gold/50 cursor-pointer transition-all hover:scale-105 hover:border-gold"
         onClick={() => setSelectedCard('parlay_preview')}
       >
         {/* Header */}

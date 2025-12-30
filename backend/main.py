@@ -115,6 +115,7 @@ from routes.nfl_routes import router as nfl_router
 from routes.nhl_routes import router as nhl_router
 from routes.mlb_routes import router as mlb_router
 from routes.analyzer import router as analyzer_router
+from routes.market_state_routes import router as market_state_router
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -163,6 +164,7 @@ app.include_router(truth_mode_router)  # Truth Mode v1.0: Zero-Lies Enforcement
 app.include_router(debug_router)  # Debug endpoints for pick state diagnostics
 app.include_router(tracking_router)  # Pixel & event tracking (Phase 1.2)
 app.include_router(daily_preview_router)  # Daily Preview for marketing conversion
+app.include_router(market_state_router)  # Market State Registry - Single source of truth
 
 
 @app.websocket("/ws")

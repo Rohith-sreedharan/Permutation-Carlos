@@ -442,9 +442,9 @@ const ParlayBuilder: React.FC = () => {
             <button
               onClick={calculateParlay}
               disabled={legs.length < 2 || loading}
-              className="w-full bg-gradient-to-r from-electric-blue to-purple-600 text-white font-bold py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all"
+              className="w-full bg-linear-to-r from-electric-blue to-purple-600 text-white font-bold py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg transition-all"
             >
-              {loading ? 'Calculating...' : legs.length < 2 ? 'Add 2+ Legs to Analyze' : 'Recalculate Parlay'}
+                {loading ? 'Calculating...' : legs.length < 2 ? 'Add 2+ Legs to Analyze' : 'Recalculate Parlay'}
             </button>
 
             {/* Error Message */}
@@ -459,7 +459,7 @@ const ParlayBuilder: React.FC = () => {
               <div className="mt-6 space-y-4">
                 {/* 🧠 STAKE INTELLIGENCE (CONTEXT ONLY) */}
                 {stakeAnalysis && (
-                  <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-xl p-5 border-2 border-purple-500/30">
+                  <div className="bg-linear-to-r from-purple-900/20 to-blue-900/20 rounded-xl p-5 border-2 border-purple-500/30">
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <h4 className="text-white font-bold text-base mb-1 flex items-center gap-2">
@@ -523,7 +523,7 @@ const ParlayBuilder: React.FC = () => {
                 )}
 
                 {/* 📊 PARLAY METRICS (Real Calculator Data) */}
-                <div className="bg-gradient-to-br from-navy to-charcoal rounded-xl p-6 border-2 border-gold/30">
+                <div className="bg-linear-to-br from-navy to-charcoal rounded-xl p-6 border-2 border-gold/30">
                   <h3 className="text-gold font-bold text-lg mb-4 flex items-center gap-2">
                     📊 Parlay Analysis
                   </h3>
@@ -592,7 +592,7 @@ const ParlayBuilder: React.FC = () => {
 
                 {/* Potential Profit Display */}
                 {parlayCalc.potential_profit && (
-                  <div className="bg-gradient-to-r from-neon-green/20 to-emerald-500/20 border-2 border-neon-green/50 rounded-xl p-5">
+                  <div className="bg-linear-to-r from-neon-green/20 to-emerald-500/20 border-2 border-neon-green/50 rounded-xl p-5">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-light-gray text-sm">Potential Profit</div>
@@ -612,7 +612,7 @@ const ParlayBuilder: React.FC = () => {
 
                 {/* EV WARNING for negative EV parlays */}
                 {parlayCalc.ev_percent < -10 && (
-                  <div className="bg-gradient-to-r from-red-900/30 to-red-800/20 border-4 border-red-500 rounded-2xl p-6">
+                  <div className="bg-linear-to-r from-red-900/30 to-red-800/20 border-4 border-red-500 rounded-2xl p-6">
                     <div className="flex items-center space-x-4 mb-3">
                       <div className="text-5xl">⚠️</div>
                       <div>
@@ -637,7 +637,7 @@ const ParlayBuilder: React.FC = () => {
                 {/* SHARE BUTTON - Creator Distribution Moat (Blueprint Page 64) */}
                 <button
                   onClick={handleShare}
-                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 px-6 rounded-xl hover:shadow-2xl transition-all transform hover:scale-105 flex items-center justify-center space-x-3"
+                  className="w-full bg-linear-to-r from-purple-600 to-pink-600 text-white font-bold py-4 px-6 rounded-xl hover:shadow-2xl transition-all transform hover:scale-105 flex items-center justify-center space-x-3"
                 >
                   <span className="text-2xl">📤</span>
                   <span className="text-lg">SHARE PARLAY</span>

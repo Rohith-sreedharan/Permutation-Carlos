@@ -150,7 +150,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, onSkip 
           </div>
           <div className="h-2 bg-charcoal rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-electric-blue to-purple-600 transition-all duration-300"
+              className="h-full bg-linear-to-r from-electric-blue to-purple-600 transition-all duration-300"
               style={{ width: `${(currentStep / 3) * 100}%` }}
             />
           </div>
@@ -461,7 +461,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, onSkip 
               disabled={!canProceed()}
               className={`px-8 py-3 rounded-lg font-semibold transition-all ${
                 canProceed()
-                  ? 'bg-gradient-to-r from-electric-blue to-purple-600 text-white hover:shadow-lg hover:shadow-electric-blue/50'
+                  ? 'bg-linear-to-r from-electric-blue to-purple-600 text-white hover:shadow-lg hover:shadow-electric-blue/50'
                   : 'bg-charcoal text-light-gray cursor-not-allowed'
               }`}
             >

@@ -66,7 +66,7 @@ const SubscriptionSettings: React.FC = () => {
       </div>
 
       {/* Current Plan Card */}
-      <div className={`bg-gradient-to-br ${tierConfig.color} rounded-lg shadow-lg p-8`}>
+      <div className={`bg-linear-to-br ${tierConfig.color} rounded-lg shadow-lg p-8`}>
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm text-white/70 uppercase tracking-wider">Current Plan</p>
