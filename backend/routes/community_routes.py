@@ -194,7 +194,7 @@ async def get_messages(
     formatted = []
     for msg in messages:
         formatted.append({
-            "id": msg["id"],
+            "id": str(msg["_id"]),
             "user_id": msg["user_id"],
             "message": msg["message"],
             "timestamp": msg["timestamp"],

@@ -6,6 +6,8 @@ import { swalSuccess, swalError } from '../utils/swal';
 import { verifyToken, fetchEventsFromDB } from '../services/api';
 import type { Event } from '../types';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -44,7 +46,7 @@ interface GameRoom {
   home_team: string;
   away_team: string;
   commence_time: string;
-  status: 'upcoming' | 'live' | 'final' | 'archived';
+  status: 'upcoming' | 'live' | 'final';
   thread_count?: number;
   // Market state info from registry
   market_states?: MarketStateInfo[];
@@ -83,6 +85,19 @@ interface Post {
   screenshot_url?: string;
   model_context?: ModelContext;
   signal_id?: string;
+}
+
+interface DiscussionPost {
+  post_id: string;
+  thread_id: string;
+  user_id: string;
+  display_name: string;
+  user_tier: string;
+  content: string;
+  posted_at: string;
+  likes: number;
+  replies: any[];
+  attachments?: Array<{ type: string; signal_id: string }>;
 }
 
 interface ModelContext {
@@ -331,7 +346,7 @@ const WarRoom: React.FC = () => {
    * Create system posts for auto-seeded threads
    * These provide initial context and model insights
    */
-  const createSystemPosts = (threads: MarketThread[], game?: GameRoom): DiscussionPost[] => {
+  const createSystemPosts = (threads: MarketThread[], game?: GameRoom): Post[] => {
     if (threads.length === 0) return [];
     
     const thread = threads[0];
@@ -340,18 +355,13 @@ const WarRoom: React.FC = () => {
     
     return [{
       post_id: `${thread.thread_id}_system_init`,
-      thread_id: thread.thread_id,
-      user_id: 'SYSTEM',
-      display_name: 'BeatVegas AI',
-      user_tier: 'system' as any,
-      content: `**${stateLabel} Signal Active**\n\nModel analysis is attached to this thread. Share your thoughts, fade or follow the model's position.\n\n${marketState?.edge_points ? `Edge: ${marketState.edge_points.toFixed(1)}pts` : ''} ${marketState?.confidence_score ? `| Confidence: ${marketState.confidence_score}%` : ''}`,
-      posted_at: new Date().toISOString(),
-      likes: 0,
-      replies: [],
-      attachments: [{
-        type: 'model_context',
-        signal_id: `sig_${game?.event_id}_${thread.market_type}`,
-      }],
+      username: 'BeatVegas AI',
+      user_rank: 'system',
+      post_type: 'system_message',
+      created_at: new Date().toISOString(),
+      views: 0,
+      replies: 0,
+      reason: `**${stateLabel} Signal Active**\n\nModel analysis is attached to this thread. Share your thoughts, fade or follow the model's position.\n\n${marketState?.edge_points ? `Edge: ${marketState.edge_points.toFixed(1)}pts` : ''} ${marketState?.confidence_score ? `| Confidence: ${marketState.confidence_score}%` : ''}`,
     }];
   };
 
@@ -1120,7 +1130,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
         <div className="flex items-center gap-2">
           <span className="font-bold text-white text-sm">{post.username}</span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getRankStyle(post.user_rank)}`}>
-            {post.user_rank.toUpperCase()}
+            {post.user_rank?.toUpperCase() || 'USER'}
           </span>
         </div>
         <span className="text-xs text-light-gray">
