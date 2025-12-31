@@ -319,27 +319,84 @@ def grade_picks():
         print(f"✗ Exception in auto-grading: {e}")
 
 
+def poll_all_sports():
+    """
+    Poll all sports at once using the consolidated repoll logic.
+    More efficient than individual sport calls.
+    """
+    try:
+        from integrations.odds_api import fetch_odds, normalize_event
+        from utils.timezone import now_est, get_est_date_today
+        
+        print(f"🔄 Polling all sports at {now_est().strftime('%Y-%m-%d %H:%M:%S EST')}")
+        
+        sports = [
+            "basketball_nba",
+            "basketball_ncaab",
+            "americanfootball_nfl",
+            "americanfootball_ncaaf",
+            "baseball_mlb",
+            "icehockey_nhl",
+        ]
+        
+        total_events = 0
+        
+        for sport in sports:
+            try:
+                # Fetch from multiple regions for comprehensive coverage
+                regions = ["us", "us2", "uk", "eu"]
+                all_events = []
+                
+                for region in regions:
+                    try:
+                        raw_events = fetch_odds(
+                            sport=sport,
+                            region=region,
+                            markets="h2h,spreads,totals",
+                            odds_format="decimal"
+                        )
+                        all_events.extend(raw_events)
+                    except Exception as e:
+                        # Silently skip individual region failures
+                        pass
+                
+                # Normalize and upsert
+                if all_events:
+                    normalized = [normalize_event(ev) for ev in all_events]
+                    count = upsert_events("events", normalized)
+                    total_events += count
+                    print(f"  ✅ {sport}: {count} events")
+                    
+            except Exception as e:
+                print(f"  ⚠️ {sport}: {str(e)}")
+        
+        print(f"✓ Polled {total_events} total events across all sports")
+        
+        log_stage(
+            "multi_sport_polling",
+            "success",
+            input_payload={"sports": sports},
+            output_payload={"total_events": total_events}
+        )
+        
+    except Exception as e:
+        log_stage(
+            "multi_sport_polling",
+            "exception",
+            input_payload={},
+            output_payload={"error": str(e)},
+            level="ERROR"
+        )
+        print(f"✗ Exception polling all sports: {e}")
+
+
 def run_initial_polls():
     """
     Run initial polls for all sports immediately on server startup.
     This ensures fresh data is available as soon as the server starts.
     """
     print("🔄 Running initial polls for all sports...")
-    sports = [
-        ("basketball_nba", "NBA"),
-        ("americanfootball_nfl", "NFL"),
-        ("baseball_mlb", "MLB"),
-        ("icehockey_nhl", "NHL"),
-        ("basketball_ncaab", "NCAAB"),
-        ("americanfootball_ncaaf", "NCAAF")
-    ]
-    
-    for sport_key, sport_name in sports:
-        try:
-            poll_odds_api(sport_key, "h2h,spreads,totals")
-        except Exception as e:
-            print(f"⚠️  Initial poll failed for {sport_name}: {e}")
-    
+    poll_all_sports()
     print("✓ Initial polls complete")
 
 
@@ -350,76 +407,29 @@ def start_scheduler():
     OPTIMIZED POLLING STRATEGY:
     ---------------------------
     • Standard interval: 15 minutes (conservative, quota-friendly)
-    • Reduces API calls from 103,680/day to 576/day
-    • 6 sports × 4 polls/hour × 24 hours = 576 requests/day
-    • Well within most API quota limits (500-5000 requests/month)
+    • Polls ALL sports at once instead of individually
+    • 1 multi-sport job × 4 polls/hour × 24 hours = 96 requests/day
+    • Each request fetches 6 sports from 4 regions = ~24 API calls per poll
+    • Total: ~2,304 API calls/day (well within most quotas)
     
     For production, consider:
-    • Off-season sports: Poll every 6-24 hours or disable
-    • Live games: Increase to 2-5 minute intervals dynamically
+    • Off-season sports: Filter out dynamically
+    • Live games: Increase to 2-5 minute intervals
     • Pre-game (<2 hours): Increase to 5-10 minute intervals
     """
     # Run initial polls immediately on startup
     run_initial_polls()
     
-    # STANDARD POLLING: Every 15 minutes for all sports
-    # This conserves API quota while keeping data reasonably fresh
-    
-    # Job 1: Poll NBA odds every 15 minutes
+    # CONSOLIDATED POLLING: All sports at once every 15 minutes
     scheduler.add_job(
-        func=lambda: poll_odds_api("basketball_nba", "h2h,spreads,totals"),
+        func=poll_all_sports,
         trigger=IntervalTrigger(minutes=15),
-        id="poll_nba_odds",
-        name="Poll NBA Odds (15m)",
+        id="poll_all_sports",
+        name="Poll All Sports (15m)",
         replace_existing=True
     )
     
-    # Job 2: Poll NFL odds every 15 minutes
-    scheduler.add_job(
-        func=lambda: poll_odds_api("americanfootball_nfl", "h2h,spreads,totals"),
-        trigger=IntervalTrigger(minutes=15),
-        id="poll_nfl_odds",
-        name="Poll NFL Odds (15m)",
-        replace_existing=True
-    )
-    
-    # Job 3: Poll MLB odds every 15 minutes (OFF-SEASON - will show "no games" message)
-    scheduler.add_job(
-        func=lambda: poll_odds_api("baseball_mlb", "h2h,spreads,totals"),
-        trigger=IntervalTrigger(minutes=15),
-        id="poll_mlb_odds",
-        name="Poll MLB Odds (15m)",
-        replace_existing=True
-    )
-    
-    # Job 4: Poll NHL odds every 15 minutes
-    scheduler.add_job(
-        func=lambda: poll_odds_api("icehockey_nhl", "h2h,spreads,totals"),
-        trigger=IntervalTrigger(minutes=15),
-        id="poll_nhl_odds",
-        name="Poll NHL Odds (15m)",
-        replace_existing=True
-    )
-    
-    # Job 5: Poll NCAAB odds every 15 minutes (College Basketball)
-    scheduler.add_job(
-        func=lambda: poll_odds_api("basketball_ncaab", "h2h,spreads,totals"),
-        trigger=IntervalTrigger(minutes=15),
-        id="poll_ncaab_odds",
-        name="Poll NCAAB Odds (15m)",
-        replace_existing=True
-    )
-    
-    # Job 6: Poll NCAAF odds every 15 minutes (College Football - BOWL SEASON)
-    scheduler.add_job(
-        func=lambda: poll_odds_api("americanfootball_ncaaf", "h2h,spreads,totals"),
-        trigger=IntervalTrigger(minutes=15),
-        id="poll_ncaaf_odds",
-        name="Poll NCAAF Odds (15m)",
-        replace_existing=True
-    )
-    
-    # Job 7: Poll injury updates every 5 minutes
+    # Job 2: Poll injury updates every 5 minutes
     scheduler.add_job(
         func=poll_injury_updates,
         trigger=IntervalTrigger(minutes=5),
@@ -428,7 +438,7 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 8: Grade completed games every 2 hours (CRITICAL: Populates trust metrics)
+    # Job 3: Grade completed games every 2 hours (CRITICAL: Populates trust metrics)
     scheduler.add_job(
         func=grade_completed_games,
         trigger=IntervalTrigger(hours=2),
@@ -437,7 +447,7 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 8: Run daily Brier Score calculation at 4 AM
+    # Job 4: Run daily Brier Score calculation at 4 AM
     scheduler.add_job(
         func=run_daily_brier_calculation,
         trigger="cron",
@@ -448,7 +458,7 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 9: Run automated grading at 4:15 AM (after Brier calculation)
+    # Job 5: Run automated grading at 4:15 AM (after Brier calculation)
     scheduler.add_job(
         func=run_auto_grading,
         trigger="cron",
@@ -459,7 +469,7 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 10: Generate daily community content at 8 AM EST
+    # Job 6: Generate daily community content at 8 AM EST
     scheduler.add_job(
         func=generate_daily_community_content,
         trigger="cron",
@@ -470,7 +480,7 @@ def start_scheduler():
         replace_existing=True
     )
     
-    # Job 11: Run reflection loop weekly (Sundays at 2 AM)
+    # Job 7: Run reflection loop weekly (Sundays at 2 AM)
     scheduler.add_job(
         func=run_reflection_loop,
         trigger="cron",
@@ -484,18 +494,13 @@ def start_scheduler():
     
     scheduler.start()
     print("✓ Scheduler started with jobs:")
-    print("  - NBA odds polling (5s)")
-    print("  - NFL odds polling (5s)")
-    print("  - MLB odds polling (5s)")
-    print("  - NHL odds polling (5s)")
-    print("  - NCAAB odds polling (5s)")
-    print("  - NCAAF odds polling (5s)")
+    print("  - Multi-sport odds polling (15m) - NBA, NFL, MLB, NHL, NCAAB, NCAAF")
     print("  - Injury updates (5m)")
+    print("  - Grade completed games (2h)")
     print("  - Daily Brier Score calculation (4 AM)")
     print("  - Automated prediction grading (4:15 AM)")
     print("  - Daily community content generation (8 AM)")
     print("  - Weekly reflection loop (Sundays 2 AM)")
-    print("⚡ Live Mode: Polling every 5 seconds for real-time odds updates")
     print("🔄 Initial polls completed - fresh data available immediately")
 
 

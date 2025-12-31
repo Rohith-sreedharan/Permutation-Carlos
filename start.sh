@@ -76,7 +76,7 @@ echo "  ✓ Affiliate Viral Loop (zero-ad spend growth)"
 echo "  ✓ Module 7: Reflection Loop (self-improving AI)"
 echo "  ✓ Community Data Pipeline (NLP + Reputation)"
 echo "  ✓ Hybrid AI (odds + weighted sentiment)"
-echo "  ✓ Real-time Odds Polling (< 20s freshness)"
+echo "  ✓ Auto Odds Polling - ALL SPORTS (15m intervals)"
 echo ""
 echo "API Documentation: http://localhost:8000/docs"
 echo "Health Check: http://localhost:8000/health"
@@ -84,5 +84,5 @@ echo ""
 echo -e "${BLUE}Press Ctrl+C to stop the server${NC}"
 echo ""
 
-# Run the FastAPI server
-uvicorn main:app --reload --port 8000 --host 0.0.0.0
+# Run the FastAPI server with PYTHONPATH set
+PYTHONPATH=$(pwd) uvicorn main:app --reload --port 8000 --host 0.0.0.0
