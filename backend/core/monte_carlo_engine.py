@@ -228,6 +228,11 @@ class MonteCarloEngine:
         # Get sport-specific strategy
         sport_key = market_context.get('sport_key', 'basketball_nba')
         
+        # Set market_type in market_context if not already set
+        if 'market_type' not in market_context:
+            market_context = market_context.copy()
+            market_context['market_type'] = mode if mode in ["first_half", "second_half"] else "full_game"
+        
         # ===== MARKET LINE INTEGRITY VERIFICATION (SMART VALIDATION) =====
         # Check market line integrity - structural errors block, staleness allows simulation
         integrity_result = None
@@ -529,12 +534,15 @@ class MonteCarloEngine:
         
         # Calculate tier-aware confidence score (NUMERICAL ACCURACY)
         tier_config = SimulationTierConfig.get_tier_config(iterations)
-        confidence_score = ConfidenceCalculator.calculate(
+        confidence_result = ConfidenceCalculator.calculate(
             variance=variance_total,
             sim_count=iterations,
             volatility=volatility_label,
             median_value=median_total
         )
+        
+        # Extract numeric score from ConfidenceResult
+        confidence_score = confidence_result.score if hasattr(confidence_result, 'score') else confidence_result
         
         # 🔴 ANTI-OVER BIAS: Apply divergence penalty to confidence
         # Large divergences from market should reduce conviction
@@ -1077,6 +1085,9 @@ class MonteCarloEngine:
             "market_context": market_context,
             "created_at": datetime.now(timezone.utc).isoformat(),
             
+            # Grading status (for Trust Loop)
+            "status": "pending",  # Will be updated to WIN/LOSS/PUSH after game completes
+            
             # Debug label (dev mode only)
             "debug_label": get_debug_label("monte_carlo_engine", iterations, median_total, variance_total)
         }
@@ -1232,6 +1243,10 @@ class MonteCarloEngine:
         sport_key = market_context.get('sport_key', 'basketball_nba')
         strategy = self.strategy_factory.get_strategy(sport_key)
         
+        # Set market_type in market_context for integrity verification
+        market_context = market_context.copy()
+        market_context['market_type'] = "first_half" if period == "1H" else "second_half"
+        
         # ===== MARKET LINE INTEGRITY VERIFICATION FOR PERIOD =====
         integrity_result = None
         try:
@@ -1371,12 +1386,15 @@ class MonteCarloEngine:
         else:
             volatility_label = "HIGH"
         
-        confidence_score = ConfidenceCalculator.calculate(
+        confidence_result = ConfidenceCalculator.calculate(
             variance=h1_variance,
             sim_count=iterations,
             volatility=volatility_label,
             median_value=h1_median_total
         )
+        
+        # Extract numeric score from ConfidenceResult
+        confidence_score = confidence_result.score if hasattr(confidence_result, 'score') else confidence_result
         
         # Reasoning for 1H prediction
         reasoning = self._generate_1h_reasoning(
@@ -1419,6 +1437,9 @@ class MonteCarloEngine:
             "starter_impact": period == "1H",
             "reasoning": reasoning,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            
+            # Grading status (for Trust Loop)
+            "status": "pending",  # Will be updated to WIN/LOSS/PUSH after game completes
             
             # Market integrity status
             "integrity_status": integrity_result.to_dict() if integrity_result else {"status": "ok", "is_valid": True},

@@ -142,7 +142,7 @@ class ResultGradingService:
         """
         try:
             # First check database
-            event = self.db['events'].find_one({'id': event_id})
+            event = self.db['events'].find_one({'event_id': event_id})
             if not event:
                 logger.warning(f"Event {event_id} not found in database")
                 return None
@@ -182,7 +182,7 @@ class ResultGradingService:
             if espn_result:
                 # Update database with scores
                 self.db['events'].update_one(
-                    {'id': event_id},
+                    {'event_id': event_id},
                     {'$set': {
                         'completed': True,
                         'scores': {
