@@ -182,6 +182,50 @@ async def get_simulation(
         if not event:
             raise HTTPException(status_code=404, detail=f"Event not found: {event_id}")
         
+        # ===== AUTO-REFRESH STALE ODDS IF NEEDED =====
+        from services.odds_refresh_service import attempt_odds_refresh, log_stale_odds_occurrence
+        from config.integrity_config import should_auto_refresh, get_max_odds_age
+        
+        odds_timestamp = event.get("odds_timestamp")
+        sport_key = event.get("sport_key", "basketball_nba")
+        
+        if odds_timestamp:
+            try:
+                # Check odds age
+                if isinstance(odds_timestamp, str):
+                    odds_time = datetime.fromisoformat(odds_timestamp.replace('Z', '+00:00'))
+                elif isinstance(odds_timestamp, datetime):
+                    odds_time = odds_timestamp if odds_timestamp.tzinfo else odds_timestamp.replace(tzinfo=timezone.utc)
+                else:
+                    odds_time = datetime.now(timezone.utc)
+                
+                now = datetime.now(timezone.utc)
+                age = now - odds_time
+                
+                # Check if auto-refresh should be attempted
+                if should_auto_refresh(sport_key, age):
+                    logger.info(f"🔄 Auto-refresh triggered for {event_id}: odds {age.total_seconds()/3600:.1f}h old")
+                    
+                    # Attempt to fetch fresh odds
+                    success, updated_event, error_msg = await attempt_odds_refresh(
+                        event_id=event_id,
+                        sport_key=sport_key,
+                        current_event=event
+                    )
+                    
+                    if success and updated_event:
+                        # Use updated event with fresh odds
+                        event = updated_event
+                        logger.info(f"✅ Successfully refreshed odds for {event_id}")
+                    else:
+                        # Log that auto-refresh was attempted but failed
+                        logger.warning(f"⚠️ Auto-refresh failed for {event_id}: {error_msg or 'unknown error'}")
+                        # Continue with stale odds (graceful degradation)
+                        
+            except Exception as e:
+                logger.error(f"Error during auto-refresh check for {event_id}: {e}")
+                # Continue with existing odds
+        
         # Find most recent FULL-GAME simulation for this event (exclude period simulations like 1H/2H)
         simulation = db.monte_carlo_simulations.find_one(
             {
@@ -364,16 +408,16 @@ async def get_simulation(
                 print(f"✓ Simulation generated successfully for {event_id} ({assigned_iterations} iterations)")
                 
             except MarketLineIntegrityError as e:
-                # Handle stale odds data gracefully
-                print(f"⚠️ Market Line Integrity Error for {event_id}: {str(e)}")
+                # ONLY structural errors reach here (staleness is handled gracefully)
+                print(f"❌ Structural Market Error for {event_id}: {str(e)}")
                 raise HTTPException(
                     status_code=422,
                     detail={
-                        "error": "STALE_ODDS_DATA",
-                        "message": "Cannot generate simulation: odds data is too old",
+                        "error": "STRUCTURAL_MARKET_ERROR",
+                        "message": "Cannot generate simulation: market data has structural errors",
                         "details": str(e),
                         "event_id": event_id,
-                        "user_action": "Please try again later when odds have been refreshed"
+                        "user_action": "This event cannot be simulated due to invalid market data"
                     }
                 )
             except Exception as e:
@@ -570,6 +614,39 @@ async def get_period_simulation(
         if not event:
             raise HTTPException(status_code=404, detail=f"Event not found: {event_id}")
         
+        # ===== AUTO-REFRESH STALE ODDS IF NEEDED =====
+        from services.odds_refresh_service import attempt_odds_refresh
+        from config.integrity_config import should_auto_refresh
+        
+        odds_timestamp = event.get("odds_timestamp")
+        sport_key = event.get("sport_key", "basketball_nba")
+        
+        if odds_timestamp:
+            try:
+                if isinstance(odds_timestamp, str):
+                    odds_time = datetime.fromisoformat(odds_timestamp.replace('Z', '+00:00'))
+                elif isinstance(odds_timestamp, datetime):
+                    odds_time = odds_timestamp if odds_timestamp.tzinfo else odds_timestamp.replace(tzinfo=timezone.utc)
+                else:
+                    odds_time = datetime.now(timezone.utc)
+                
+                now = datetime.now(timezone.utc)
+                age = now - odds_time
+                
+                if should_auto_refresh(sport_key, age):
+                    logger.info(f"🔄 Auto-refresh triggered for {period} simulation of {event_id}")
+                    success, updated_event, error_msg = await attempt_odds_refresh(
+                        event_id=event_id,
+                        sport_key=sport_key,
+                        current_event=event
+                    )
+                    
+                    if success and updated_event:
+                        event = updated_event
+                        logger.info(f"✅ Refreshed odds for {period} simulation of {event_id}")
+            except Exception as e:
+                logger.error(f"Error during auto-refresh for {period} simulation: {e}")
+        
         # Initialize Monte Carlo engine
         from core.monte_carlo_engine import MonteCarloEngine
         from integrations.player_api import get_team_data_with_roster
@@ -630,17 +707,17 @@ async def get_period_simulation(
         return simulation
         
     except MarketLineIntegrityError as e:
-        # Handle stale odds data gracefully for period simulations
-        print(f"⚠️ Market Line Integrity Error for {event_id} ({period}): {str(e)}")
+        # ONLY structural errors reach here (staleness handled gracefully)
+        print(f"❌ Structural Market Error for {period} simulation of {event_id}: {str(e)}")
         raise HTTPException(
             status_code=422,
             detail={
-                "error": "STALE_ODDS_DATA",
-                "message": f"Cannot generate {period} simulation: odds data is too old",
+                "error": "STRUCTURAL_MARKET_ERROR",
+                "message": f"Cannot generate {period} simulation: market data has structural errors",
                 "details": str(e),
                 "event_id": event_id,
                 "period": period,
-                "user_action": "Please try again later when odds have been refreshed"
+                "user_action": "This period cannot be simulated due to invalid market data"
             }
         )
     except Exception as e:

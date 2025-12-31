@@ -228,19 +228,26 @@ class MonteCarloEngine:
         # Get sport-specific strategy
         sport_key = market_context.get('sport_key', 'basketball_nba')
         
-        # ===== MARKET LINE INTEGRITY VERIFICATION (HARD BLOCK) =====
-        # CRITICAL: Verify market line before any simulation (spec #5)
+        # ===== MARKET LINE INTEGRITY VERIFICATION (SMART VALIDATION) =====
+        # Check market line integrity - structural errors block, staleness allows simulation
+        integrity_result = None
         try:
-            self.market_verifier.verify_market_context(
+            integrity_result = self.market_verifier.verify_market_context(
                 event_id=event_id,
                 sport_key=sport_key,
                 market_context=market_context,
                 market_type=mode if mode in ["first_half", "second_half"] else "full_game"
             )
-            logger.info(f"✅ Market line integrity verified: {event_id}")
+            
+            if integrity_result.status.value == "ok":
+                logger.info(f"✅ Market line integrity verified: {event_id}")
+            elif integrity_result.status.value == "stale_line":
+                logger.warning(f"⚠️ Stale odds detected for {event_id}, proceeding with simulation. Age: {integrity_result.odds_age_hours:.1f}h")
+            
         except MarketLineIntegrityError as e:
+            # STRUCTURAL errors still hard block
             logger.error(f"❌ HARD BLOCK: Market line integrity failed for {event_id}: {e}")
-            raise  # Hard block - no simulation without valid market line
+            raise
         
         # Enforce NO MARKET = NO PICK for derivative markets (spec #6)
         if mode in ["first_half", "second_half"]:
@@ -1014,7 +1021,9 @@ class MonteCarloEngine:
                 "edge_percentage": round(((median_total - bookmaker_total_line) / bookmaker_total_line * 100), 2) if bookmaker_total_line > 0 else 0
             },
             
-            # Injury impact
+            # Market integrity status (for graceful degradation)
+            "integrity_status": integrity_result.to_dict() if integrity_result else {"status": "ok", "is_valid": True},
+            
             # Injury impact
             "injury_impact_weighted": sum(inj.get("impact_points", 0) for inj in injury_impact),
             "injury_summary": {
@@ -1079,7 +1088,7 @@ class MonteCarloEngine:
         # This handles regeneration cases where simulation_id might already exist
         db["monte_carlo_simulations"].update_one(
             {"simulation_id": simulation_result["simulation_id"]},
-            {"$set": simulation_result.copy()},
+            {"$set": simulation_result},
             upsert=True
         )
         
@@ -1222,6 +1231,23 @@ class MonteCarloEngine:
         
         sport_key = market_context.get('sport_key', 'basketball_nba')
         strategy = self.strategy_factory.get_strategy(sport_key)
+        
+        # ===== MARKET LINE INTEGRITY VERIFICATION FOR PERIOD =====
+        integrity_result = None
+        try:
+            integrity_result = self.market_verifier.verify_market_context(
+                event_id=event_id,
+                sport_key=sport_key,
+                market_context=market_context,
+                market_type="first_half" if period == "1H" else "second_half"
+            )
+            
+            if integrity_result.status.value == "stale_line":
+                logger.warning(f"⚠️ Stale odds for {period} simulation of {event_id}, proceeding anyway. Age: {integrity_result.odds_age_hours:.1f}h")
+                
+        except MarketLineIntegrityError as e:
+            logger.error(f"❌ HARD BLOCK: Market line integrity failed for {period} simulation of {event_id}: {e}")
+            raise
         
         # PHASE 15: Apply period-specific physics overrides based on sport type
         is_football = 'football' in sport_key.lower()
@@ -1393,6 +1419,9 @@ class MonteCarloEngine:
             "starter_impact": period == "1H",
             "reasoning": reasoning,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            
+            # Market integrity status
+            "integrity_status": integrity_result.to_dict() if integrity_result else {"status": "ok", "is_valid": True},
             
             # Debug label
             "debug_label": get_debug_label(f"monte_carlo_1h", iterations, h1_median_total, h1_variance)

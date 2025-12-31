@@ -196,14 +196,21 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       });
 
       if (response.status === 422) {
-        // Stale odds data - silently skip
+        // Structural market error - silently skip
         const error = await response.json();
-        console.warn('First half simulation unavailable:', error.detail?.message || 'Odds data is outdated');
+        console.warn('First half simulation unavailable:', error.detail?.message || 'Market data unavailable');
         return;
       }
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Check for stale odds warning
+        if (data.integrity_status?.status === 'stale_line') {
+          console.warn(`⚠️ 1H simulation uses stale odds (${data.integrity_status.odds_age_hours?.toFixed(1)}h old)`);
+          // Still use the data, just log the warning
+        }
+        
         setFirstHalfSimulation(data);
       } else {
         console.warn('First half simulation not available');

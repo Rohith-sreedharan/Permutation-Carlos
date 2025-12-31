@@ -534,15 +534,32 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     const res = await fetch(`${API_BASE_URL}/api/simulations/${eventId}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (res.status === 422) {
-        // Handle stale odds data gracefully
+        // Handle structural market errors (staleness is now graceful)
         const error = await res.json();
-        if (error.detail?.error === 'STALE_ODDS_DATA') {
-            throw new Error(error.detail.message || 'Odds data is outdated. Please try again later.');
+        if (error.detail?.error === 'STRUCTURAL_MARKET_ERROR') {
+            throw new Error(error.detail.message || 'Market data has structural errors');
         }
         throw new Error(error.detail?.message || 'Cannot generate simulation');
     }
     if (!res.ok) throw new Error('Failed to fetch simulation');
-    return res.json();
+    
+    const data = await res.json();
+    
+    // Check integrity_status for graceful degradation warnings
+    if (data.integrity_status) {
+        const status = data.integrity_status.status;
+        if (status === 'stale_line') {
+            // Log warning but don't block - simulation is still usable
+            console.warn(`⚠️ Simulation uses stale odds (${data.integrity_status.odds_age_hours?.toFixed(1)}h old). Last updated: ${data.integrity_status.last_updated_at}`);
+            
+            // Optionally add a visual indicator to the data
+            data._stale_warning = true;
+            data._stale_reason = data.integrity_status.staleness_reason;
+            data._odds_age_hours = data.integrity_status.odds_age_hours;
+        }
+    }
+    
+    return data;
 };
 
 export const requestSimulation = async (eventId: string, iterations: number = 100000): Promise<MonteCarloSimulation> => {

@@ -122,16 +122,16 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#0C1018]">
+      <div className="flex items-center justify-center min-h-screen bg-dark-navy">
         <div className="text-[#D4A64A] text-xl">Loading Betting Command Center...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0C1018] p-6 space-y-6">
+    <div className="min-h-screen bg-dark-navy p-6 space-y-6">
       {/* Header */}
-      <div className="bg-linear-to-r from-[#1A1F27] via-[#0C1018] to-[#1A1F27] rounded-lg p-6 border border-[#D4A64A]/20">
+      <div className="bg-linear-to-r from-[#1A1F27] via-dark-navy to-[#1A1F27] rounded-lg p-6 border border-[#D4A64A]/20">
         <div className="flex items-center gap-3 mb-2">
           <Target className="w-8 h-8 text-[#D4A64A]" />
           <h1 className="text-3xl font-bold text-white">Betting Command Center</h1>
@@ -144,18 +144,18 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* PnL Card */}
-        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-dark-navy rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               {pnl && pnl.total_profit >= 0 ? (
                 <TrendingUp className="w-5 h-5 text-[#10B981]" />
               ) : (
-                <TrendingDown className="w-5 h-5 text-[#A03333]" />
+                <TrendingDown className="w-5 h-5 text-deep-red" />
               )}
               <div className="text-sm text-gray-400">Net PnL (30d)</div>
             </div>
           </div>
-          <div className={`text-3xl font-bold ${pnl && pnl.total_profit >= 0 ? 'text-[#10B981]' : 'text-[#A03333]'}`}>
+          <div className={`text-3xl font-bold ${pnl && pnl.total_profit >= 0 ? 'text-[#10B981]' : 'text-deep-red'}`}>
             {pnl ? `$${pnl.total_profit.toFixed(2)}` : '$0.00'}
           </div>
           <div className="text-xs text-gray-500 mt-1">
@@ -164,12 +164,12 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
         </div>
 
         {/* ROI Card */}
-        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-dark-navy rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-5 h-5 text-[#D4A64A]" />
             <div className="text-sm text-gray-400">ROI</div>
           </div>
-          <div className={`text-3xl font-bold ${pnl && pnl.roi >= 0 ? 'text-[#10B981]' : 'text-[#A03333]'}`}>
+          <div className={`text-3xl font-bold ${pnl && pnl.roi >= 0 ? 'text-[#10B981]' : 'text-deep-red'}`}>
             {pnl ? `${pnl.roi.toFixed(1)}%` : '0%'}
           </div>
           <div className="text-xs text-gray-500 mt-1">
@@ -178,7 +178,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
         </div>
 
         {/* Tilt Meter */}
-        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-dark-navy rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-5 h-5" style={{ color: getTiltColor() }} />
             <div className="text-sm text-gray-400">Tilt Meter</div>
@@ -196,7 +196,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
             />
           </div>
           {pnl?.warning && (
-            <div className="text-xs text-[#A03333] mt-1 flex items-center gap-1">
+            <div className="text-xs text-deep-red mt-1 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3" />
               {pnl.warning}
             </div>
@@ -204,7 +204,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
         </div>
 
         {/* Edge Analysis */}
-        <div className="bg-linear-to-br from-[#1A1F27] to-[#0C1018] rounded-lg p-5 border border-[#D4A64A]/30">
+        <div className="bg-linear-to-br from-[#1A1F27] to-dark-navy rounded-lg p-5 border border-[#D4A64A]/30">
           <div className="flex items-center gap-2 mb-2">
             <Brain className="w-5 h-5 text-[#8B5CF6]" />
             <div className="text-sm text-gray-400">AI Edge</div>
@@ -222,12 +222,12 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       {edgeAnalysis && edgeAnalysis.coaching_message && (
         <div className={`rounded-lg p-4 border ${
           edgeAnalysis.total_conflicts > edgeAnalysis.total_aligned
-            ? 'bg-[#A03333]/10 border-[#A03333]/30'
+            ? 'bg-deep-red/10 border-deep-red/30'
             : 'bg-[#10B981]/10 border-[#10B981]/30'
         }`}>
           <div className="flex items-start gap-3">
             {edgeAnalysis.total_conflicts > edgeAnalysis.total_aligned ? (
-              <AlertTriangle className="w-5 h-5 text-[#A03333] mt-0.5" />
+              <AlertTriangle className="w-5 h-5 text-deep-red mt-0.5" />
             ) : (
               <Zap className="w-5 h-5 text-[#10B981] mt-0.5" />
             )}
@@ -235,7 +235,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
               <div className="font-bold text-white mb-1">AI Coach Says:</div>
               <div className="text-gray-300 text-sm">{edgeAnalysis.coaching_message}</div>
               {edgeAnalysis.ev_lost > 0 && (
-                <div className="text-[#A03333] text-xs mt-2">
+                <div className="text-deep-red text-xs mt-2">
                   Fighting the model cost you ~${edgeAnalysis.ev_lost.toFixed(2)} in expected value
                 </div>
               )}
@@ -268,7 +268,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
                 </tr>
               ) : (
                 recentBets.map((bet) => (
-                  <tr key={bet._id} className="border-b border-gray-800 hover:bg-[#0C1018]/50">
+                  <tr key={bet._id} className="border-b border-gray-800 hover:bg-dark-navy/50">
                     <td className="py-3 pr-4 text-gray-400">
                       {new Date(bet.created_at).toLocaleDateString()}
                     </td>
@@ -278,7 +278,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
                     <td className="py-3 pr-4">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
                         bet.outcome === 'win' ? 'bg-[#10B981]/20 text-[#10B981]' :
-                        bet.outcome === 'loss' ? 'bg-[#A03333]/20 text-[#A03333]' :
+                        bet.outcome === 'loss' ? 'bg-deep-red/20 text-deep-red' :
                         'bg-gray-700 text-gray-400'
                       }`}>
                         {bet.outcome.toUpperCase()}
@@ -286,7 +286,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
                     </td>
                     <td className={`py-3 text-right font-bold ${
                       bet.profit && bet.profit > 0 ? 'text-[#10B981]' :
-                      bet.profit && bet.profit < 0 ? 'text-[#A03333]' :
+                      bet.profit && bet.profit < 0 ? 'text-deep-red' :
                       'text-gray-400'
                     }`}>
                       {bet.profit ? `$${bet.profit.toFixed(2)}` : '-'}
