@@ -7,10 +7,13 @@ def score_combination(combo: List[Dict[str, Any]]) -> float:
     score = 1.0
     for leg in combo:
         price = leg.get("price")
-        try:
-            price = float(price)
-        except (TypeError, ValueError):
+        if price is None:
             price = 1.0
+        else:
+            try:
+                price = float(price)
+            except (TypeError, ValueError):
+                price = 1.0
         # Normalize decimal odds (e.g., 1.5..3.0) into ~0..1 space
         score *= max(0.1, min(price / 10.0, 1.0))
     return score

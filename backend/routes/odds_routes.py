@@ -13,6 +13,67 @@ from db.mongo import upsert_events, find_events
 router = APIRouter(prefix="/api/odds", tags=["odds"])
 
 
+@router.post("/refresh")
+def refresh_odds_data(
+    sports: str = Query("basketball_nba,americanfootball_nfl,baseball_mlb,icehockey_nhl", description="Comma-separated sports"),
+    regions: str = Query("us", description="Comma-separated regions"),
+    markets: str = Query("h2h,spreads,totals", description="Markets to fetch")
+):
+    """Fetch fresh odds from The Odds API and store in MongoDB."""
+    sport_list = [s.strip() for s in sports.split(",") if s.strip()]
+    region_list = [r.strip() for r in regions.split(",") if r.strip()]
+    
+    total_inserted = 0
+    total_updated = 0
+    errors = []
+    
+    for sport in sport_list:
+        for region in region_list:
+            try:
+                raw_events = fetch_odds(sport=sport, region=region, markets=markets)
+                
+                for ev in raw_events:
+                    norm = normalize_event(ev)
+                    ct = norm.get("commence_time")
+                    
+                    # Add EST date for filtering
+                    if ct:
+                        try:
+                            dt_est = parse_iso_to_est(ct)
+                            if dt_est:
+                                norm["local_date_est"] = format_est_date(dt_est)
+                                norm["local_datetime_est"] = dt_est.isoformat()
+                                dt_utc = dt_est.astimezone(UTC_TZ)
+                                norm["local_date_utc"] = dt_utc.strftime("%Y-%m-%d")
+                                norm["local_datetime_utc"] = dt_utc.isoformat()
+                        except Exception:
+                            pass
+                    
+                    # Upsert to database
+                    event_id = norm.get("id")
+                    if event_id:
+                        result = db["events"].update_one(
+                            {"id": event_id},
+                            {"$set": norm},
+                            upsert=True
+                        )
+                        if result.upserted_id:
+                            total_inserted += 1
+                        elif result.modified_count > 0:
+                            total_updated += 1
+                            
+            except OddsApiError as e:
+                errors.append(f"{sport}/{region}: {str(e)}")
+    
+    return {
+        "success": True,
+        "inserted": total_inserted,
+        "updated": total_updated,
+        "errors": errors,
+        "message": f"Refreshed {total_inserted + total_updated} events from The Odds API"
+    }
+
+
 @router.get("/sports")
 def list_sports():
     """Return supported sports from The Odds API."""

@@ -404,28 +404,28 @@ def start_scheduler():
     """
     Start background scheduler with all jobs
     
-    OPTIMIZED POLLING STRATEGY:
-    ---------------------------
-    • Standard interval: 15 minutes (conservative, quota-friendly)
+    AGGRESSIVE POLLING STRATEGY (PRODUCTION MODE):
+    ----------------------------------------------
+    • Fast interval: 5 minutes (real-time odds for betting)
     • Polls ALL sports at once instead of individually
-    • 1 multi-sport job × 4 polls/hour × 24 hours = 96 requests/day
+    • 1 multi-sport job × 12 polls/hour × 24 hours = 288 requests/day
     • Each request fetches 6 sports from 4 regions = ~24 API calls per poll
-    • Total: ~2,304 API calls/day (well within most quotas)
+    • Total: ~6,912 API calls/day (requires higher quota plan)
     
-    For production, consider:
+    Production optimization:
     • Off-season sports: Filter out dynamically
-    • Live games: Increase to 2-5 minute intervals
-    • Pre-game (<2 hours): Increase to 5-10 minute intervals
+    • Live games: Already polling fast enough
+    • Pre-game (<2 hours): 5min is optimal for line movement
     """
     # Run initial polls immediately on startup
     run_initial_polls()
     
-    # CONSOLIDATED POLLING: All sports at once every 15 minutes
+    # CONSOLIDATED POLLING: All sports at once every 5 minutes
     scheduler.add_job(
         func=poll_all_sports,
-        trigger=IntervalTrigger(minutes=15),
+        trigger=IntervalTrigger(minutes=5),
         id="poll_all_sports",
-        name="Poll All Sports (15m)",
+        name="Poll All Sports (5m)",
         replace_existing=True
     )
     
@@ -494,7 +494,7 @@ def start_scheduler():
     
     scheduler.start()
     print("✓ Scheduler started with jobs:")
-    print("  - Multi-sport odds polling (15m) - NBA, NFL, MLB, NHL, NCAAB, NCAAF")
+    print("  - Multi-sport odds polling (5m) ⚡ FAST MODE - NBA, NFL, MLB, NHL, NCAAB, NCAAF")
     print("  - Injury updates (5m)")
     print("  - Grade completed games (2h)")
     print("  - Daily Brier Score calculation (4 AM)")
