@@ -55,17 +55,20 @@ class SimulationEngine:
         sharp_side = None
         if evaluation.edge_state.value == "EDGE":
             if market_type == MarketType.SPREAD:
+                # Extract team names and spreads from market data
+                home_team = market_data.get("home_team", market_data.get("team_a_name", "Home"))
+                away_team = market_data.get("away_team", market_data.get("team_b_name", "Away"))
+                market_spread_home = market_data.get("home_spread", market_data.get("team_a_spread", 0.0))
+                model_spread = market_data.get("model_spread", 0.0)
+                
                 sharp_side = select_sharp_side_spread(
-                    team_a_cover_prob=market_data.get("team_a_cover_prob", 0.5),
-                    team_b_cover_prob=market_data.get("team_b_cover_prob", 0.5),
-                    team_a_name=market_data.get("team_a_name", "Team A"),
-                    team_b_name=market_data.get("team_b_name", "Team B"),
-                    spread_team_a=market_data.get("team_a_spread", 0.0),
-                    spread_team_b=market_data.get("team_b_spread", 0.0),
-                    compressed_edge=evaluation.compressed_edge,
+                    home_team=home_team,
+                    away_team=away_team,
+                    market_spread_home=market_spread_home,
+                    model_spread=model_spread,
                     volatility=evaluation.volatility,
-                    market_odds_team_a=market_data.get("team_a_spread_odds", -110),
-                    market_odds_team_b=market_data.get("team_b_spread_odds", -110)
+                    market_odds_home=market_data.get("home_spread_odds", market_data.get("team_a_spread_odds", -110)),
+                    market_odds_away=market_data.get("away_spread_odds", market_data.get("team_b_spread_odds", -110))
                 )
             elif market_type == MarketType.TOTAL:
                 sharp_side = select_sharp_side_total(

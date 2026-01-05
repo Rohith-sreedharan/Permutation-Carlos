@@ -824,18 +824,123 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                   
                   <div className="bg-charcoal/50 p-3 rounded-lg border border-gold/20 relative group">
-                    <div className="text-xs text-light-gray mb-1">Model Spread</div>
-                    <div className="text-2xl font-bold text-electric-blue font-teko">
-                      {simulation?.sharp_analysis?.spread?.model_spread !== undefined 
-                        ? `${simulation.sharp_analysis.spread.model_spread >= 0 ? '+' : ''}${simulation.sharp_analysis.spread.model_spread.toFixed(1)}`
-                        : 'N/A'
-                      }
+                    <div className="text-xs text-light-gray mb-1">Market Spread</div>
+                    <div className="text-lg font-bold text-white font-teko">
+                      {(() => {
+                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
+                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread || 0;
+                        
+                        if (vegasSpread !== 0) {
+                          const context = calculateSpreadContext(
+                            event.home_team,
+                            event.away_team,
+                            vegasSpread,
+                            modelSpread
+                          );
+                          return context.marketSpreadDisplay;
+                        }
+                        return 'N/A';
+                      })()}
                     </div>
-                    <div className="text-xs text-light-gray/60 mt-1">vs market</div>
+                    <div className="text-xs text-light-gray/60 mt-1">betting line</div>
+                  </div>
+                  
+                  <div className="bg-charcoal/50 p-3 rounded-lg border border-electric-blue/30 relative group">
+                    <div className="text-xs text-light-gray mb-1">Model Spread</div>
+                    <div className="text-lg font-bold text-electric-blue font-teko">
+                      {(() => {
+                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
+                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                        
+                        if (modelSpread !== undefined && vegasSpread !== 0) {
+                          const context = calculateSpreadContext(
+                            event.home_team,
+                            event.away_team,
+                            vegasSpread,
+                            modelSpread
+                          );
+                          return context.modelSpreadDisplay;
+                        }
+                        return 'N/A';
+                      })()}
+                    </div>
+                    <div className="text-xs text-light-gray/60 mt-1">with team label</div>
                     {/* Model Interpretation Tooltip */}
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 p-3 bg-navy/95 border border-gold/30 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
-                      <p className="text-xs text-light-gray font-semibold leading-relaxed">
-                        🔶 Model-market pricing discrepancy. Part of your decision framework.
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-72 p-3 bg-navy/95 border border-gold/30 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
+                      <p className="text-xs text-light-gray font-semibold leading-relaxed mb-2">
+                        🔶 LOCKED DEFINITION — Model Spread Sign:
+                      </p>
+                      <p className="text-xs text-white leading-relaxed mb-2">
+                        • Positive (+) = Underdog spread<br/>
+                        • Negative (−) = Favorite spread
+                      </p>
+                      <p className="text-xs text-purple-300 leading-relaxed">
+                        Sharp Side Rule:<br/>
+                        If model &gt; market → Sharp = FAVORITE<br/>
+                        If model &lt; market → Sharp = UNDERDOG
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-purple-900/30 p-3 rounded-lg border-2 border-purple-500/50 relative group">
+                    <div className="text-xs text-purple-300 mb-1 font-bold flex items-center gap-1">
+                      🎯 Sharp Side
+                    </div>
+                    <div className="text-lg font-bold text-white font-teko">
+                      {(() => {
+                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
+                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                        
+                        if (modelSpread !== undefined && vegasSpread !== 0) {
+                          const context = calculateSpreadContext(
+                            event.home_team,
+                            event.away_team,
+                            vegasSpread,
+                            modelSpread
+                          );
+                          return context.sharpSideDisplay;
+                        }
+                        return 'Processing...';
+                      })()}
+                    </div>
+                    <div className="text-xs text-purple-200 mt-1">
+                      {(() => {
+                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
+                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                        
+                        if (modelSpread !== undefined && vegasSpread !== 0) {
+                          const context = calculateSpreadContext(
+                            event.home_team,
+                            event.away_team,
+                            vegasSpread,
+                            modelSpread
+                          );
+                          return context.edgeDirection === 'FAV' ? 'Lay Points' : 'Take Points';
+                        }
+                        return '';
+                      })()}
+                    </div>
+                    {/* Sharp Side Tooltip */}
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 p-4 bg-purple-900/95 border border-purple-400/50 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
+                      <p className="text-xs text-purple-200 font-semibold mb-2">
+                        ⚡ This is THE BET if model has edge
+                      </p>
+                      <p className="text-xs text-white leading-relaxed">
+                        {(() => {
+                          const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
+                          const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                          
+                          if (modelSpread !== undefined && vegasSpread !== 0) {
+                            const context = calculateSpreadContext(
+                              event.home_team,
+                              event.away_team,
+                              vegasSpread,
+                              modelSpread
+                            );
+                            return getSharpSideReasoning(context);
+                          }
+                          return '';
+                        })()}
                       </p>
                     </div>
                   </div>

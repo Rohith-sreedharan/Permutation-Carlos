@@ -1,0 +1,170 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                    🔒 MODEL SPREAD LOGIC — QUICK REFERENCE                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+■ THE RULE (MEMORIZE THIS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Model Spread = SIGNED value:
+    • Positive (+) = Underdog
+    • Negative (−) = Favorite
+  
+  Sharp Side Selection:
+    • If model_spread > market_spread → Sharp = FAVORITE
+    • If model_spread < market_spread → Sharp = UNDERDOG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Market: Hawks +5.5, Knicks -5.5
+  
+  Scenario 1: model_spread = +12.3
+    ↳ +12.3 > +5.5 → Sharp = FAVORITE (Knicks -5.5)
+    ↳ Reasoning: Model expects Hawks to lose by MORE than market prices
+  
+  Scenario 2: model_spread = -3.2
+    ↳ -3.2 < +5.5 → Sharp = UNDERDOG (Hawks +5.5)
+    ↳ Reasoning: Model expects Hawks to lose by LESS than market prices
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ CHEAT SHEET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Market    Model     Sharp Side    Edge     Action
+  ──────────────────────────────────────────────────────────────────────────────
+  +5.5      +12.3     FAVORITE      6.8 pts  Lay points (fade the dog)
+  +5.5      -3.2      UNDERDOG      8.7 pts  Take points (back the dog)
+  -7.0      -10.5     FAVORITE      3.5 pts  Lay more points
+  -7.0      -4.0      UNDERDOG      3.0 pts  Take fewer points
+  +3.0      +3.1      FAVORITE      0.1 pts  Tiny edge (lay points)
+  +0.0      +2.5      FAVORITE      2.5 pts  Pick'em → back opposite team
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ BACKEND (Python)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  from backend.core.sharp_side_selection import select_sharp_side_spread
+  
+  selection = select_sharp_side_spread(
+      home_team="New York Knicks",
+      away_team="Atlanta Hawks",
+      market_spread_home=-5.5,  # Negative = home is favorite
+      model_spread=12.3,         # Positive = underdog (Hawks)
+      volatility=VolatilityLevel.MEDIUM
+  )
+  
+  # Use these in API response:
+  selection.market_spread_display  # "Atlanta Hawks +5.5"
+  selection.model_spread_display   # "Atlanta Hawks +12.3"
+  selection.sharp_side_display     # "New York Knicks -5.5"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ FRONTEND (TypeScript)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  import { calculateSpreadContext } from '../utils/modelSpreadLogic';
+  
+  const ctx = calculateSpreadContext(
+    "New York Knicks",  // homeTeam
+    "Atlanta Hawks",    // awayTeam
+    -5.5,               // marketSpreadHome
+    12.3                // modelSpread
+  );
+  
+  // Display in UI:
+  <div>{ctx.marketSpreadDisplay}</div>  // "Atlanta Hawks +5.5"
+  <div>{ctx.modelSpreadDisplay}</div>   // "Atlanta Hawks +12.3"
+  <div>{ctx.sharpSideDisplay}</div>     // "New York Knicks -5.5"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ UI DISPLAY (MANDATORY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ┌─────────────────────────────────────────┐
+  │ Market Spread:  Hawks +5.5              │
+  │ Model Spread:   Hawks +12.3             │
+  │ 🎯 Sharp Side:  Knicks -5.5             │  ← MUST SHOW THIS
+  └─────────────────────────────────────────┘
+  
+  ❌ NEVER show just "Model Spread: +12.3" without team label
+  ✅ ALWAYS show all three values with team labels
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ TELEGRAM (Message Format)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🏀 NBA SIGNAL — 🔥 EDGE
+  
+  Game: Hawks @ Knicks
+  Sharp Side: Knicks -5.5        ← Only reference this
+  Market: Hawks +5.5
+  
+  Edge: 6.8 pts (model expects larger margin)
+  Confidence: HIGH
+  
+  ❌ DO NOT include "Model Spread: +12.3" in Telegram
+  ✅ Only reference sharp_side_display
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ API RESPONSE (Required Fields)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    "sharp_analysis": {
+      "spread": {
+        "vegas_spread": -5.5,
+        "model_spread": 12.3,
+        
+        // MANDATORY DISPLAY STRINGS:
+        "market_spread_display": "Atlanta Hawks +5.5",
+        "model_spread_display": "Atlanta Hawks +12.3",
+        "sharp_side_display": "New York Knicks -5.5",
+        
+        "market_favorite": "New York Knicks",
+        "market_underdog": "Atlanta Hawks",
+        "sharp_action": "LAY_POINTS",
+        "edge_magnitude": 6.8
+      }
+    }
+  }
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ VALIDATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Backend Validation:
+    if edge_state == EDGE and not sharp_side:
+        raise ValueError("Cannot post EDGE without sharp_side")
+  
+  API Validation:
+    is_valid, error = validate_spread_response(response)
+    if not is_valid:
+        logger.error(f"Missing display strings: {error}")
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ TESTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Run: python3 backend/tests/test_locked_spread_logic.py
+  
+  Expected: ✅ ALL TESTS PASSED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ COMMON MISTAKES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ❌ Showing model spread without team label
+  ❌ Not displaying sharp side explicitly
+  ❌ Posting EDGE without sharp_side computed
+  ❌ AI overriding backend sharp_side selection
+  ❌ Telegram referencing raw model_spread
+  
+  ✅ Always show all three: Market, Model, Sharp Side
+  ✅ Include team labels in all displays
+  ✅ Validate sharp_side before posting
+  ✅ AI explains sharp_side, never overrides
+  ✅ Telegram uses sharp_side_display only
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+■ FILES TO REFERENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • MODEL_SPREAD_LOCKED_DEFINITION.md    (Full documentation)
+  • IMPLEMENTATION_SUMMARY.md            (What was changed)
+  • MASTER_DEV_SPECIFICATION.md          (Complete system spec)
+  • backend/core/sharp_side_selection.py (Python implementation)
+  • utils/modelSpreadLogic.ts            (TypeScript implementation)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔒 THIS LOGIC IS LOCKED. NO MODIFICATIONS WITHOUT APPROVAL.
+
+Print this card and keep it visible while coding.
