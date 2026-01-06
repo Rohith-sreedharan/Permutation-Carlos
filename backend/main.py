@@ -116,6 +116,7 @@ from routes.nhl_routes import router as nhl_router
 from routes.mlb_routes import router as mlb_router
 from routes.analyzer import router as analyzer_router
 from routes.market_state_routes import router as market_state_router
+from routes.api_key_routes import router as api_key_router
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -137,6 +138,7 @@ app.include_router(mlb_router)  # NEW: MLB Edge Evaluation - Locked spec (moneyl
 app.include_router(analyzer_router)  # NEW: AI Analyzer - LLM-powered game explanations
 app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
 app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
+app.include_router(api_key_router)  # NEW: API Key Management - Monitor and rotate The Odds API keys
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)

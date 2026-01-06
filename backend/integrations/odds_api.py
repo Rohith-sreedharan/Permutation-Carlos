@@ -9,7 +9,27 @@ from utils.timezone import parse_iso_to_est, format_est_date, format_est_datetim
 
 load_dotenv()
 
-API_KEY = os.getenv("ODDS_API_KEY")
+# API Key Failover Strategy
+# Primary key from environment, fallback keys hardcoded
+PRIMARY_API_KEY = os.getenv("ODDS_API_KEY")
+FALLBACK_API_KEYS = [
+    "375cdd357271d75f22fe67f0e52b6206",  # Key 1
+    "98f5a42b2a126cbcdca22b71a0f5bba5",  # Key 2
+    "5fb2e5b28f4f698bdee43481041008d6",  # Key 3
+]
+
+# Build complete key pool (primary + fallbacks, deduplicated)
+ALL_API_KEYS = []
+if PRIMARY_API_KEY:
+    ALL_API_KEYS.append(PRIMARY_API_KEY)
+for key in FALLBACK_API_KEYS:
+    if key not in ALL_API_KEYS:
+        ALL_API_KEYS.append(key)
+
+# Track current working key index
+_current_key_index = 0
+_last_working_key = ALL_API_KEYS[0] if ALL_API_KEYS else None
+
 BASE_URL = os.getenv("ODDS_BASE_URL", "https://api.the-odds-api.com/v4")
 
 
@@ -17,16 +37,60 @@ class OddsApiError(Exception):
     pass
 
 
-def _check_response(res: requests.Response):
+def _get_current_api_key():
+    """Get currently active API key"""
+    global _last_working_key
+    if not ALL_API_KEYS:
+        raise OddsApiError("No API keys configured")
+    return _last_working_key or ALL_API_KEYS[_current_key_index]
+
+
+def _rotate_api_key():
+    """Rotate to next API key in pool"""
+    global _current_key_index, _last_working_key
+    _current_key_index = (_current_key_index + 1) % len(ALL_API_KEYS)
+    _last_working_key = ALL_API_KEYS[_current_key_index]
+    key_preview = _last_working_key[:8] + "..." if _last_working_key else "None"
+    print(f"🔄 Rotating to API key #{_current_key_index + 1}: {key_preview}")
+    return _last_working_key
+
+
+def _check_response(res: requests.Response, is_retry=False):
+    """Check API response and handle quota exhaustion with key rotation"""
     try:
         data = res.json()
     except ValueError:
         raise OddsApiError(f"Invalid JSON response: {res.text[:200]}")
 
+    if res.status_code == 401:
+        # Check if it's a quota error
+        error_data = data if isinstance(data, dict) else {}
+        error_code = error_data.get("error_code", "")
+        
+        if error_code == "OUT_OF_USAGE_CREDITS" and not is_retry:
+            # Try rotating to next key
+            current_key = _get_current_api_key()
+            key_preview = current_key[:8] + "..." if current_key else "None"
+            print(f"⚠️ API key {key_preview} quota exhausted - attempting failover")
+            
+            new_key = _rotate_api_key()
+            if new_key != current_key:
+                # Successfully rotated to a different key
+                print(f"✅ Failover to new API key - retry pending")
+                raise OddsApiError(f"QUOTA_EXHAUSTED_RETRY_AVAILABLE")
+            else:
+                # No more keys to try
+                print(f"❌ All API keys exhausted - no failover available")
+                raise OddsApiError(f"All API keys exhausted: {error_data}")
+        else:
+            # Other 401 error
+            raise OddsApiError(f"Authentication error ({res.status_code}): {data}")
+    
     if res.status_code != 200:
         # Odds API returns error message in JSON sometimes
         msg = data if isinstance(data, dict) else res.text
         raise OddsApiError(f"Odds API error ({res.status_code}): {msg}")
+    
     return data
 
 
@@ -34,11 +98,25 @@ def fetch_sports():
     """Fetch list of supported sports from The Odds API.
 
     Returns a list of sports objects (each has "key", "title", ...)
+    
+    Includes automatic failover to backup API keys if quota exhausted.
     """
-    if not API_KEY:
-        raise OddsApiError("ODDS_API_KEY is not set in environment")
-    res = requests.get(f"{BASE_URL}/sports", params={"apiKey": API_KEY})
-    return _check_response(res)
+    api_key = _get_current_api_key()
+    if not api_key:
+        raise OddsApiError("No API keys available")
+    
+    # Try with current key
+    res = requests.get(f"{BASE_URL}/sports", params={"apiKey": api_key})
+    
+    try:
+        return _check_response(res, is_retry=False)
+    except OddsApiError as e:
+        if "QUOTA_EXHAUSTED_RETRY_AVAILABLE" in str(e):
+            # Retry with rotated key
+            new_key = _get_current_api_key()
+            res = requests.get(f"{BASE_URL}/sports", params={"apiKey": new_key})
+            return _check_response(res, is_retry=True)
+        raise
 
 
 def fetch_odds(sport="basketball_nba", region="us", markets="h2h,spreads,totals", odds_format="decimal"):
@@ -54,27 +132,59 @@ def fetch_odds(sport="basketball_nba", region="us", markets="h2h,spreads,totals"
     - h2h_1h (1st half moneyline)
     
     Returns JSON list of event objects.
+    
+    Includes automatic failover to backup API keys if quota exhausted.
     """
-    if not API_KEY:
-        raise OddsApiError("ODDS_API_KEY is not set in environment")
+    api_key = _get_current_api_key()
+    if not api_key:
+        raise OddsApiError("No API keys available")
 
     url = f"{BASE_URL}/sports/{sport}/odds/"
     params = {
-        "apiKey": API_KEY,
+        "apiKey": api_key,
         "regions": region,
         "markets": markets,  # Can include totals_1h for first half lines
         "oddsFormat": odds_format,
     }
+    
+    # Try with current key
     res = requests.get(url, params=params, timeout=20)
-    return _check_response(res)
+    
+    try:
+        return _check_response(res, is_retry=False)
+    except OddsApiError as e:
+        if "QUOTA_EXHAUSTED_RETRY_AVAILABLE" in str(e):
+            # Retry with rotated key
+            new_key = _get_current_api_key()
+            params["apiKey"] = new_key
+            res = requests.get(url, params=params, timeout=20)
+            return _check_response(res, is_retry=True)
+        raise
 
 
 def fetch_scores(sport="basketball_nba"):
-    if not API_KEY:
-        raise OddsApiError("ODDS_API_KEY is not set in environment")
+    """Fetch scores for completed games.
+    
+    Includes automatic failover to backup API keys if quota exhausted.
+    """
+    api_key = _get_current_api_key()
+    if not api_key:
+        raise OddsApiError("No API keys available")
+    
     url = f"{BASE_URL}/sports/{sport}/scores/"
-    res = requests.get(url, params={"apiKey": API_KEY})
-    return _check_response(res)
+    
+    # Try with current key
+    res = requests.get(url, params={"apiKey": api_key})
+    
+    try:
+        return _check_response(res, is_retry=False)
+    except OddsApiError as e:
+        if "QUOTA_EXHAUSTED_RETRY_AVAILABLE" in str(e):
+            # Retry with rotated key
+            new_key = _get_current_api_key()
+            res = requests.get(url, params={"apiKey": new_key})
+            return _check_response(res, is_retry=True)
+        raise
 
 
 def normalize_event(event: dict) -> dict:

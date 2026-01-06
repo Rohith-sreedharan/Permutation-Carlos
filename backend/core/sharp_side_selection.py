@@ -111,26 +111,63 @@ def select_sharp_side_spread(
         market_spread_underdog = market_spread_home  # Positive
         market_spread_favorite = market_spread_away  # Negative
     
-    # PRIMARY SHARP RULE (LOCKED)
-    # Normalize model_spread to absolute value for comparison
-    # model_spread sign indicates direction: + underdog, - favorite
-    model_spread_abs = abs(model_spread)
+    # PRIMARY SHARP RULE (LOCKED) - UNDERDOG VALUE EXPLOITATION
+    # Philosophy: We exploit underdog value. Favorites are rarely sharp.
+    # Exception: Only take favorite when market is SEVERELY underselling it.
+    # 
+    # Normalize both to underdog perspective for comparison
+    # market_spread_underdog is already positive (underdog always gets +)
+    # model_spread needs same orientation
+    if market_spread_home < 0:
+        # Home is favorite, away is dog
+        model_spread_normalized = abs(model_spread)  # Convert to dog's spread
+        market_spread_fav = market_spread_home  # Negative
+        model_spread_fav = -model_spread_normalized if model_spread < 0 else -abs(model_spread)
+    else:
+        # Home is dog (or pick'em)
+        model_spread_normalized = abs(model_spread)
+        market_spread_fav = market_spread_away  # Negative
+        model_spread_fav = -model_spread_normalized if model_spread < 0 else -abs(model_spread)
     
-    edge_magnitude = abs(model_spread_abs - market_spread_underdog)
+    edge_magnitude = abs(model_spread_normalized - market_spread_underdog)
     
-    if model_spread_abs > market_spread_underdog:
-        # Model expects larger margin than market → Sharp side = FAVORITE
+    # Check if this is the rare "favorite is sharp" scenario
+    # Only happens when market is SEVERELY underselling favorite
+    # Example: Market -5, Model -10 → Market giving favorite only 5 pts when it should be 10
+    if market_spread_fav > -3.0:  # Small favorite spread (close to pick'em)
+        # Skip favorite check for small spreads
+        favorite_sharp = False
+    else:
+        # model_spread_fav is more negative than market (model -10 vs market -5)
+        favorite_sharp = model_spread_fav < market_spread_fav - 3.0  # At least 3 point difference
+    
+    if favorite_sharp:
+        # RARE CASE: Favorite is genuinely sharp
+        # Example: Market -5, Model -10
         sharp_side_team = market_favorite
         sharp_side_line = market_spread_favorite
         sharp_action = "LAY_POINTS"
-        reason = f"Model projects {market_underdog} to lose by more ({model_spread_abs:.1f} pts) than market prices ({market_spread_underdog:.1f} pts). Sharp side = FAVORITE."
+        edge_magnitude = abs(model_spread_fav - market_spread_fav)
+        reason = f"Model projects {market_favorite} at {model_spread_fav:.1f}, market only offers {market_spread_fav:.1f}. Market SEVERELY underselling favorite by {edge_magnitude:.1f} pts. Sharp side = FAVORITE (rare scenario)."
         
-    elif model_spread_abs < market_spread_underdog:
-        # Model expects smaller margin than market → Sharp side = UNDERDOG
+    elif model_spread_normalized < market_spread_underdog:
+        # Model gives dog FEWER points than market → market is GENEROUS to dog
+        # Example: Market +5.5, Model +3 → Market giving extra 2.5 pts
+        # Sharp side = DOG (pregame entry OK)
         sharp_side_team = market_underdog
         sharp_side_line = market_spread_underdog
         sharp_action = "TAKE_POINTS"
-        reason = f"Model projects {market_underdog} to lose by less ({model_spread_abs:.1f} pts) than market prices ({market_spread_underdog:.1f} pts). Sharp side = UNDERDOG."
+        reason = f"Model projects {market_underdog} at +{model_spread_normalized:.1f}, market offers +{market_spread_underdog:.1f}. Market is generous to dog by {edge_magnitude:.1f} pts. Sharp side = UNDERDOG (pregame OK)."
+        
+    elif model_spread_normalized > market_spread_underdog:
+        # Model gives dog MORE points than market → market is SHORTING dog
+        # Example: Market +5.5, Model +8 → Market is 2.5 pts short
+        # Sharp side = UNDERDOG (LIVE ONLY)
+        # Strategy: Wait for favorite to go up early, line moves to +10, then bet dog
+        sharp_side_team = market_underdog
+        sharp_side_line = market_spread_underdog
+        sharp_action = "TAKE_POINTS_LIVE"
+        reason = f"Model projects {market_underdog} at +{model_spread_normalized:.1f}, market only offers +{market_spread_underdog:.1f}. Market is shorting dog by {edge_magnitude:.1f} pts. Sharp side = UNDERDOG (PREFER LIVE betting - wait for line to move when favorite goes up early)."
         
     else:
         # Model agrees with market → NO PLAY
@@ -146,34 +183,33 @@ def select_sharp_side_spread(
             volatility_penalty=0.0,
             edge_after_penalty=0.0,
             market_spread_display=f"{market_underdog} +{market_spread_underdog:.1f}",
-            model_spread_display=f"{market_underdog} {model_spread:+.1f}",
+            model_spread_display=f"{market_underdog} +{model_spread_normalized:.1f}",
             sharp_side_display="NO PLAY",
             reasoning="Model spread matches market spread"
         )
     
-    # Apply volatility penalty if laying points
+    # Apply volatility penalty for LIVE-only recommendations
     penalty = 0.0
-    if sharp_action == "LAY_POINTS":
-        spread_size = abs(sharp_side_line)
-        
-        # Penalty increases with volatility
+    if sharp_action == "TAKE_POINTS_LIVE":
+        # When market is shorting the dog, require larger edge to justify action
+        # Penalize high volatility more since we need the line to move
         if volatility == VolatilityLevel.LOW:
-            penalty = 0.0
+            penalty = 0.5  # Even low volatility gets penalty for live-only
         elif volatility == VolatilityLevel.MEDIUM:
-            penalty = 0.5
-        elif volatility == VolatilityLevel.HIGH:
             penalty = 1.0
-        elif volatility == VolatilityLevel.EXTREME:
+        elif volatility == VolatilityLevel.HIGH:
             penalty = 2.0
-        
-        # Additional penalty for large spreads
-        if spread_size > 10.0:
-            penalty += 0.5
-        elif spread_size > 7.0:
-            penalty += 0.25
+        elif volatility == VolatilityLevel.EXTREME:
+            penalty = 3.0  # Very high penalty - unlikely to get good live line
         
         if penalty > 0:
-            reason += f" | Volatility penalty: -{penalty:.1f} pts (laying points with {volatility.value} volatility)"
+            reason += f" | Volatility penalty: -{penalty:.1f} pts ({volatility.value} volatility makes live line movement uncertain)"
+    
+    elif sharp_action == "TAKE_POINTS":
+        # Pregame dog has minimal penalty, only for extreme volatility
+        if volatility == VolatilityLevel.EXTREME:
+            penalty = 1.0
+            reason += f" | Volatility penalty: -{penalty:.1f} pts (EXTREME volatility)"
     
     edge_after_penalty = edge_magnitude - penalty
     
@@ -191,19 +227,33 @@ def select_sharp_side_spread(
             volatility_penalty=penalty,
             edge_after_penalty=edge_after_penalty,
             market_spread_display=f"{market_underdog} +{market_spread_underdog:.1f}",
-            model_spread_display=f"{market_underdog} {model_spread:+.1f}",
+            model_spread_display=f"{market_underdog} +{model_spread_normalized:.1f}",
             sharp_side_display="NO PLAY",
             reasoning=reason
         )
     
     # Build display strings (MANDATORY)
     market_spread_display = f"{market_underdog} +{market_spread_underdog:.1f}"
-    model_spread_display = f"{market_underdog} {model_spread:+.1f}"
+    
+    if favorite_sharp:
+        model_spread_display = f"{market_favorite} {model_spread_fav:.1f}"
+    else:
+        model_spread_display = f"{market_underdog} +{model_spread_normalized:.1f}"
+    
     sharp_side_display = f"{sharp_side_team} {sharp_side_line:+.1f}"
     
-    # Build recommended bet
+    # Build recommended bet with timing indicator
     sharp_odds = market_odds_home if sharp_side_team == home_team else market_odds_away
-    recommended_bet = f"{sharp_side_team} {sharp_side_line:+.1f} ({sharp_odds:+d})"
+    
+    if sharp_action == "TAKE_POINTS_LIVE":
+        # Indicate this is a LIVE ENTRY recommendation
+        recommended_bet = f"{sharp_side_team} {sharp_side_line:+.1f} ({sharp_odds:+d}) ⏱️ WAIT FOR LIVE ENTRY - Line should improve when {market_favorite} goes up early"
+    elif sharp_action == "LAY_POINTS":
+        # Favorite sharp (rare)
+        recommended_bet = f"{sharp_side_team} {sharp_side_line:+.1f} ({sharp_odds:+d}) ✅ PREGAME OK - Favorite severely undervalued"
+    else:
+        # Pregame dog
+        recommended_bet = f"{sharp_side_team} {sharp_side_line:+.1f} ({sharp_odds:+d}) ✅ PREGAME OK - Market generous to underdog"
     
     return SharpSideSelection(
         sharp_side=sharp_side_display,
