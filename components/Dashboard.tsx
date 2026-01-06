@@ -93,14 +93,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
       }
   };
 
+  // Load data when filters change
   useEffect(() => {
-    console.log('[Dashboard] useEffect triggered - Initial mount or deps changed:', { activeSport, dateFilter, timeOrder });
+    console.log('[Dashboard] Filters changed:', { activeSport, dateFilter, timeOrder });
     loadData(false);
-    const pollingInterval = setInterval(() => {
-      loadData(true);
-    }, 120000);
-    return () => clearInterval(pollingInterval);
   }, [activeSport, dateFilter, timeOrder]);
+
+  // Set up polling interval (runs independently of filter changes)
+  useEffect(() => {
+    console.log('[Dashboard] Setting up 2-minute polling interval');
+    const pollingInterval = setInterval(() => {
+      console.log('[Dashboard] Polling: Auto-refresh triggered');
+      loadData(true);
+    }, 120000); // 2 minutes = 120,000ms
+    
+    return () => {
+      console.log('[Dashboard] Cleaning up polling interval');
+      clearInterval(pollingInterval);
+    };
+  }, []); // Empty deps - interval runs continuously until component unmounts
 
   // Helper: get YYYY-MM-DD for a date in EST timezone
   const toEstDateString = (date: Date) => {

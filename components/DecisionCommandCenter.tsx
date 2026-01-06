@@ -140,14 +140,20 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
   };
 
   useEffect(() => {
+    console.log('[DecisionCommandCenter] Initial data load');
     loadData(false);
     
     // Poll for updates every 2 minutes
+    console.log('[DecisionCommandCenter] Setting up 2-minute polling interval');
     const pollingInterval = setInterval(() => {
+      console.log('[DecisionCommandCenter] Polling: Auto-refresh triggered');
       loadData(true);
-    }, 120000);
+    }, 120000); // 2 minutes = 120,000ms
 
-    return () => clearInterval(pollingInterval);
+    return () => {
+      console.log('[DecisionCommandCenter] Cleaning up polling interval');
+      clearInterval(pollingInterval);
+    };
   }, []);
 
   const sportKeyMap: Record<string, string> = {
