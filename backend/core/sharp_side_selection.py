@@ -15,19 +15,35 @@ It is NOT:
 
 It IS a model-implied spread direction and magnitude.
 
+■ NUMERIC THRESHOLDS (NON-SUBJECTIVE):
+- LIVE_ENTRY_THRESHOLD = 2.0 points (Rule A: execution timing for DOG)
+- FAVORITE_SHARP_THRESHOLD = 3.0 points (Rule B: permission to take favorite)
+
 ■ UNIVERSAL SHARP SIDE SELECTION RULE (NON-NEGOTIABLE):
-• If model_spread > market_spread → Sharp side = FAVORITE
-• If model_spread < market_spread → Sharp side = UNDERDOG
+Rule A — Live vs Pregame (DOG ONLY):
+  • gap = model_spread - market_spread
+  • IF gap ≥ LIVE_ENTRY_THRESHOLD → LIVE ONLY (no pregame)
+  • IF gap < LIVE_ENTRY_THRESHOLD → PREGAME OK
+  • Purpose: execution timing
+
+Rule B — Favorite Sharp Exception:
+  • IF market_spread_fav - model_spread_fav ≥ FAVORITE_SHARP_THRESHOLD → Sharp = Favorite
+  • Purpose: permission to ever take a favorite spread
+  • This is RARE (e.g., market -5, model -10)
 
 Critical Rules:
 1. Edges are prices, not teams
-2. Sharp side determined by model_spread vs market_spread comparison
+2. Sharp side determined by gap thresholds (numeric, not subjective)
 3. Volatility penalties applied AFTER sharp side selection
 4. Separate logic for spread/total/moneyline markets
 """
 from typing import Tuple, Optional, Dict
 from dataclasses import dataclass
 from .sport_configs import EdgeState, MarketType, VolatilityLevel
+
+# NUMERIC THRESHOLDS (NON-SUBJECTIVE)
+LIVE_ENTRY_THRESHOLD = 2.0  # Rule A: Live vs Pregame for DOG - execution timing
+FAVORITE_SHARP_THRESHOLD = 3.0  # Rule B: Favorite Sharp Exception - permission to take favorite
 
 
 @dataclass
@@ -129,17 +145,15 @@ def select_sharp_side_spread(
         market_spread_fav = market_spread_away  # Negative
         model_spread_fav = -model_spread_normalized if model_spread < 0 else -abs(model_spread)
     
-    edge_magnitude = abs(model_spread_normalized - market_spread_underdog)
+    # Calculate gap = model_spread - market_spread (from dog perspective)
+    gap = model_spread_normalized - market_spread_underdog
+    edge_magnitude = abs(gap)
     
-    # Check if this is the rare "favorite is sharp" scenario
+    # RULE B: Check if this is the rare "favorite is sharp" scenario
     # Only happens when market is SEVERELY underselling favorite
     # Example: Market -5, Model -10 → Market giving favorite only 5 pts when it should be 10
-    if market_spread_fav > -3.0:  # Small favorite spread (close to pick'em)
-        # Skip favorite check for small spreads
-        favorite_sharp = False
-    else:
-        # model_spread_fav is more negative than market (model -10 vs market -5)
-        favorite_sharp = model_spread_fav < market_spread_fav - 3.0  # At least 3 point difference
+    favorite_gap = model_spread_fav - market_spread_fav  # More negative = larger gap
+    favorite_sharp = favorite_gap < -FAVORITE_SHARP_THRESHOLD  # model_spread_fav at least 3 pts more negative
     
     if favorite_sharp:
         # RARE CASE: Favorite is genuinely sharp
@@ -147,30 +161,39 @@ def select_sharp_side_spread(
         sharp_side_team = market_favorite
         sharp_side_line = market_spread_favorite
         sharp_action = "LAY_POINTS"
-        edge_magnitude = abs(model_spread_fav - market_spread_fav)
+        edge_magnitude = abs(favorite_gap)
         reason = f"Model projects {market_favorite} at {model_spread_fav:.1f}, market only offers {market_spread_fav:.1f}. Market SEVERELY underselling favorite by {edge_magnitude:.1f} pts. Sharp side = FAVORITE (rare scenario)."
         
-    elif model_spread_normalized < market_spread_underdog:
-        # Model gives dog FEWER points than market → market is GENEROUS to dog
-        # Example: Market +5.5, Model +3 → Market giving extra 2.5 pts
+    elif gap < 0:
+        # RULE A: Model gives dog FEWER points than market → market is GENEROUS to dog
+        # Example: Market +5.5, Model +3 → gap = -2.5 (negative)
         # Sharp side = DOG (pregame entry OK)
         sharp_side_team = market_underdog
         sharp_side_line = market_spread_underdog
         sharp_action = "TAKE_POINTS"
         reason = f"Model projects {market_underdog} at +{model_spread_normalized:.1f}, market offers +{market_spread_underdog:.1f}. Market is generous to dog by {edge_magnitude:.1f} pts. Sharp side = UNDERDOG (pregame OK)."
         
-    elif model_spread_normalized > market_spread_underdog:
-        # Model gives dog MORE points than market → market is SHORTING dog
-        # Example: Market +5.5, Model +8 → Market is 2.5 pts short
-        # Sharp side = UNDERDOG (LIVE ONLY)
+    elif gap >= LIVE_ENTRY_THRESHOLD:
+        # RULE A: Model gives dog MORE points than market by THRESHOLD or more
+        # Example: Market +5.5, Model +8 → gap = +2.5 (≥ 2.0)
+        # Sharp side = UNDERDOG (LIVE ONLY - NO PREGAME EXECUTION)
         # Strategy: Wait for favorite to go up early, line moves to +10, then bet dog
         sharp_side_team = market_underdog
         sharp_side_line = market_spread_underdog
         sharp_action = "TAKE_POINTS_LIVE"
-        reason = f"Model projects {market_underdog} at +{model_spread_normalized:.1f}, market only offers +{market_spread_underdog:.1f}. Market is shorting dog by {edge_magnitude:.1f} pts. Sharp side = UNDERDOG (PREFER LIVE betting - wait for line to move when favorite goes up early)."
+        reason = f"Model projects {market_underdog} at +{model_spread_normalized:.1f}, market only offers +{market_spread_underdog:.1f}. Gap = {gap:.1f} pts (≥ {LIVE_ENTRY_THRESHOLD} threshold). Sharp side = UNDERDOG (LIVE ONLY - wait for line to move when {market_favorite} goes up early)."
+        
+    elif 0 < gap < LIVE_ENTRY_THRESHOLD:
+        # gap is positive but below threshold (0 < gap < LIVE_ENTRY_THRESHOLD)
+        # Example: Market +5.5, Model +6.5 → gap = +1.0 (< 2.0)
+        # Sharp side = UNDERDOG (pregame OK, but edge is small)
+        sharp_side_team = market_underdog
+        sharp_side_line = market_spread_underdog
+        sharp_action = "TAKE_POINTS"
+        reason = f"Model projects {market_underdog} at +{model_spread_normalized:.1f}, market offers +{market_spread_underdog:.1f}. Gap = {gap:.1f} pts (< {LIVE_ENTRY_THRESHOLD} threshold). Sharp side = UNDERDOG (pregame OK, small edge)."
         
     else:
-        # Model agrees with market → NO PLAY
+        # gap == 0 or other edge case → NO PLAY
         return SharpSideSelection(
             sharp_side="NO_SHARP_PLAY",
             recommended_bet="NO PLAY (model agrees with market)",
