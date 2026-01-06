@@ -8,6 +8,27 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || (
     : `${window.location.protocol}//${window.location.host}`
 );
 
+// --- Safe JSON Parser ---
+/**
+ * Safely parse JSON response, handling HTML error pages
+ */
+const safeJsonParse = async (response: Response): Promise<any> => {
+    const text = await response.text();
+    
+    // Check if response is HTML (common when server returns error page)
+    if (text.trim().startsWith('<')) {
+        console.error('❌ Server returned HTML instead of JSON:', text.substring(0, 200));
+        throw new Error(`Server error: Received HTML instead of JSON (status ${response.status})`);
+    }
+    
+    try {
+        return JSON.parse(text);
+    } catch (err) {
+        console.error('❌ JSON parse error:', err, 'Response:', text.substring(0, 200));
+        throw new Error(`Invalid JSON response from server`);
+    }
+};
+
 // --- Token Management ---
 export const getToken = (): string | null => {
     return localStorage.getItem('authToken');
@@ -42,11 +63,11 @@ export const apiRequest = async <T = any>(
     });
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+        const errorData = await safeJsonParse(response).catch(() => ({ detail: 'Request failed' }));
         throw new Error(errorData.detail || `HTTP ${response.status}`);
     }
 
-    return response.json();
+    return safeJsonParse(response);
 };
 
 
@@ -61,10 +82,10 @@ export const registerUser = async (userData: UserRegistration): Promise<any> => 
     });
 
     if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await safeJsonParse(response);
         throw new Error(errorData.detail || 'Registration failed');
     }
-    return response.json();
+    return safeJsonParse(response);
 };
 
 export const loginUser = async (credentials: UserCredentials): Promise<AuthResponse> => {
@@ -81,11 +102,11 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
     });
 
     if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await safeJsonParse(response);
         throw new Error(errorData.detail || 'Login failed');
     }
     
-    const data = await response.json();
+    const data = await safeJsonParse(response);
     
     // Check if 2FA is required
     if (data.requires_2fa) {
@@ -106,11 +127,11 @@ export const verify2FALogin = async (tempToken: string, code: string): Promise<A
     });
 
     if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await safeJsonParse(response);
         throw new Error(errorData.detail || 'Invalid verification code');
     }
     
-    const data: AuthResponse = await response.json();
+    const data: AuthResponse = await safeJsonParse(response);
     setToken(data.access_token);
     return data;
 };
@@ -141,7 +162,7 @@ export const verifyToken = async (): Promise<User> => {
             throw new Error('Invalid or expired token');
         }
         
-        return response.json();
+        return safeJsonParse(response);
     } catch (error) {
         removeToken();
         throw error;
@@ -182,7 +203,7 @@ export const fetchEventsFromDB = async (
     console.log('[fetchEventsFromDB] Response status:', res.status);
     console.log('[fetchEventsFromDB] Response status:', res.status);
     if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     console.log('[fetchEventsFromDB] Response data:', { 
         isArray: Array.isArray(data), 
         hasEvents: !!data?.events,
@@ -212,7 +233,7 @@ export const fetchEvents = async (
     const url = `${API_BASE_URL}/api/odds/realtime/by-date?sport=${encodeURIComponent(sportKey)}&date=${encodeURIComponent(targetDate)}&regions=${encodeURIComponent(regions)}&markets=${encodeURIComponent(markets)}&date_basis=${encodeURIComponent(dateBasis)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed realtime fetch: ${res.status}`);
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     const evs = Array.isArray(data) ? data : (data?.events ?? []);
     return normalizeEvents(evs);
 };
@@ -227,7 +248,7 @@ export const fetchEventsByDateRealtime = async (
     const url = `${API_BASE_URL}/api/odds/realtime/by-date?sport=${encodeURIComponent(sportKey)}&date=${encodeURIComponent(estDate)}&regions=${encodeURIComponent(regions)}&markets=${encodeURIComponent(markets)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed realtime fetch: ${res.status}`);
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     const evs = Array.isArray(data) ? data : (data?.events ?? []);
     return normalizeEvents(evs);
 };
@@ -253,7 +274,7 @@ export const getPredictions = async (): Promise<Prediction[]> => {
     const res = await fetch(`${API_BASE_URL}/api/core/predictions`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch predictions');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     if (Array.isArray(data)) return data as Prediction[];
     if (data && Array.isArray((data as any).predictions)) return (data as any).predictions;
     return [];
@@ -264,7 +285,7 @@ export const getLeaderboard = async (): Promise<User[]> => {
     const res = await fetch(`${API_BASE_URL}/api/core/leaderboard`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch leaderboard');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     if (Array.isArray(data)) return data as User[];
     if (data && Array.isArray((data as any).leaderboard)) return (data as any).leaderboard;
     return [];
@@ -275,7 +296,7 @@ export const getAffiliateStats = async (): Promise<AffiliateStat[]> => {
     const res = await fetch(`${API_BASE_URL}/api/core/affiliate-stats`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch affiliate stats');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     if (Array.isArray(data)) return data as AffiliateStat[];
     if (data && Array.isArray((data as any).affiliate_stats)) return (data as any).affiliate_stats;
     return [];
@@ -286,7 +307,7 @@ export const getRecentReferrals = async (): Promise<Referral[]> => {
     const res = await fetch(`${API_BASE_URL}/api/core/referrals`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch referrals');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     if (Array.isArray(data)) return data as Referral[];
     if (data && Array.isArray((data as any).referrals)) return (data as any).referrals;
     return [];
@@ -297,7 +318,7 @@ export const getChatMessages = async (): Promise<ChatMessage[]> => {
     const res = await fetch(`${API_BASE_URL}/api/core/chat`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch chat messages');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     if (Array.isArray(data)) return data as ChatMessage[];
     if (data && Array.isArray((data as any).messages)) return (data as any).messages;
     return [];
@@ -308,7 +329,7 @@ export const getTopAnalysts = async (): Promise<TopAnalyst[]> => {
     const res = await fetch(`${API_BASE_URL}/api/core/top-analysts`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch top analysts');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     if (Array.isArray(data)) return data as TopAnalyst[];
     if (data && Array.isArray((data as any).analysts)) return (data as any).analysts;
     return [];
@@ -320,7 +341,7 @@ export const getUserProfile = async () => {
     const res = await fetch(`${API_BASE_URL}/api/account/profile`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch profile');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     return data.profile || data;
 };
 
@@ -329,7 +350,7 @@ export const getUserWallet = async () => {
     const res = await fetch(`${API_BASE_URL}/api/account/wallet`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch wallet');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     return data.wallet || data;
 };
 
@@ -338,7 +359,7 @@ export const getUserSettings = async () => {
     const res = await fetch(`${API_BASE_URL}/api/account/settings`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch settings');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     return data.settings || data;
 };
 
@@ -351,7 +372,7 @@ export const updateUserSettings = async (settings: any) => {
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to update settings');
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     return data.settings || data;
 };
 
@@ -364,14 +385,14 @@ export const changePassword = async (currentPassword: string, newPassword: strin
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     });
     if (res.status === 401) { 
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Authentication failed'); 
     }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to change password');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const enable2FA = async () => {
@@ -382,10 +403,10 @@ export const enable2FA = async () => {
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to enable 2FA');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const verify2FA = async (code: string) => {
@@ -396,14 +417,14 @@ export const verify2FA = async (code: string) => {
         body: JSON.stringify({ code }),
     });
     if (res.status === 401) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Invalid verification code');
     }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to verify 2FA');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const disable2FA = async (password: string) => {
@@ -414,14 +435,14 @@ export const disable2FA = async (password: string) => {
         body: JSON.stringify({ password }),
     });
     if (res.status === 401) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Incorrect password');
     }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to disable 2FA');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const get2FAStatus = async () => {
@@ -429,7 +450,7 @@ export const get2FAStatus = async () => {
     const res = await fetch(`${API_BASE_URL}/api/account/2fa/status`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to get 2FA status');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const deleteAccount = async (password: string, confirmation: string) => {
@@ -440,14 +461,14 @@ export const deleteAccount = async (password: string, confirmation: string) => {
         body: JSON.stringify({ password, confirmation }),
     });
     if (res.status === 401) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Incorrect password');
     }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to delete account');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Passkey / Biometric Authentication ---
@@ -459,10 +480,10 @@ export const beginPasskeyRegistration = async () => {
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to start passkey registration');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const completePasskeyRegistration = async (credential: any) => {
@@ -474,10 +495,10 @@ export const completePasskeyRegistration = async (credential: any) => {
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to complete passkey registration');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const listPasskeys = async () => {
@@ -485,7 +506,7 @@ export const listPasskeys = async () => {
     const res = await fetch(`${API_BASE_URL}/api/account/passkey/list`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch passkeys');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const deletePasskey = async (credentialId: string) => {
@@ -496,10 +517,10 @@ export const deletePasskey = async (credentialId: string) => {
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to delete passkey');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const beginPasskeyLogin = async (email: string) => {
@@ -507,10 +528,10 @@ export const beginPasskeyLogin = async (email: string) => {
         method: 'POST',
     });
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Failed to start passkey login');
     }
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const completePasskeyLogin = async (email: string, credential: any) => {
@@ -520,10 +541,10 @@ export const completePasskeyLogin = async (email: string, credential: any) => {
         body: JSON.stringify({ email, credential }),
     });
     if (!res.ok) {
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         throw new Error(error.detail || 'Passkey authentication failed');
     }
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     setToken(data.access_token);
     return data;
 };
@@ -535,7 +556,7 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (res.status === 422) {
         // Handle structural market errors (staleness is now graceful)
-        const error = await res.json();
+        const error = await safeJsonParse(res);
         if (error.detail?.error === 'STRUCTURAL_MARKET_ERROR') {
             throw new Error(error.detail.message || 'Market data has structural errors');
         }
@@ -543,7 +564,7 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     }
     if (!res.ok) throw new Error('Failed to fetch simulation');
     
-    const data = await res.json();
+    const data = await safeJsonParse(res);
     
     // Check integrity_status for graceful degradation warnings
     if (data.integrity_status) {
@@ -571,7 +592,7 @@ export const requestSimulation = async (eventId: string, iterations: number = 10
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to request simulation');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Beat Vegas - CLV Tracking endpoints ---
@@ -580,7 +601,7 @@ export const fetchCLVData = async (timeRange: '7d' | '30d' | '90d' | 'all' = '30
     const res = await fetch(`${API_BASE_URL}/api/performance/clv?range=${timeRange}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch CLV data');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Beat Vegas - Performance Metrics endpoints ---
@@ -589,7 +610,7 @@ export const fetchPerformanceReport = async (timeRange: '7d' | '30d' | '90d' | '
     const res = await fetch(`${API_BASE_URL}/api/performance/report?range=${timeRange}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch performance report');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Beat Vegas - Tier Management endpoints ---
@@ -598,7 +619,7 @@ export const getUserTier = async (): Promise<{ tier: 'starter' | 'pro' | 'sharps
     const res = await fetch(`${API_BASE_URL}/api/account/tier`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch user tier');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const upgradeTier = async (targetTier: 'pro' | 'sharps_room' | 'founder'): Promise<{ success: boolean; message: string }> => {
@@ -610,7 +631,7 @@ export const upgradeTier = async (targetTier: 'pro' | 'sharps_room' | 'founder')
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to upgrade tier');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Subscription Management ---
@@ -624,7 +645,7 @@ export const getSubscriptionStatus = async (): Promise<{
     const res = await fetch(`${API_BASE_URL}/api/subscription/status`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch subscription');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Affiliate Earnings ---
@@ -639,7 +660,7 @@ export const getAffiliateEarnings = async (): Promise<{
     const res = await fetch(`${API_BASE_URL}/api/affiliate/earnings`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch earnings');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Risk Profile ---
@@ -648,7 +669,7 @@ export const getRiskProfile = async () => {
     const res = await fetch(`${API_BASE_URL}/api/user/risk-profile`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch risk profile');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 export const updateRiskProfile = async (profile: any) => {
@@ -660,7 +681,7 @@ export const updateRiskProfile = async (profile: any) => {
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to update risk profile');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Community Chat ---
@@ -673,7 +694,7 @@ export const sendChatMessage = async (message: string, channel: string = 'genera
     });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to send message');
-    return res.json();
+    return safeJsonParse(res);
 };
 
 // --- Default Export for Axios-like API ---
@@ -692,10 +713,10 @@ const api = {
             headers,
         });
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+            const errorData = await safeJsonParse(response).catch(() => ({ detail: 'Request failed' }));
             throw new Error(errorData.detail || `HTTP ${response.status}`);
         }
-        const data = await response.json();
+        const data = await safeJsonParse(response);
         return { data };
     },
     post: async <T = any>(url: string, body?: any, config?: RequestInit): Promise<{ data: T }> => {
@@ -714,10 +735,10 @@ const api = {
             body: body ? JSON.stringify(body) : undefined,
         });
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ detail: 'Request failed' }));
+            const errorData = await safeJsonParse(response).catch(() => ({ detail: 'Request failed' }));
             throw new Error(errorData.detail || `HTTP ${response.status}`);
         }
-        const data = await response.json();
+        const data = await safeJsonParse(response);
         return { data };
     },
 };
