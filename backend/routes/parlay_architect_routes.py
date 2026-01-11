@@ -14,12 +14,12 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
-from ..core.parlay_architect import (
+from core.parlay_architect import (
     build_parlay, ParlayRequest, ParlayResult, Leg, Tier, MarketType, 
     PROFILE_RULES, derive_tier
 )
-from ..core.parlay_logging import persist_parlay_attempt, get_parlay_stats
-from ..db.mongo import db  # MongoDB connection
+from core.parlay_logging import persist_parlay_attempt, get_parlay_stats
+from db.mongo import db  # MongoDB connection
 
 
 router = APIRouter(prefix="/api/parlay-architect", tags=["parlay-architect"])
