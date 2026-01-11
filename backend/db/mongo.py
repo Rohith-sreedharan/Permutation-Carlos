@@ -125,6 +125,20 @@ def ensure_indexes() -> None:
     db["nhl_evaluations"].create_index([("updated_at", -1)])
     db["mlb_evaluations"].create_index("game_id", unique=True)
     db["mlb_evaluations"].create_index([("updated_at", -1)])
+    
+    # NEW: Parlay Architect indexes
+    db["parlay_generation_audit"].create_index([("created_at_utc", -1)])
+    db["parlay_generation_audit"].create_index([("request.profile", 1), ("result.status", 1)])
+    db["parlay_generation_audit"].create_index([("result.status", 1)])
+    
+    db["parlay_claim"].create_index([("created_at_utc", -1)])
+    db["parlay_claim"].create_index([("attempt_id", 1)])
+    db["parlay_claim"].create_index([("profile_used", 1)])
+    db["parlay_claim"].create_index([("parlay_fingerprint", 1)], unique=True, sparse=True)
+    
+    db["parlay_fail_event"].create_index([("created_at_utc", -1)])
+    db["parlay_fail_event"].create_index([("attempt_id", 1)])
+    db["parlay_fail_event"].create_index([("reason_code", 1)])
 
 
 def insert_many(collection: str, data: List[Dict[str, Any]]) -> Optional[List[Any]]:
