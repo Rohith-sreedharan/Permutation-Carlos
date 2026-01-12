@@ -12,7 +12,7 @@ CRITICAL SCOPE:
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.parlay_architect import (
     build_parlay, ParlayRequest, ParlayResult, Leg, Tier, MarketType, 
