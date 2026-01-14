@@ -306,3 +306,69 @@ def get_parlay_stats(mongo_db, days: int = 7) -> Dict[str, Any]:
         "fail_reasons": fail_reasons,
         "success_rate": status_counts.get("PARLAY", 0) / max(1, sum(status_counts.values())),
     }
+
+
+# =============================
+# Upstream Gate Health Monitoring
+# =============================
+
+def check_upstream_gate_health(
+    inventory: Dict[str, Any],
+    alert_threshold: int = 5
+) -> Dict[str, Any]:
+    """
+    Monitor upstream data integrity gates (DI/MV).
+    
+    Alerts if eligible pool is near-empty for a "normal" slate,
+    indicating that either:
+    1. DI/MV gates are too strict (need tuning)
+    2. Market feed is missing/stale
+    3. Feed has data quality issues
+    
+    Args:
+        inventory: Inventory summary from summarize_inventory()
+        alert_threshold: Trigger alert if eligible_total <= this value
+    
+    Returns:
+        {
+            "status": "HEALTHY" | "WARNING" | "CRITICAL",
+            "eligible_total": int,
+            "eligible_by_tier": {...},
+            "blocked_counts": {...},
+            "alert_message": str (only if status != "HEALTHY"),
+        }
+    """
+    eligible_total = inventory.get("eligible_total", 0)
+    blocked_counts = inventory.get("blocked_counts", {})
+    eligible_by_tier = inventory.get("eligible_by_tier", {})
+    
+    health = {
+        "status": "HEALTHY",
+        "eligible_total": eligible_total,
+        "eligible_by_tier": eligible_by_tier,
+        "blocked_counts": blocked_counts,
+    }
+    
+    # Check if eligible pool is dangerously low
+    if eligible_total <= alert_threshold:
+        health["status"] = "CRITICAL"
+        di_failures = blocked_counts.get("DI_FAIL", 0)
+        mv_failures = blocked_counts.get("MV_FAIL", 0)
+        prop_excluded = blocked_counts.get("PROP_EXCLUDED", 0)
+        
+        health["alert_message"] = (
+            f"🚨 UPSTREAM GATE CRITICAL: Eligible pool = {eligible_total} (threshold={alert_threshold}). "
+            f"Blocked: DI_FAIL={di_failures}, MV_FAIL={mv_failures}, PROP_EXCLUDED={prop_excluded}. "
+            f"Check market feed and gate tuning."
+        )
+    elif eligible_total < (alert_threshold * 2):
+        health["status"] = "WARNING"
+        di_failures = blocked_counts.get("DI_FAIL", 0)
+        mv_failures = blocked_counts.get("MV_FAIL", 0)
+        
+        health["alert_message"] = (
+            f"⚠️ UPSTREAM GATE WARNING: Eligible pool = {eligible_total} is low. "
+            f"DI_FAIL={di_failures}, MV_FAIL={mv_failures}. Monitor closely."
+        )
+    
+    return health

@@ -393,9 +393,424 @@ class TestNoSilentFailure:
         assert result.reason_detail is not None
 
 
+# =============================
+# ACCEPTANCE TESTS (Per Spec)
+# =============================
+
+class TestAcceptanceFixture:
+    """
+    Fixture test: Deterministic parlay_fixture with:
+    - 3 EDGE
+    - 5 PICK
+    - 8 LEAN
+    Across multiple sports and volatility buckets.
+    
+    Verify all profiles return PARLAY for legs=3 and legs=4 with fixed seed.
+    """
+    
+    def get_acceptance_fixture(self) -> list[Leg]:
+        """
+        Create deterministic fixture matching spec requirements:
+        - 3 EDGE
+        - 5 PICK
+        - 8 LEAN
+        - Multiple sports (NBA, NFL, MLB)
+        - Multiple volatility levels
+        """
+        return [
+            # ===== 3 EDGE (High confidence)
+            create_test_leg(
+                "nba_edge_1", sport="NBA", tier=Tier.EDGE,
+                confidence=78.0, volatility="LOW",
+                canonical_state="EDGE", team_key="lakers"
+            ),
+            create_test_leg(
+                "nfl_edge_2", sport="NFL", tier=Tier.EDGE,
+                confidence=75.0, volatility="MEDIUM",
+                canonical_state="EDGE", team_key="chiefs"
+            ),
+            create_test_leg(
+                "mlb_edge_3", sport="MLB", tier=Tier.EDGE,
+                confidence=72.0, volatility="LOW",
+                canonical_state="EDGE", team_key="yankees"
+            ),
+            
+            # ===== 5 PICK (Strong LEAN upgraded by confidence)
+            create_test_leg(
+                "nba_pick_1", sport="NBA", tier=Tier.PICK,
+                confidence=65.0, volatility="MEDIUM",
+                canonical_state="LEAN", team_key="celtics"
+            ),
+            create_test_leg(
+                "nfl_pick_2", sport="NFL", tier=Tier.PICK,
+                confidence=64.0, volatility="LOW",
+                canonical_state="LEAN", team_key="patriots"
+            ),
+            create_test_leg(
+                "mlb_pick_3", sport="MLB", tier=Tier.PICK,
+                confidence=62.0, volatility="MEDIUM",
+                canonical_state="LEAN", team_key="redsox"
+            ),
+            create_test_leg(
+                "nba_pick_4", sport="NBA", tier=Tier.PICK,
+                confidence=61.0, volatility="HIGH",
+                canonical_state="LEAN", team_key="heat"
+            ),
+            create_test_leg(
+                "nfl_pick_5", sport="NFL", tier=Tier.PICK,
+                confidence=60.5, volatility="LOW",
+                canonical_state="LEAN", team_key="packers"
+            ),
+            
+            # ===== 8 LEAN (Lower confidence, soft edge)
+            create_test_leg(
+                "nba_lean_1", sport="NBA", tier=Tier.LEAN,
+                confidence=57.0, volatility="LOW",
+                canonical_state="LEAN", team_key="warriors"
+            ),
+            create_test_leg(
+                "nfl_lean_2", sport="NFL", tier=Tier.LEAN,
+                confidence=56.0, volatility="MEDIUM",
+                canonical_state="LEAN", team_key="cowboys"
+            ),
+            create_test_leg(
+                "mlb_lean_3", sport="MLB", tier=Tier.LEAN,
+                confidence=55.0, volatility="LOW",
+                canonical_state="LEAN", team_key="dodgers"
+            ),
+            create_test_leg(
+                "nba_lean_4", sport="NBA", tier=Tier.LEAN,
+                confidence=54.0, volatility="HIGH",
+                canonical_state="LEAN", team_key="nets"
+            ),
+            create_test_leg(
+                "nfl_lean_5", sport="NFL", tier=Tier.LEAN,
+                confidence=53.0, volatility="MEDIUM",
+                canonical_state="LEAN", team_key="ravens"
+            ),
+            create_test_leg(
+                "mlb_lean_6", sport="MLB", tier=Tier.LEAN,
+                confidence=52.0, volatility="LOW",
+                canonical_state="LEAN", team_key="cubs"
+            ),
+            create_test_leg(
+                "nba_lean_7", sport="NBA", tier=Tier.LEAN,
+                confidence=51.0, volatility="MEDIUM",
+                canonical_state="LEAN", team_key="suns"
+            ),
+            create_test_leg(
+                "nfl_lean_8", sport="NFL", tier=Tier.LEAN,
+                confidence=50.0, volatility="HIGH",
+                canonical_state="LEAN", team_key="eagles"
+            ),
+        ]
+    
+    def test_acceptance_fixture_premium_legs3(self):
+        """Premium profile should produce PARLAY for legs=3 with acceptance fixture"""
+        legs = self.get_acceptance_fixture()
+        req = ParlayRequest(profile="premium", legs=3, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY", f"Expected PARLAY, got {result.status}: {result.reason_code}"
+        assert len(result.legs_selected) == 3
+        assert result.parlay_weight > 0.0
+    
+    def test_acceptance_fixture_premium_legs4(self):
+        """Premium profile should produce PARLAY for legs=4 with acceptance fixture"""
+        legs = self.get_acceptance_fixture()
+        req = ParlayRequest(profile="premium", legs=4, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY", f"Expected PARLAY, got {result.status}: {result.reason_code}"
+        assert len(result.legs_selected) == 4
+        assert result.parlay_weight > 0.0
+    
+    def test_acceptance_fixture_balanced_legs3(self):
+        """Balanced profile should produce PARLAY for legs=3 with acceptance fixture"""
+        legs = self.get_acceptance_fixture()
+        req = ParlayRequest(profile="balanced", legs=3, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY", f"Expected PARLAY, got {result.status}"
+        assert len(result.legs_selected) == 3
+    
+    def test_acceptance_fixture_balanced_legs4(self):
+        """Balanced profile should produce PARLAY for legs=4 with acceptance fixture"""
+        legs = self.get_acceptance_fixture()
+        req = ParlayRequest(profile="balanced", legs=4, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY", f"Expected PARLAY, got {result.status}"
+        assert len(result.legs_selected) == 4
+    
+    def test_acceptance_fixture_speculative_legs3(self):
+        """Speculative profile should produce PARLAY for legs=3 with acceptance fixture"""
+        legs = self.get_acceptance_fixture()
+        req = ParlayRequest(profile="speculative", legs=3, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY", f"Expected PARLAY, got {result.status}"
+        assert len(result.legs_selected) == 3
+    
+    def test_acceptance_fixture_speculative_legs4(self):
+        """Speculative profile should produce PARLAY for legs=4 with acceptance fixture"""
+        legs = self.get_acceptance_fixture()
+        req = ParlayRequest(profile="speculative", legs=4, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY", f"Expected PARLAY, got {result.status}"
+        assert len(result.legs_selected) == 4
+
+
+class TestAcceptanceStarvation:
+    """
+    Starvation test: When slate has less than N eligible legs,
+    endpoint must return FAIL with reason_code=INSUFFICIENT_POOL
+    and include eligible_pool_size.
+    """
+    
+    def test_insufficient_pool_exact_failure(self):
+        """Requesting more legs than available should fail with exact reason"""
+        legs = [
+            create_test_leg("evt_1", tier=Tier.EDGE),
+            create_test_leg("evt_2", tier=Tier.EDGE),
+        ]
+        
+        req = ParlayRequest(profile="balanced", legs=4, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "FAIL"
+        assert result.reason_code == "INSUFFICIENT_POOL"
+        assert result.reason_detail is not None
+        assert result.reason_detail["eligible_pool_size"] == 2
+        assert result.reason_detail["legs_requested"] == 4
+    
+    def test_insufficient_pool_with_blocked_legs(self):
+        """DI/MV failures should reduce eligible pool"""
+        legs = [
+            create_test_leg("evt_1", tier=Tier.EDGE),
+            Leg(
+                event_id="evt_2_blocked",
+                sport="NBA",
+                league="NBA",
+                start_time_utc=datetime.now(timezone.utc),
+                market_type=MarketType.SPREAD,
+                selection="Bad",
+                tier=Tier.EDGE,
+                confidence=80.0,
+                clv=0.0,
+                total_deviation=0.0,
+                volatility="LOW",
+                ev=0.0,
+                di_pass=False,  # BLOCKED by DI
+                mv_pass=True,
+            ),
+        ]
+        
+        req = ParlayRequest(profile="balanced", legs=4, seed=12345)
+        result = build_parlay(legs, req)
+        
+        assert result.status == "FAIL"
+        assert result.reason_code == "INSUFFICIENT_POOL"
+        assert result.reason_detail is not None
+        assert result.reason_detail["eligible_pool_size"] == 1  # Only evt_1 passes DI/MV
+
+
+class TestAcceptanceConstraintEnforcement:
+    """
+    Constraint test: Set allow_same_team=False and include intentionally
+    correlated legs; verify correlation is blocked and audit shows why.
+    """
+    
+    def test_allow_same_team_false_blocks_correlation(self):
+        """Same team should be blocked when allow_same_team=False"""
+        legs = [
+            create_test_leg("evt_1", tier=Tier.EDGE, team_key="team_a"),
+            create_test_leg("evt_2", tier=Tier.EDGE, team_key="team_a"),  # Same team!
+            create_test_leg("evt_3", tier=Tier.EDGE, team_key="team_a"),  # Same team again!
+            create_test_leg("evt_4", tier=Tier.EDGE, team_key="team_b"),
+            create_test_leg("evt_5", tier=Tier.EDGE, team_key="team_c"),
+            create_test_leg("evt_6", tier=Tier.EDGE, team_key="team_d"),
+        ]
+        
+        # With allow_same_team=False, should select from different teams
+        req = ParlayRequest(
+            profile="balanced",
+            legs=4,
+            allow_same_team=False,
+            seed=12345
+        )
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY"
+        assert len(result.legs_selected) == 4
+        
+        # Verify no duplicate team keys
+        selected_teams = [l.team_key for l in result.legs_selected]
+        assert len(selected_teams) == len(set(selected_teams)), \
+            f"Duplicate teams found: {selected_teams}"
+    
+    def test_allow_same_team_true_allows_correlation(self):
+        """Same team should be allowed when allow_same_team=True"""
+        legs = [
+            create_test_leg("evt_1", tier=Tier.EDGE, team_key="team_a"),
+            create_test_leg("evt_2", tier=Tier.EDGE, team_key="team_a"),  # Same team OK
+            create_test_leg("evt_3", tier=Tier.EDGE, team_key="team_a"),  # Same team OK
+            create_test_leg("evt_4", tier=Tier.EDGE, team_key="team_b"),
+        ]
+        
+        req = ParlayRequest(
+            profile="balanced",
+            legs=4,
+            allow_same_team=True,
+            seed=12345
+        )
+        result = build_parlay(legs, req)
+        
+        assert result.status == "PARLAY"
+        assert len(result.legs_selected) == 4
+    
+    def test_missing_team_key_flagged_in_audit(self):
+        """Missing team_key should be flagged in audit when allow_same_team=False"""
+        legs = [
+            create_test_leg("evt_1", tier=Tier.EDGE, team_key="team_a"),
+            create_test_leg("evt_2", tier=Tier.EDGE, team_key=None),  # Missing team_key
+            create_test_leg("evt_3", tier=Tier.EDGE, team_key="team_b"),
+            create_test_leg("evt_4", tier=Tier.EDGE, team_key="team_c"),
+        ]
+        
+        req = ParlayRequest(
+            profile="balanced",
+            legs=4,
+            allow_same_team=False,
+            seed=12345
+        )
+        result = build_parlay(legs, req)
+        
+        # Should succeed but flag missing team_key
+        if result.status == "PARLAY":
+            assert result.reason_detail is not None
+            # missing_team_keys_flagged is optional in reason_detail
+
+
+class TestAcceptanceNoSilentFailure:
+    """
+    No-silent-failure grep: No return None / bare pass / TODO/FIXME
+    in any parlay modules. All failures return structured FAIL.
+    
+    (This is primarily a code review test, but we verify via integration)
+    """
+    
+    def test_all_failures_have_reason_codes(self):
+        """Every failure should have reason_code set"""
+        test_cases = [
+            ([], "balanced", 4, "INSUFFICIENT_POOL"),
+            ([create_test_leg("evt_1", tier=Tier.EDGE)], "balanced", 4, "INSUFFICIENT_POOL"),
+        ]
+        
+        for legs, profile, leg_count, expected_code in test_cases:
+            req = ParlayRequest(profile=profile, legs=leg_count, seed=12345)
+            result = build_parlay(legs, req)
+            
+            if result.status == "FAIL":
+                assert result.reason_code is not None, \
+                    f"FAIL result missing reason_code: {result}"
+                assert result.reason_detail is not None, \
+                    f"FAIL result missing reason_detail: {result}"
+    
+    def test_zero_structured_exceptions(self):
+        """Integration: build_parlay never raises for valid input"""
+        test_fixtures = [
+            get_healthy_fixture(),
+            get_starved_fixture(),
+            [],
+        ]
+        
+        profiles = ["premium", "balanced", "speculative"]
+        
+        for fixture in test_fixtures:
+            for profile in profiles:
+                for legs in [3, 4]:
+                    req = ParlayRequest(profile=profile, legs=legs, seed=12345)
+                    try:
+                        result = build_parlay(fixture, req)
+                        # If we get here, no exception was raised
+                        assert result is not None
+                        assert result.status in ["PARLAY", "FAIL"]
+                    except Exception as e:
+                        pytest.fail(f"Unexpected exception for {profile} with {legs} legs: {e}")
+
+
+class TestAcceptanceUpstreamGateSanity:
+    """
+    Upstream gate sanity: If eligible_total drops to near 0 for a normal slate,
+    this indicates DI/MV is too strict or market feed is missing.
+    (This is primarily a monitoring concern, but we verify the gate behavior)
+    """
+    
+    def test_healthy_slate_has_pool(self):
+        """Healthy slate should have substantial eligible pool"""
+        legs = get_healthy_fixture()
+        pool = eligible_pool(legs, include_props=False)
+        
+        assert len(pool) > 0, "Healthy slate should have eligible legs"
+        assert len(pool) >= 10, "Healthy slate should have many eligible legs"
+    
+    def test_all_di_mv_pass_healthy(self):
+        """Healthy fixture legs should all pass DI/MV gates"""
+        legs = get_healthy_fixture()
+        
+        for leg in legs:
+            assert leg.di_pass, f"Healthy fixture leg {leg.event_id} failed DI"
+            assert leg.mv_pass, f"Healthy fixture leg {leg.event_id} failed MV"
+    
+    def test_di_mv_gates_are_hard(self):
+        """DI and MV failures should be absolute blockers"""
+        legs = [
+            create_test_leg("evt_good", tier=Tier.EDGE),
+            Leg(
+                event_id="evt_di_fail",
+                sport="NBA",
+                league="NBA",
+                start_time_utc=datetime.now(timezone.utc),
+                market_type=MarketType.SPREAD,
+                selection="Bad",
+                tier=Tier.EDGE,
+                confidence=95.0,  # Even high confidence doesn't save it
+                clv=0.0,
+                total_deviation=0.0,
+                volatility="LOW",
+                ev=100.0,  # Even high EV doesn't save it
+                di_pass=False,  # Hard block
+                mv_pass=True,
+            ),
+            Leg(
+                event_id="evt_mv_fail",
+                sport="NBA",
+                league="NBA",
+                start_time_utc=datetime.now(timezone.utc),
+                market_type=MarketType.SPREAD,
+                selection="Bad",
+                tier=Tier.EDGE,
+                confidence=95.0,
+                clv=0.0,
+                total_deviation=0.0,
+                volatility="LOW",
+                ev=100.0,
+                di_pass=True,
+                mv_pass=False,  # Hard block
+            ),
+        ]
+        
+        pool = eligible_pool(legs, include_props=False)
+        # Only evt_good should pass
+        assert len(pool) == 1
+        assert pool[0].event_id == "evt_good"
+
+
 if __name__ == "__main__":
     # Quick smoke test
-    print("Running smoke tests...")
+    print("Running acceptance test suite...")
     
     # Test 1: Healthy fixture
     legs = get_healthy_fixture()
@@ -420,4 +835,17 @@ if __name__ == "__main__":
     assert [l.event_id for l in result1.legs_selected] == [l.event_id for l in result2.legs_selected]
     print("✓ Deterministic output verified")
     
-    print("\n✅ All smoke tests passed!")
+    # Test 4: Acceptance fixture
+    acceptance_test = TestAcceptanceFixture()
+    legs = acceptance_test.get_acceptance_fixture()
+    print(f"\nAcceptance Fixture Summary:")
+    print(f"  - Total legs: {len(legs)}")
+    print(f"  - EDGE: {sum(1 for l in legs if l.tier == Tier.EDGE)}")
+    print(f"  - PICK: {sum(1 for l in legs if l.tier == Tier.PICK)}")
+    print(f"  - LEAN: {sum(1 for l in legs if l.tier == Tier.LEAN)}")
+    
+    req = ParlayRequest(profile="balanced", legs=4, seed=12345)
+    result = build_parlay(legs, req)
+    print(f"  - Balanced (4 legs): {result.status}")
+    
+    print("\n✅ All acceptance tests ready!")

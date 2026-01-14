@@ -15,7 +15,7 @@ Key Features:
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Tuple, Optional, Iterable
+from typing import List, Dict, Tuple, Optional, Iterable, Any
 import random
 import math
 from datetime import datetime, timezone
@@ -91,47 +91,76 @@ class ParlayResult:
     legs_selected: List[Leg] = field(default_factory=list)
     parlay_weight: float = 0.0
     reason_code: Optional[str] = None
-    reason_detail: Optional[Dict] = None
+    reason_detail: Optional[Dict[str, Any]] = None
 
 
 # -----------------------------
 # Tier Derivation (maps canonical_state → Tier)
 # -----------------------------
 
-def derive_tier(canonical_state: str, confidence: float, ev: float = 0.0) -> Tier:
+def derive_tier(
+    canonical_state: str,
+    confidence: float,
+    ev: float = 0.0,
+    sport: Optional[str] = None
+) -> Tier:
     """
     Derive parlay tier from canonical signal state.
     
-    Mapping rules:
-    - EDGE signal → EDGE tier (always)
-    - LEAN signal with confidence ≥ 60 → PICK tier (upgrade)
-    - LEAN signal with confidence < 60 → LEAN tier
-    - NO_PLAY → never eligible (filtered before this function)
-    - PENDING → never eligible (filtered before this function)
+    This is the CANONICAL FUNCTION for tier derivation.
+    All callers (UI, API, cron) must use this.
+    
+    Mapping rules (deterministic):
+    1. EDGE signal → EDGE tier (always)
+    2. LEAN signal with confidence >= sport_threshold → PICK tier (upgrade)
+    3. LEAN signal with confidence < sport_threshold → LEAN tier
+    4. PICK signal → PICK tier (direct map)
+    5. NO_PLAY, PENDING, NEUTRAL → EXCLUDE (never enters candidate pool)
+    
+    Sports-specific PICK thresholds:
+    - NBA, NCAAB, NHL: 60.0%
+    - NFL, NCAAF: 62.0%
+    - MLB: 58.0%
+    - Default (unknown sport): 60.0%
     
     Args:
-        canonical_state: Signal state from your engine
-        confidence: 0-100 scale
-        ev: Expected value (optional, for future use)
+        canonical_state: Signal state from your engine (case-insensitive)
+        confidence: Confidence score, 0-100 scale
+        ev: Expected value (optional, reserved for future use)
+        sport: Sport key for sport-specific thresholds (optional)
     
     Returns:
-        Tier enum value
+        Tier enum value (EDGE, PICK, or LEAN)
+    
+    Examples:
+        derive_tier("EDGE", 75.0) -> Tier.EDGE
+        derive_tier("LEAN", 65.0, sport="NBA") -> Tier.PICK
+        derive_tier("LEAN", 59.0, sport="NFL") -> Tier.LEAN (below 62%)
+        derive_tier("PICK", 50.0) -> Tier.PICK
     """
     state = canonical_state.upper()
+    
+    # Get sport-specific threshold
+    threshold = PICK_THRESHOLDS_BY_SPORT.get(
+        sport.upper() if sport else "default",
+        PICK_THRESHOLDS_BY_SPORT["default"]
+    )
     
     if state == "EDGE":
         return Tier.EDGE
     elif state == "LEAN":
-        # Upgrade strong LEANs to PICK tier
-        if confidence >= 60.0:
+        # Upgrade strong LEANs to PICK tier based on sport threshold
+        if confidence >= threshold:
             return Tier.PICK
         return Tier.LEAN
     elif state == "PICK":
-        # Direct PICK mapping (if your system has this state)
+        # Direct PICK mapping
         return Tier.PICK
     else:
-        # NO_PLAY, PENDING, etc. should be filtered before this
-        # Default to LEAN for safety (but log warning in production)
+        # NO_PLAY, PENDING, NEUTRAL, etc.
+        # These should be filtered BEFORE calling this function.
+        # Default to LEAN for safety, but this indicates upstream issue.
+        # In production, this should trigger a warning log.
         return Tier.LEAN
 
 
@@ -279,6 +308,19 @@ PROFILE_RULES: Dict[str, ProfileRules] = {
 }
 
 
+# Per-sport PICK threshold configuration
+# A LEAN with confidence >= this becomes a PICK (tier upgrade)
+PICK_THRESHOLDS_BY_SPORT = {
+    "NBA": 60.0,
+    "NCAAB": 60.0,
+    "NFL": 62.0,
+    "NCAAF": 62.0,
+    "MLB": 58.0,
+    "NHL": 60.0,
+    "default": 60.0,
+}
+
+
 # fallback ladder: relax rules stepwise so the system returns something or a clear FAIL
 FALLBACK_STEPS = [
     # step 0 = normal
@@ -386,14 +428,23 @@ def _attempt_build(
     Greedy + constrained selection:
     - start with best legs by weight
     - allow minor randomness within top band to avoid identical parlays
-    - enforce correlation limits (same event, same team)
+    - enforce correlation limits (same event, same team via team_key)
     - enforce volatility cap
     - check tier minimums (SOFT - preferences, not blockers)
+    
+    Team correlation enforcement (allow_same_team=False):
+    - If allow_same_team=False, blocks legs with same team_key
+    - If leg.team_key is None/missing, behavior is:
+      (a) Flag in audit log (unknown team_key)
+      (b) Still allow, since we can't enforce correlation without data
     """
     selected: List[Leg] = []
     used_events: Dict[str, int] = {}
     used_teams: set = set()  # track team_key for correlation blocking
     high_vol = 0
+    
+    # Track missing team keys for audit
+    missing_team_keys: List[str] = []
     
     # Candidate banding: mostly top legs, but not always identical
     # (Still stable because pool is sorted by weight)
@@ -412,7 +463,12 @@ def _attempt_build(
         
         # Same team check (using team_key)
         if not req.allow_same_team:
-            if leg.team_key and leg.team_key in used_teams:
+            if leg.team_key is None:
+                # Missing team key: log and flag, but allow selection
+                if leg.event_id not in missing_team_keys:
+                    missing_team_keys.append(leg.event_id)
+            elif leg.team_key in used_teams:
+                # Correlation blocked: same team already selected
                 return False
         
         # Volatility cap
@@ -463,6 +519,7 @@ def _attempt_build(
                 "max_high_vol_allowed": rules.max_high_vol_legs,
                 "max_same_event": rules.max_same_event,
                 "allow_same_team": req.allow_same_team,
+                "missing_team_keys": missing_team_keys if missing_team_keys else None,
             },
         )
     
@@ -510,11 +567,13 @@ def _attempt_build(
         )
     
     # SUCCESS
-    result_detail = {
+    result_detail: Dict[str, Any] = {
         "tier_counts": {k.value: v for k, v in counts.items()},
     }
     if tier_warnings:
         result_detail["tier_warnings"] = tier_warnings
+    if missing_team_keys and not req.allow_same_team:
+        result_detail["missing_team_keys_flagged"] = missing_team_keys
     
     return ParlayResult(
         status="PARLAY",
