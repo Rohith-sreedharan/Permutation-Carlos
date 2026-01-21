@@ -366,7 +366,19 @@ def build_parlay(
     - ParlayResult with status="FAIL" and reason_code/reason_detail explaining why
     
     Never returns None or silently fails.
+    
+    Tier Inventory Logging (Production-Safe Addendum):
+    Every attempt logs:
+    - eligible_by_tier: counts of EDGE/PICK/LEAN legs in the eligible pool
+    - blocked_counts: counts of legs blocked by DI_FAIL/MV_FAIL/PROP_EXCLUDED
+    
+    This makes it instantly clear whether failure is:
+    - Upstream (bad feed, no eligible legs)
+    - Downstream (constraints too tight)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if req.profile not in PROFILE_RULES:
         return ParlayResult(
             status="FAIL",
@@ -377,7 +389,58 @@ def build_parlay(
         )
     
     rng = random.Random(req.seed)
-    pool = eligible_pool(all_legs, include_props=req.include_props)
+    
+    # ============================================================================
+    # TIER INVENTORY LOGGING (Production-Safe Addendum)
+    # ============================================================================
+    # Count all legs before filtering
+    all_legs_list = list(all_legs)
+    total_legs = len(all_legs_list)
+    
+    # Count blocked legs
+    blocked_counts = {
+        "DI_FAIL": 0,
+        "MV_FAIL": 0,
+        "PROP_EXCLUDED": 0,
+        "BOTH_DI_MV_FAIL": 0,
+    }
+    
+    for leg in all_legs_list:
+        di_fail = not leg.di_pass
+        mv_fail = not leg.mv_pass
+        prop_excluded = (not req.include_props and leg.market_type == MarketType.PROP)
+        
+        if di_fail and mv_fail:
+            blocked_counts["BOTH_DI_MV_FAIL"] += 1
+        elif di_fail:
+            blocked_counts["DI_FAIL"] += 1
+        elif mv_fail:
+            blocked_counts["MV_FAIL"] += 1
+        
+        if prop_excluded:
+            blocked_counts["PROP_EXCLUDED"] += 1
+    
+    # Build eligible pool
+    pool = eligible_pool(all_legs_list, include_props=req.include_props)
+    
+    # Count eligible legs by tier
+    eligible_by_tier = tier_counts(pool)
+    eligible_total = len(pool)
+    
+    # Log tier inventory
+    logger.info(
+        f"Parlay Attempt - Profile: {req.profile}, Legs: {req.legs}, "
+        f"Total: {total_legs}, Eligible: {eligible_total}, "
+        f"EDGE: {eligible_by_tier[Tier.EDGE]}, "
+        f"PICK: {eligible_by_tier[Tier.PICK]}, "
+        f"LEAN: {eligible_by_tier[Tier.LEAN]}, "
+        f"Blocked: DI={blocked_counts['DI_FAIL']}, "
+        f"MV={blocked_counts['MV_FAIL']}, "
+        f"BOTH_DI_MV={blocked_counts['BOTH_DI_MV_FAIL']}, "
+        f"PROP={blocked_counts['PROP_EXCLUDED']}"
+    )
+    
+    # ============================================================================
     
     if len(pool) < req.legs:
         return ParlayResult(
@@ -388,6 +451,9 @@ def build_parlay(
             reason_detail={
                 "eligible_pool_size": len(pool),
                 "legs_requested": req.legs,
+                "eligible_by_tier": {k.value: v for k, v in eligible_by_tier.items()},
+                "blocked_counts": blocked_counts,
+                "total_legs": total_legs,
             },
         )
     
@@ -401,6 +467,8 @@ def build_parlay(
             attempt.reason_detail = (attempt.reason_detail or {}) | {
                 "fallback_step": step_i,
                 "rules_used": rules.__dict__,
+                "eligible_by_tier": {k.value: v for k, v in eligible_by_tier.items()},
+                "eligible_pool_size": eligible_total,
             }
             return attempt
     
@@ -412,6 +480,9 @@ def build_parlay(
         reason_code="NO_VALID_PARLAY_FOUND",
         reason_detail={
             "eligible_pool_size": len(pool),
+            "eligible_by_tier": {k.value: v for k, v in eligible_by_tier.items()},
+            "blocked_counts": blocked_counts,
+            "total_legs": total_legs,
             "profile_rules": base_rules.__dict__,
             "note": "All fallback steps exhausted without meeting constraints.",
         },

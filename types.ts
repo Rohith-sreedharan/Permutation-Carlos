@@ -1,5 +1,5 @@
-// FIX: Added 'leaderboard', 'profile', 'billing', 'earnings' to support more pages
-export type Page = 'dashboard' | 'community' | 'trust-loop' | 'architect' | 'daily-cards' | 'affiliates' | 'leaderboard' | 'profile' | 'wallet' | 'billing' | 'earnings' | 'settings' | 'telegram' | 'gameDetail' | 'onboarding' | 'war-room' | 'war-room-leaderboard';
+// FIX: Added 'leaderboard', 'profile', 'billing', 'earnings', 'admin' to support more pages
+export type Page = 'dashboard' | 'community' | 'trust-loop' | 'architect' | 'daily-cards' | 'affiliates' | 'leaderboard' | 'profile' | 'wallet' | 'billing' | 'earnings' | 'settings' | 'telegram' | 'gameDetail' | 'onboarding' | 'war-room' | 'war-room-leaderboard' | 'admin';
 
 export interface Bet {
   type: 'Moneyline' | 'Spread' | 'Total';

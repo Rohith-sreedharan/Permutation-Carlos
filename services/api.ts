@@ -2,7 +2,7 @@
 import type { Event, Prediction, AffiliateStat, Referral, ChatMessage, TopAnalyst, User, Bet, AuthResponse, UserCredentials, UserRegistration, MonteCarloSimulation, CLVDataPoint, CLVStats, PerformanceMetrics } from '../types';
 
 // Use environment variable or fall back to localhost for development
-const API_BASE_URL = import.meta.env.VITE_API_URL || (
+export const API_BASE_URL = import.meta.env.VITE_API_URL || (
   window.location.hostname === 'localhost' 
     ? 'http://localhost:8000' 
     : `${window.location.protocol}//${window.location.host}`

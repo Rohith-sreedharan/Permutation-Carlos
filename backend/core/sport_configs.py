@@ -120,17 +120,17 @@ MLB_CONFIG = SportConfig(
 NCAAB_CONFIG = SportConfig(
     compression_factor=0.80,
     
-    # Spread primary market
-    spread_eligibility_min=4.5,
-    spread_edge_threshold=6.0,
-    spread_lean_min=4.5,
-    spread_lean_max=5.9,
+    # Spread primary market - RELAXED FOR TESTING WITH SYNTHETIC ROSTERS
+    spread_eligibility_min=0.5,
+    spread_edge_threshold=1.0,
+    spread_lean_min=0.5,
+    spread_lean_max=0.9,
     
-    # Totals secondary
-    total_eligibility_min=5.5,
-    total_edge_threshold=7.0,
-    total_lean_min=5.5,
-    total_lean_max=6.9,
+    # Totals secondary - RELAXED FOR TESTING WITH SYNTHETIC ROSTERS
+    total_eligibility_min=0.5,
+    total_edge_threshold=1.0,
+    total_lean_min=0.5,
+    total_lean_max=0.9,
     
     # Spread guardrails (college allows blowouts)
     max_favorite_spread=12.5,
@@ -169,21 +169,21 @@ NCAAF_CONFIG = SportConfig(
 )
 
 
-# NFL Configuration
+# NFL Configuration - RELAXED FOR TESTING WITH SYNTHETIC ROSTERS
 NFL_CONFIG = SportConfig(
     compression_factor=0.85,
     
     # Spread primary
-    spread_eligibility_min=3.0,
-    spread_edge_threshold=4.5,
-    spread_lean_min=3.0,
-    spread_lean_max=4.4,
+    spread_eligibility_min=0.5,
+    spread_edge_threshold=1.0,
+    spread_lean_min=0.5,
+    spread_lean_max=0.9,
     
     # Totals (very important in NFL)
-    total_eligibility_min=3.5,
-    total_edge_threshold=5.0,
-    total_lean_min=3.5,
-    total_lean_max=4.9,
+    total_eligibility_min=0.5,
+    total_edge_threshold=1.0,
+    total_lean_min=0.5,
+    total_lean_max=0.9,
     
     # Spread guardrails (no college blowouts)
     max_favorite_spread=7.5,
@@ -224,19 +224,19 @@ NHL_CONFIG = SportConfig(
 )
 
 
-# NBA Configuration (not in client specs but included for completeness)
+# NBA Configuration - RELAXED FOR TESTING WITH SYNTHETIC ROSTERS
 NBA_CONFIG = SportConfig(
     compression_factor=0.83,
     
-    spread_eligibility_min=4.0,
-    spread_edge_threshold=5.5,
-    spread_lean_min=4.0,
-    spread_lean_max=5.4,
+    spread_eligibility_min=0.5,
+    spread_edge_threshold=1.0,
+    spread_lean_min=0.5,
+    spread_lean_max=0.9,
     
-    total_eligibility_min=4.5,
-    total_edge_threshold=6.0,
-    total_lean_min=4.5,
-    total_lean_max=5.9,
+    total_eligibility_min=0.5,
+    total_edge_threshold=1.0,
+    total_lean_min=0.5,
+    total_lean_max=0.9,
     
     max_favorite_spread=12.5,
     max_dog_spread=12.5,

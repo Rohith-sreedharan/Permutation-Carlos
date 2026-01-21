@@ -90,6 +90,7 @@ from routes.predictions_routes import router as predictions_router
 from routes.subscription_routes import router as subscription_router, stripe_router
 from routes.risk_profile_routes import router as risk_profile_router
 from routes.admin_routes import router as admin_router
+from routes.admin_panel_routes import router as admin_panel_router  # NEW: Comprehensive Admin Panel
 from routes.verification_routes import router as verification_router
 from routes.decision_log_routes import router as decision_log_router
 from routes.waitlist_routes import router as waitlist_router
@@ -117,6 +118,7 @@ from routes.mlb_routes import router as mlb_router
 from routes.analyzer import router as analyzer_router
 from routes.market_state_routes import router as market_state_router
 from routes.parlay_architect_routes import router as parlay_architect_router
+from routes.calibration_routes import router as calibration_router  # NEW: Logging & Calibration System
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -152,6 +154,7 @@ app.include_router(subscription_router)
 app.include_router(stripe_router)  # Stripe customer portal
 app.include_router(risk_profile_router)
 app.include_router(admin_router)  # Super-admin routes
+app.include_router(admin_panel_router)  # NEW: Admin Panel with customer management & billing
 app.include_router(verification_router)  # Public Trust Loop data
 app.include_router(trust_router)  # Phase 17: Automated Trust Metrics
 app.include_router(waitlist_router)  # V1 Launch waitlist
@@ -167,6 +170,7 @@ app.include_router(tracking_router)  # Pixel & event tracking (Phase 1.2)
 app.include_router(daily_preview_router)  # Daily Preview for marketing conversion
 app.include_router(market_state_router)  # Market State Registry - Single source of truth
 app.include_router(parlay_architect_router)  # NEW: Parlay Architect - Tiered pool system
+app.include_router(calibration_router)  # NEW: Logging & Calibration System - Exit-grade dataset
 
 
 @app.websocket("/ws")
@@ -296,6 +300,15 @@ async def startup_event():
     except Exception as e:
         print(f"⚠️ Autonomous Edge Scheduler startup error: {e}")
         print("   Manual simulation triggers still available")
+    
+    # Start Calibration Scheduler
+    try:
+        from services.calibration_scheduler import start_calibration_scheduler
+        start_calibration_scheduler()
+        print("✓ Calibration Scheduler active (weekly calibration + daily grading)")
+    except Exception as e:
+        print(f"⚠️ Calibration Scheduler startup error: {e}")
+        print("   Manual calibration triggers still available")
 
 
 @app.on_event("shutdown")
@@ -317,6 +330,14 @@ async def shutdown_event():
         from services.autonomous_edge_scheduler import stop_autonomous_scheduler
         await stop_autonomous_scheduler()
         print("✓ Autonomous Edge Scheduler shutdown complete")
+    except Exception:
+        pass
+    
+    # Shutdown calibration scheduler
+    try:
+        from services.calibration_scheduler import stop_calibration_scheduler
+        stop_calibration_scheduler()
+        print("✓ Calibration Scheduler shutdown complete")
     except Exception:
         pass
 
@@ -353,4 +374,3 @@ def health_check():
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
-

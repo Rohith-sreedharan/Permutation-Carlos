@@ -1,0 +1,2 @@
+{"t":{"$date":"2026-01-20T05:23:10.891Z"},"s":"I",  "c":"CONTROL",  "id":20697,   "ctx":"thread1","msg":"Renamed existing log file","attr":{"oldLogPath":"/opt/homebrew/var/log/mongodb/mongo.log","newLogPath":"/opt/homebrew/var/log/mongodb/mongo.log.2026-01-20T05-23-10"}}
+{"t":{"$date":"2026-01-20T17:32:01.195+05:30"},"s":"F",  "c":"CONTROL",  "id":4522200, "ctx":"ftdc","msg":"Writing to log file failed, aborting application","attr":{"files":["/opt/homebrew/var/log/mongodb/mongo.log"]}}

@@ -19,9 +19,11 @@ import OnboardingWizard from './components/OnboardingWizard';
 import RiskAlert from './components/RiskAlert';
 import TrustLoop from './components/TrustLoop';  // NEW: Trust & Performance Loop
 import ParlayArchitect from './components/ParlayArchitect';  // PHASE 14: AI Parlay Architect
+import AdminPanel from './components/AdminPanel';  // NEW: Admin Panel
 import type { Page } from './types';
 import { getToken, removeToken, verifyToken, getUserSettings } from './services/api';
 import { useWebSocket } from './utils/useWebSocket';
+import logger from './utils/logger';  // NEW: Frontend logging
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -29,6 +31,7 @@ const App: React.FC = () => {
   const [isAuthCheckComplete, setIsAuthCheckComplete] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'creator' | 'user'>('user'); // Track if user is a creator
+  const [isAdmin, setIsAdmin] = useState(false);  // NEW: Track admin status
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [riskAlert, setRiskAlert] = useState<{
     isOpen: boolean;
@@ -77,6 +80,13 @@ const App: React.FC = () => {
           // Load user role from localStorage or API
           const role = (localStorage.getItem('user_role') as 'creator' | 'user') || 'user';
           setUserRole(role);
+          
+          // Check if user is admin
+          const adminStatus = user.is_admin || false;
+          setIsAdmin(adminStatus);
+
+          // Track page view
+          logger.trackPageView(window.location.pathname);
 
           // Subscribe to risk alerts WebSocket channel
           const handleRiskAlert = (data: any) => {
@@ -172,6 +182,13 @@ const App: React.FC = () => {
         return <Settings />;
       case 'telegram':
         return <TelegramConnection />;
+      case 'admin':
+        // Only allow admin access for admin users
+        if (!isAdmin) {
+          logger.warning('Unauthorized admin access attempt');
+          return <DecisionCommandCenter onAuthError={handleLogout} onGameClick={handleGameClick} />;
+        }
+        return <AdminPanel />;
       default:
         return <DecisionCommandCenter onAuthError={handleLogout} onGameClick={handleGameClick} />;
     }
@@ -204,6 +221,7 @@ const App: React.FC = () => {
           setCurrentPage={setCurrentPage}
           onLogout={handleLogout}
           userRole={userRole}
+          isAdmin={isAdmin}
         />
       )}
       <main className={`flex-1 p-6 sm:p-8 overflow-y-auto ${currentPage === 'onboarding' ? 'w-full' : ''}`}>
