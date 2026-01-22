@@ -34,18 +34,9 @@ async def debug_edge_states(sport: str = "americanfootball_nfl", hours: int = 48
         'created_at': {'$gt': cutoff.isoformat()}
     }).sort('created_at', -1).limit(20))
     
-    # CRITICAL: Import ensure_edge_state to fix legacy data
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from core.monte_carlo_engine import ensure_pick_state
-    
     diagnostics = []
     
     for sim in sims:
-        # Apply ensure_pick_state to eliminate UNKNOWN states from legacy data
-        sim = ensure_pick_state(sim)
-        
         event_id = sim.get('event_id', 'unknown')
         edge_state = sim.get('edge_state') or sim.get('pick_state', 'NO_PLAY')
         
@@ -108,18 +99,18 @@ async def debug_edge_states(sport: str = "americanfootball_nfl", hours: int = 48
         }
         
         # Determine exact failure reason
-        if pick_state == 'NO_PLAY':
+        if edge_state == 'NO_PLAY':
             if not cal_publish:
                 diagnostic["failure_reason"] = f"CALIBRATION_BLOCKED: {', '.join(cal_block_reasons)}"
             elif state_reasons:
                 diagnostic["failure_reason"] = f"STATE_MACHINE: {', '.join(state_reasons)}"
             else:
                 diagnostic["failure_reason"] = "NO_PLAY (unknown reason)"
-        elif pick_state == 'LEAN':
+        elif edge_state == 'LEAN':
             diagnostic["failure_reason"] = f"LEAN (parlay-blocked): {', '.join(state_reasons)}"
-        elif pick_state == 'PICK':
+        elif edge_state == 'EDGE':
             diagnostic["failure_reason"] = None  # Success
-        elif pick_state == 'UNKNOWN':
+        elif edge_state == 'UNKNOWN':
             # Should never happen after our fix
             missing = []
             if not cal_result:
@@ -137,7 +128,7 @@ async def debug_edge_states(sport: str = "americanfootball_nfl", hours: int = 48
     # Summary stats
     state_counts = {}
     for d in diagnostics:
-        state = d['pick_state']
+        state = d['edge_state']
         state_counts[state] = state_counts.get(state, 0) + 1
     
     return {
@@ -174,4 +165,4 @@ async def export_edge_states_csv(sport: str = "americanfootball_nfl", hours: int
             f"\"{d['failure_reason'] or 'SUCCESS'}\""
         )
     
-    return "\n".join(lines)"
+    return "\n".join(lines)
