@@ -45,6 +45,7 @@ from core.sharp_analysis import (
 )
 from core.feedback_loop import store_prediction
 from core.reality_check_layer import get_public_total_projection
+from core.output_consistency import output_consistency_validator
 
 logger = logging.getLogger(__name__)
 
@@ -528,6 +529,12 @@ class MonteCarloEngine:
         if abs(prob_sum - 1.0) > 0.01:
             logger.warning(f"Win probability sum = {prob_sum:.4f} (expected 1.0)")
         
+        # ===== CANONICAL PROBABILITY FIELDS (OUTPUT CONSISTENCY FIX) =====
+        # Calculate market-scoped probabilities to prevent cross-wire bugs
+        # MONEYLINE: p_win_home / p_win_away (already calculated above)
+        p_win_home = home_win_probability
+        p_win_away = away_win_probability
+        
         
         # Calculate win probabilities from simulation results (already calculated above)
         # home_win_probability and away_win_probability are already set
@@ -644,6 +651,16 @@ class MonteCarloEngine:
         # Negative = home favored, Positive = away favored
         vegas_spread_home_perspective = market_context.get('current_spread', 0.0)
         
+        # SPREAD: Calculate cover probabilities at current market line
+        # Count how many sims have home team covering the vegas spread
+        # Example: If vegas_spread_home = -4.5, home covers if margin > 4.5
+        margins_array = np.array(results["margins"])
+        home_covers_count = np.sum(margins_array > vegas_spread_home_perspective)
+        p_cover_home = float(home_covers_count / iterations)
+        p_cover_away = 1.0 - p_cover_home
+        
+        logger.info(f"Cover Probabilities at market line {vegas_spread_home_perspective}: Home {p_cover_home:.1%}, Away {p_cover_away:.1%}")
+        
         # Determine favorite/underdog based STRICTLY on Vegas spread sign
         # (Vegas is the canonical source of truth for market roles)
         if abs(vegas_spread_home_perspective) < 0.5:
@@ -715,6 +732,52 @@ class MonteCarloEngine:
             threshold=3.0,
             confidence_score=confidence_score,
             variance=variance_total
+        )
+        
+        # ===== OUTPUT CONSISTENCY VALIDATION =====
+        # Validate probability sums and calculate corrected sharp sides
+        prob_validation = output_consistency_validator.validate_probability_sums(
+            p_win_home=p_win_home,
+            p_win_away=p_win_away,
+            p_cover_home=p_cover_home,
+            p_cover_away=p_cover_away,
+            p_over=over_probability,
+            p_under=under_probability
+        )
+        
+        if not prob_validation.passed:
+            logger.error(f"❌ Probability validation failed: {prob_validation.errors}")
+        
+        # Calculate SPREAD sharp side using CORRECTED delta_home logic
+        spread_sharp_result = output_consistency_validator.calculate_spread_sharp_side(
+            home_team=home_team_name,
+            away_team=away_team_name,
+            market_spread_home=vegas_spread_home_perspective,
+            fair_spread_home=model_spread_home_perspective,
+            edge_threshold=3.0
+        )
+        
+        # Calculate TOTAL sharp side
+        total_sharp_result = output_consistency_validator.calculate_total_sharp_side(
+            market_total=bookmaker_total_line,
+            fair_total=rcl_total,
+            edge_threshold=3.0
+        )
+        
+        # Calculate ML sharp side
+        ml_sharp_result = output_consistency_validator.calculate_ml_sharp_side(
+            home_team=home_team_name,
+            away_team=away_team_name,
+            p_win_home=p_win_home,
+            p_win_away=p_win_away,
+            edge_threshold=0.10  # 10% edge for ML
+        )
+        
+        logger.info(
+            f"Sharp Side Analysis (Corrected):\n"
+            f"  SPREAD: {spread_sharp_result.sharp_action} → {spread_sharp_result.sharp_selection or 'NO_SHARP_PLAY'}\n"
+            f"  TOTAL: {total_sharp_result.sharp_action} → {total_sharp_result.sharp_selection or 'NO_SHARP_PLAY'}\n"
+            f"  ML: {ml_sharp_result.sharp_action} → {ml_sharp_result.sharp_selection or 'NO_SHARP_PLAY'}"
         )
         
         # Calculate total edge
@@ -1048,34 +1111,122 @@ class MonteCarloEngine:
                 "ci_99": [round(ci_99[0], 2), round(ci_99[1], 2)]
             },
             
-            # ===== SHARP SIDE ANALYSIS =====
+            # ===== SHARP SIDE ANALYSIS (OUTPUT CONSISTENCY FIX) =====
             "sharp_analysis": {
+                # ===== CANONICAL PROBABILITY FIELDS =====
+                # Market-scoped probabilities to prevent cross-wire bugs
+                "probabilities": {
+                    # MONEYLINE: Game win probabilities
+                    "p_win_home": round(p_win_home, 4),
+                    "p_win_away": round(p_win_away, 4),
+                    
+                    # SPREAD: Cover probabilities at market line
+                    "p_cover_home": round(p_cover_home, 4),
+                    "p_cover_away": round(p_cover_away, 4),
+                    
+                    # TOTAL: Over/Under probabilities at market total
+                    "p_over": round(over_probability, 4),
+                    "p_under": round(under_probability, 4),
+                    
+                    # Validation status
+                    "validator_status": "PASS" if prob_validation.passed else "FAIL",
+                    "validator_errors": prob_validation.errors if not prob_validation.passed else []
+                },
+                
+                # ===== SPREAD MARKET (CORRECTED DELTA_HOME LOGIC) =====
                 "spread": {
+                    # Market and fair lines (signed from home perspective)
+                    "market_spread_home": vegas_spread_home_perspective,
+                    "fair_spread_home": model_spread_home_perspective,
+                    "delta_home": spread_sharp_result.delta,
+                    
+                    # Legacy fields for backward compatibility
                     "vegas_spread": vegas_spread_home_perspective,
                     "model_spread": model_spread_home_perspective,
-                    "sharp_side": spread_analysis.sharp_side,
                     "edge_points": spread_analysis.edge_points,
                     "edge_direction": spread_analysis.edge_direction,
                     "edge_grade": spread_analysis.edge_grade,
                     "edge_strength": spread_analysis.edge_strength,
                     "sharp_side_reason": spread_analysis.sharp_side_reason,
+                    
+                    # NEW: Market-scoped sharp side (corrected logic)
+                    "sharp_market": spread_sharp_result.sharp_market,
+                    "sharp_selection": spread_sharp_result.sharp_selection,
+                    "sharp_action": spread_sharp_result.sharp_action,
+                    "sharp_team": spread_sharp_result.sharp_team,
+                    "sharp_line": spread_sharp_result.sharp_line,
+                    "has_edge": spread_sharp_result.has_edge,
+                    
+                    # Legacy sharp_side (keep for backward compatibility)
+                    "sharp_side": spread_sharp_result.sharp_selection,
+                    
                     **spread_edge_api
                 },
+                
+                # ===== TOTAL MARKET =====
                 "total": {
+                    # Market and fair lines
+                    "market_total": bookmaker_total_line,
+                    "fair_total": rcl_total,
+                    "delta_total": total_sharp_result.delta,
+                    
+                    # Legacy fields
                     "vegas_total": bookmaker_total_line,
                     "model_total": rcl_total,  # Use RCL-validated total
                     "raw_model_total": median_total,  # Include raw for debugging
                     "rcl_passed": rcl_passed,
                     "rcl_reason": rcl_reason,
-                    "sharp_side": total_analysis.sharp_side,
                     "edge_points": total_analysis.edge_points,
                     "edge_direction": total_analysis.edge_direction,
                     "edge_grade": total_analysis.edge_grade,
                     "edge_strength": total_analysis.edge_strength,
                     "sharp_side_reason": total_analysis.sharp_side_reason,
                     "edge_reasoning": total_reasoning if total_analysis.has_edge else None,
+                    
+                    # NEW: Market-scoped sharp side
+                    "sharp_market": total_sharp_result.sharp_market,
+                    "sharp_selection": total_sharp_result.sharp_selection,
+                    "sharp_action": total_sharp_result.sharp_action,
+                    "has_edge": total_sharp_result.has_edge,
+                    
+                    # Legacy sharp_side (keep for backward compatibility)
+                    "sharp_side": total_sharp_result.sharp_selection,
+                    
                     **total_edge_api
                 },
+                
+                # ===== MONEYLINE MARKET =====
+                "moneyline": {
+                    # NEW: ML sharp side analysis
+                    "sharp_market": ml_sharp_result.sharp_market,
+                    "sharp_selection": ml_sharp_result.sharp_selection,
+                    "sharp_action": ml_sharp_result.sharp_action,
+                    "sharp_team": ml_sharp_result.sharp_team,
+                    "has_edge": ml_sharp_result.has_edge,
+                    "edge_pct": round(ml_sharp_result.delta * 100, 2) if ml_sharp_result.delta else 0.0
+                },
+                
+                # ===== DEBUG PAYLOAD (DEV TOGGLE) =====
+                "debug_payload": output_consistency_validator.build_debug_payload(
+                    game_id=event_id,
+                    home_team=home_team_name,
+                    away_team=away_team_name,
+                    market_spread_home=vegas_spread_home_perspective,
+                    fair_spread_home=model_spread_home_perspective,
+                    market_total=bookmaker_total_line,
+                    fair_total=rcl_total,
+                    p_win_home=p_win_home,
+                    p_win_away=p_win_away,
+                    p_cover_home=p_cover_home,
+                    p_cover_away=p_cover_away,
+                    p_over=over_probability,
+                    p_under=under_probability,
+                    spread_sharp=spread_sharp_result,
+                    total_sharp=total_sharp_result,
+                    ml_sharp=ml_sharp_result,
+                    validator_status=prob_validation
+                ),
+                
                 "disclaimer": STANDARD_DISCLAIMER
             },
             

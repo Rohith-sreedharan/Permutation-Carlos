@@ -97,6 +97,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [firstHalfLoading, setFirstHalfLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'distribution' | 'injuries' | 'props' | 'movement' | 'pulse' | 'firsthalf'>('distribution');
+  const [activeMarketTab, setActiveMarketTab] = useState<'spread' | 'moneyline' | 'total'>('spread');
+  const [showDebugPayload, setShowDebugPayload] = useState(false);
   const [propsSortBy, setPropsSortBy] = useState('ev');
   const [lineMovementData, setLineMovementData] = useState<Array<{ time: string; odds: number; fairValue: number }>>([]);
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -1262,56 +1264,295 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         </div>
       )}
 
+      {/* Market-Scoped Probability Display (OUTPUT CONSISTENCY FIX) */}
+      <div className="mb-6">
+        {/* Market Selector Tabs */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setActiveMarketTab('spread')}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              activeMarketTab === 'spread'
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'bg-charcoal text-light-gray hover:bg-navy'
+            }`}
+          >
+            SPREAD
+          </button>
+          <button
+            onClick={() => setActiveMarketTab('moneyline')}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              activeMarketTab === 'moneyline'
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'bg-charcoal text-light-gray hover:bg-navy'
+            }`}
+          >
+            MONEYLINE
+          </button>
+          <button
+            onClick={() => setActiveMarketTab('total')}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              activeMarketTab === 'total'
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'bg-charcoal text-light-gray hover:bg-navy'
+            }`}
+          >
+            TOTAL
+          </button>
+          {/* Debug Toggle */}
+          <button
+            onClick={() => setShowDebugPayload(!showDebugPayload)}
+            className="ml-auto px-3 py-1 rounded bg-charcoal/50 text-xs text-gray-400 hover:bg-navy hover:text-white transition"
+            title="Toggle debug payload"
+          >
+            🔍 DEBUG
+          </button>
+        </div>
+
+        {/* Market-Specific Display */}
+        <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-purple-500/30">
+          {/* SPREAD Tab */}
+          {activeMarketTab === 'spread' && (() => {
+            const probabilities = simulation?.sharp_analysis?.probabilities;
+            const spreadData = simulation?.sharp_analysis?.spread;
+            const validatorStatus = probabilities?.validator_status;
+            const p_cover_home = probabilities?.p_cover_home || 0.5;
+            const p_cover_away = probabilities?.p_cover_away || 0.5;
+            const market_spread = spreadData?.market_spread_home || 0;
+            const sharp_market = spreadData?.sharp_market;
+            const sharp_selection = spreadData?.sharp_selection;
+            const has_edge = spreadData?.has_edge;
+            
+            // Market mismatch detection
+            const marketMismatch = sharp_market && sharp_market !== 'SPREAD';
+            
+            return (
+              <div>
+                <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
+                  📊 SPREAD MARKET
+                  {validatorStatus === 'FAIL' && (
+                    <span className="text-xs px-2 py-1 bg-red-500/20 border border-red-500 text-red-400 rounded">⚠️ VALIDATION FAILED</span>
+                  )}
+                </h3>
+                
+                {/* Validator Error Banner */}
+                {validatorStatus === 'FAIL' && probabilities?.validator_errors && (
+                  <div className="mb-4 p-3 bg-red-500/10 border-2 border-red-500 rounded-lg">
+                    <div className="text-red-400 font-bold mb-2">⛔ Data Mismatch Detected — Recommendation Withheld</div>
+                    <div className="text-xs text-red-300 space-y-1">
+                      {probabilities.validator_errors.map((error: string, idx: number) => (
+                        <div key={idx}>• {error}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Market Mismatch Banner */}
+                {marketMismatch && (
+                  <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
+                    <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
+                    <div className="text-xs text-yellow-300 mt-1">
+                      Sharp side is on {sharp_market} market, not SPREAD. Recommendation hidden.
+                    </div>
+                  </div>
+                )}
+
+                {/* Cover Probability Display (SPREAD-SCOPED ONLY) */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-navy/50 p-4 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
+                    <div className="text-sm text-light-gray mb-2">{event.home_team} {market_spread >= 0 ? '+' : ''}{market_spread}</div>
+                    <div className="text-3xl font-bold text-white font-teko">
+                      {(p_cover_home * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="bg-navy/50 p-4 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
+                    <div className="text-sm text-light-gray mb-2">{event.away_team} {-market_spread >= 0 ? '+' : ''}{-market_spread}</div>
+                    <div className="text-3xl font-bold text-white font-teko">
+                      {(p_cover_away * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sharp Side (Only if NOT mismatched and has edge) */}
+                {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
+                  <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                    <div className="text-xs text-purple-300 uppercase mb-1">Sharp Side (Spread)</div>
+                    <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
+                    <div className="text-xs text-gray-400 mt-2">
+                      Edge: {spreadData?.edge_points?.toFixed(1)} pts | Grade: {spreadData?.edge_grade}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* MONEYLINE Tab */}
+          {activeMarketTab === 'moneyline' && (() => {
+            const probabilities = simulation?.sharp_analysis?.probabilities;
+            const mlData = simulation?.sharp_analysis?.moneyline;
+            const validatorStatus = probabilities?.validator_status;
+            const p_win_home = probabilities?.p_win_home || 0.5;
+            const p_win_away = probabilities?.p_win_away || 0.5;
+            const sharp_market = mlData?.sharp_market;
+            const sharp_selection = mlData?.sharp_selection;
+            const has_edge = mlData?.has_edge;
+            
+            const marketMismatch = sharp_market && sharp_market !== 'ML';
+            
+            return (
+              <div>
+                <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
+                  💰 MONEYLINE MARKET
+                  {validatorStatus === 'FAIL' && (
+                    <span className="text-xs px-2 py-1 bg-red-500/20 border border-red-500 text-red-400 rounded">⚠️ VALIDATION FAILED</span>
+                  )}
+                </h3>
+                
+                {validatorStatus === 'FAIL' && probabilities?.validator_errors && (
+                  <div className="mb-4 p-3 bg-red-500/10 border-2 border-red-500 rounded-lg">
+                    <div className="text-red-400 font-bold mb-2">⛔ Data Mismatch Detected — Recommendation Withheld</div>
+                    <div className="text-xs text-red-300 space-y-1">
+                      {probabilities.validator_errors.map((error: string, idx: number) => (
+                        <div key={idx}>• {error}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {marketMismatch && (
+                  <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
+                    <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
+                    <div className="text-xs text-yellow-300 mt-1">
+                      Sharp side is on {sharp_market} market, not MONEYLINE. Recommendation hidden.
+                    </div>
+                  </div>
+                )}
+
+                {/* Win Probability Display (ML-SCOPED ONLY) */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-navy/50 p-4 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Win Probability</div>
+                    <div className="text-sm text-light-gray mb-2">{event.home_team}</div>
+                    <div className="text-3xl font-bold text-white font-teko">
+                      {(p_win_home * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="bg-navy/50 p-4 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Win Probability</div>
+                    <div className="text-sm text-light-gray mb-2">{event.away_team}</div>
+                    <div className="text-3xl font-bold text-white font-teko">
+                      {(p_win_away * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+
+                {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
+                  <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                    <div className="text-xs text-purple-300 uppercase mb-1">Sharp Side (Moneyline)</div>
+                    <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
+                    <div className="text-xs text-gray-400 mt-2">
+                      Edge: {mlData?.edge_pct?.toFixed(1)}% probability advantage
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* TOTAL Tab */}
+          {activeMarketTab === 'total' && (() => {
+            const probabilities = simulation?.sharp_analysis?.probabilities;
+            const totalData = simulation?.sharp_analysis?.total;
+            const validatorStatus = probabilities?.validator_status;
+            const p_over = probabilities?.p_over || 0.5;
+            const p_under = probabilities?.p_under || 0.5;
+            const market_total = totalData?.market_total || 0;
+            const sharp_market = totalData?.sharp_market;
+            const sharp_selection = totalData?.sharp_selection;
+            const has_edge = totalData?.has_edge;
+            
+            const marketMismatch = sharp_market && sharp_market !== 'TOTAL';
+            
+            return (
+              <div>
+                <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
+                  🎯 TOTAL MARKET
+                  {validatorStatus === 'FAIL' && (
+                    <span className="text-xs px-2 py-1 bg-red-500/20 border border-red-500 text-red-400 rounded">⚠️ VALIDATION FAILED</span>
+                  )}
+                </h3>
+                
+                {validatorStatus === 'FAIL' && probabilities?.validator_errors && (
+                  <div className="mb-4 p-3 bg-red-500/10 border-2 border-red-500 rounded-lg">
+                    <div className="text-red-400 font-bold mb-2">⛔ Data Mismatch Detected — Recommendation Withheld</div>
+                    <div className="text-xs text-red-300 space-y-1">
+                      {probabilities.validator_errors.map((error: string, idx: number) => (
+                        <div key={idx}>• {error}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {marketMismatch && (
+                  <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
+                    <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
+                    <div className="text-xs text-yellow-300 mt-1">
+                      Sharp side is on {sharp_market} market, not TOTAL. Recommendation hidden.
+                    </div>
+                  </div>
+                )}
+
+                {/* Over/Under Probability Display (TOTAL-SCOPED ONLY) */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-navy/50 p-4 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Over Probability</div>
+                    <div className="text-sm text-light-gray mb-2">OVER {market_total}</div>
+                    <div className="text-3xl font-bold text-white font-teko">
+                      {(p_over * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="bg-navy/50 p-4 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Under Probability</div>
+                    <div className="text-sm text-light-gray mb-2">UNDER {market_total}</div>
+                    <div className="text-3xl font-bold text-white font-teko">
+                      {(p_under * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+
+                {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
+                  <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                    <div className="text-xs text-purple-300 uppercase mb-1">Sharp Side (Total)</div>
+                    <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
+                    <div className="text-xs text-gray-400 mt-2">
+                      Edge: {totalData?.edge_points?.toFixed(1)} pts | Grade: {totalData?.edge_grade}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Debug Payload (Dev Toggle) */}
+          {showDebugPayload && simulation?.sharp_analysis?.debug_payload && (
+            <div className="mt-6 p-4 bg-charcoal/80 border border-gold/30 rounded-lg">
+              <div className="text-xs text-gold font-bold mb-2 flex items-center gap-2">
+                <span>🔍</span>
+                <span>DEBUG PAYLOAD (Development Mode)</span>
+              </div>
+              <pre className="text-xs text-gray-300 overflow-x-auto">
+                {JSON.stringify(simulation.sharp_analysis.debug_payload, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Key Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 animate-slide-up">
-        {/* Win Probability */}
-        <div className={`bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border ${
-          winProb > 0.65 ? 'border-neon-green/40 shadow-lg shadow-neon-green/10' :
-          winProb < 0.45 ? 'border-bold-red/40 shadow-lg shadow-bold-red/10' :
-          'border-gold/20'
-        } relative overflow-hidden group`}>
-          {winProb > 0.65 && (
-            <div className="absolute top-0 right-0 bg-neon-green text-charcoal text-xs font-bold px-2 py-1 rounded-bl-lg">
-              🔥 ADVANTAGE
-            </div>
-          )}
-          <h3 className="text-light-gray text-xs uppercase mb-2 flex items-center gap-2">
-            Win Probability
-            <span className="text-xs cursor-help" title="Probability of home team victory based on Monte Carlo simulations">ℹ️</span>
-          </h3>
-          <div className={`text-4xl font-bold font-teko ${
-            winProb > 0.65 ? 'text-neon-green' :
-            winProb < 0.45 ? 'text-bold-red' :
-            'text-white'
-          }`}>
-            {shouldSuppressCertainty(simulation) && (winProb > 0.75 || winProb < 0.25) ? (
-              <span className="text-2xl text-amber-400">Unstable</span>
-            ) : (
-              <>{(winProb * 100).toFixed(1)}%</>
-            )}
-          </div>
-          <div className="text-xs text-light-gray mt-2">{event.home_team}</div>
-          {winProb > 0.65 && !shouldSuppressCertainty(simulation) && (
-            <div className="text-xs text-neon-green/80 mt-2">Strong edge detected</div>
-          )}
-          {shouldSuppressCertainty(simulation) && (winProb > 0.75 || winProb < 0.25) && (
-            <div className="text-xs text-amber-400/90 mt-2">{getUncertaintyLabel(simulation)}</div>
-          )}
-          {winProb < 0.45 && (
-            <div className="text-xs text-bold-red/80 mt-2">Underdog scenario</div>
-          )}
-          {winProb >= 0.45 && winProb <= 0.65 && (
-            <div className="text-xs text-electric-blue/80 mt-2">
-              {winProb >= 0.48 && winProb <= 0.52 ? 'True coin-flip matchup' : `Sim edge: ${((winProb - 0.5) * 100).toFixed(1)}%`}
-            </div>
-          )}
-          {/* Tooltip */}
-          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-4 bg-charcoal/95 border border-gold/40 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10 backdrop-blur-sm">
-            <p className="text-xs text-light-gray leading-relaxed">
-              Win Probability shows the likelihood of home team victory based on Monte Carlo simulation across {simulation.iterations?.toLocaleString() || '50,000+'} game scenarios. Values above 65% indicate strong model confidence.
-            </p>
-          </div>
-        </div>
+        {/* OLD Win Probability card removed - replaced by market tabs above */}
 
         {/* Over/Under Total */}
         <div className={`bg-linear-to-br from-charcoal to-navy p-4 rounded-xl border relative group ${
