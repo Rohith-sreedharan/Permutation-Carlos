@@ -911,7 +911,7 @@ class ParlayArchitectService:
         valid_singles = []
         for leg in scored_legs:
             # Create a single-item list for validation
-            valid_legs, blocked_legs = truth_mode_validator.validate_parlay_legs([leg])
+            valid_legs, blocked_legs, stats = truth_mode_validator.validate_parlay_legs([leg])
             if valid_legs:
                 valid_singles.append(leg)
         
