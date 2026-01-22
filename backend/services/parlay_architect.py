@@ -4,12 +4,15 @@ Generates optimized 3-6 leg parlays using Monte Carlo simulation data
 TRUTH MODE ENFORCED: All legs validated through zero-lies gates
 """
 import random
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 from db.mongo import db
 from core.monte_carlo_engine import monte_carlo_engine
 from core.truth_mode import truth_mode_validator
 from utils.mongo_helpers import sanitize_mongo_doc
+
+logger = logging.getLogger(__name__)
 
 
 class ParlayArchitectService:
@@ -111,26 +114,6 @@ class ParlayArchitectService:
                 f"   • Try a different sport"
             )
         
-        if len(events) < leg_count:
-            # Check other sports to suggest alternatives
-            available_sports = self._get_available_sports_count(now, extended_end if len(events) < leg_count else today_end)
-            
-            suggestions = []
-            for sport, count in available_sports.items():
-                if count >= leg_count and sport != sport_key:
-                    sport_name = sport.replace('_', ' ').replace('basketball', 'Basketball').replace('americanfootball', 'Football').replace('baseball', 'Baseball').replace('icehockey', 'Hockey')
-                    suggestions.append(f"   • {sport_name}: {count} games available")
-            
-            suggestion_text = "\n\n💡 Available alternatives:\n" + "\n".join(suggestions) if suggestions else ""
-            
-            raise ValueError(
-                f"Insufficient games available for {sport_key}. "
-                f"Found {len(events)} games in next 72 hours, need {leg_count} for parlay. "
-                f"\n\n📊 Options:\n"
-                f"   • Reduce leg count to {len(events)} or fewer\n"
-                f"   • Try a different sport{suggestion_text}"
-            )
-        
         # Step 2: Score all potential legs using simulations
         scored_legs = []
         for event in events:
@@ -183,19 +166,31 @@ class ParlayArchitectService:
             else:
                 confidence = raw_confidence
             
+            # CRITICAL: Extract edge_state from simulation
+            edge_state = simulation.get("edge_state", simulation.get("pick_state", "NO_PLAY"))
+            
+            # Extract edge points for scoring
+            sharp_analysis = simulation.get("sharp_analysis", {})
+            spread_data = sharp_analysis.get("spread", {})
+            total_data = sharp_analysis.get("total", {})
+            spread_edge_pts = abs(spread_data.get("edge_points", 0.0))
+            total_edge_pts = abs(total_data.get("edge_points", 0.0))
+            
             volatility = simulation.get("volatility", simulation.get("volatility_index", "MODERATE"))
             stability = confidence * 100  # Convert to stability score
             
             # Determine best bet type FIRST to get probability
-            if spread_edge > total_edge:
+            if spread_edge_pts > total_edge_pts or (spread_edge_pts == total_edge_pts and spread_edge > total_edge):
                 bet_type = "spread"
                 probability = win_prob
                 line = f"{event['home_team']} -5.5" if win_prob > 0.5 else f"{event['away_team']} +5.5"
+                edge_pts = spread_edge_pts
             else:
                 bet_type = "total"
                 probability = over_prob
                 avg_total = simulation.get("avg_total_score", 220)
                 line = f"Over {avg_total:.1f}" if over_prob > 0.5 else f"Under {avg_total:.1f}"
+                edge_pts = total_edge_pts
             
             # Calculate EV percentage
             ev = (probability - 0.5) * 100
@@ -207,6 +202,7 @@ class ParlayArchitectService:
                 "event_id": event["event_id"],
                 "event": f"{event['away_team']} @ {event['home_team']}",
                 "sport": event["sport_key"],
+                "sport_key": event["sport_key"],
                 "commence_time": event["commence_time"],
                 "bet_type": bet_type,
                 "line": line,
@@ -216,7 +212,10 @@ class ParlayArchitectService:
                 "stability": stability,
                 "tier": tier,
                 "score": confidence * 60 + ev * 40,  # Combined scoring
-                "volatility": volatility
+                "volatility": volatility,
+                "edge_state": edge_state,  # CRITICAL for Truth Mode scoring
+                "edge_pts": edge_pts,  # Edge points from sharp analysis
+                "simulation": simulation  # Include full simulation for Truth Mode
             })
         
         # Step 3: Use tiered fallback system to select legs
@@ -375,17 +374,20 @@ class ParlayArchitectService:
             # BLOCKED STATE - Return structured blocked response with diagnostics
             best_single = self._find_best_single(scored_legs)
             
+            # Use final_stats if available, otherwise use stats from initial validation
+            diagnostic_stats = final_stats if final_stats else stats
+            
             blocked_response = {
                 "status": "BLOCKED",
                 "message": "No Valid Parlay Available",
                 "reason": "Insufficient legs meeting Truth Mode quality standards after fallback ladder.",
                 "diagnostics": {
-                    "eligible_total": stats["eligible_total"],
-                    "eligible_edge": stats["eligible_edge"],
-                    "eligible_lean": stats["eligible_lean"],
-                    "blocked_di": stats["blocked_di"],
-                    "blocked_mv": stats["blocked_mv"],
-                    "blocked_critical": stats["blocked_critical"],
+                    "eligible_total": diagnostic_stats["eligible_total"],
+                    "eligible_edge": diagnostic_stats["eligible_edge"],
+                    "eligible_lean": diagnostic_stats["eligible_lean"],
+                    "blocked_di": diagnostic_stats["blocked_di"],
+                    "blocked_mv": diagnostic_stats["blocked_mv"],
+                    "blocked_critical": diagnostic_stats["blocked_critical"],
                     "truth_mode_attempted": [s["truth_mode"] for s in fallback_steps if "truth_mode" in s],
                     "fallback_steps": fallback_steps
                 },
@@ -416,16 +418,20 @@ class ParlayArchitectService:
             # Log comprehensive diagnostics
             logger.warning(
                 f"[Parlay Architect] BLOCKED after fallback ladder: "
-                f"eligible_total={stats['eligible_total']} "
-                f"(EDGE={stats['eligible_edge']}, LEAN={stats['eligible_lean']}), "
+                f"eligible_total={diagnostic_stats['eligible_total']} "
+                f"(EDGE={diagnostic_stats['eligible_edge']}, LEAN={diagnostic_stats['eligible_lean']}), "
                 f"blocked_total={len(blocked_legs)} "
-                f"(DI={stats['blocked_di']}, MV={stats['blocked_mv']}, Critical={stats['blocked_critical']}), "
+                f"(DI={diagnostic_stats['blocked_di']}, MV={diagnostic_stats['blocked_mv']}, Critical={diagnostic_stats['blocked_critical']}), "
                 f"fallback_steps={len(fallback_steps)}"
             )
             
             raise ValueError(blocked_response)
         
         # SUCCESS - Build transparency message
+        # Ensure final_stats is set (should be by this point, but handle edge case)
+        if not final_stats:
+            final_stats = stats
+        
         transparency_message = selected_legs.get("transparency_message", "")
         if fallback_steps:
             fallback_info = f"Truth Mode: {final_stats['truth_mode_used']} (min_score {final_stats['min_score_used']})"
@@ -830,7 +836,7 @@ class ParlayArchitectService:
         week_end = now + timedelta(days=7)
         
         # Build query
-        query = {
+        query: Dict[str, Any] = {
             "commence_time": {
                 "$gt": now.isoformat(),
                 "$lt": week_end.isoformat()
@@ -844,17 +850,15 @@ class ParlayArchitectService:
         events = list(db.events.find(query).limit(200))
         
         # Group by calendar day (UTC date)
-        events_by_day = {}
+        events_by_day: Dict[str, List[Dict[str, Any]]] = {}
         for event in events:
             try:
                 # Parse commence_time and get date
                 commence = datetime.fromisoformat(event["commence_time"].replace("Z", "+00:00"))
                 date_key = commence.strftime("%Y-%m-%d")
                 
-                if date_key not in events_by_day:
-                    events_by_day[date_key] = []
-                
-                events_by_day[date_key].append(event)
+                # Use setdefault to initialize and append in one operation
+                events_by_day.setdefault(date_key, []).append(event)
             except Exception as e:
                 print(f"⚠️ Error parsing date for event {event.get('event_id')}: {e}")
                 continue
