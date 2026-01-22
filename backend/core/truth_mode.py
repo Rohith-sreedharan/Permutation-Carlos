@@ -103,12 +103,15 @@ class TruthModeValidator:
         Edge Bonus (0-20): clamp(edge_pts * 2.0, 0, 20)
         State Bonus: EDGE +15, LEAN +7, NO_PLAY +0
         Penalties:
-          - HIGH volatility: -5
-          - EXTREME volatility: -10
-          - UNSTABLE distribution: -5
-          - UNSTABLE_EXTREME distribution: -10
+          - LOW volatility: 0
+          - MED volatility: -5
+          - HIGH volatility: -12
+          - EXTREME volatility: -18
+          - STABLE distribution: 0
+          - UNSTABLE distribution: -8
+          - UNSTABLE_EXTREME distribution: -15
           - rcl_fail (publish != true): -10
-          - stale_line flag: -5
+          - stale_line flag: -6
         
         Returns:
             {
@@ -153,23 +156,28 @@ class TruthModeValidator:
         penalties = 0
         penalty_breakdown = []
         
-        # Volatility penalties
+        # Volatility penalties (spec: LOW 0 / MED 5 / HIGH 12 / EXTREME 18)
         volatility_upper = volatility.upper() if isinstance(volatility, str) else str(volatility).upper()
-        if volatility_upper == "HIGH":
+        if volatility_upper in ["MEDIUM", "MED", "MODERATE"]:
             penalties += 5
-            penalty_breakdown.append("HIGH_volatility: -5")
+            penalty_breakdown.append("MED_volatility: -5")
+        elif volatility_upper == "HIGH":
+            penalties += 12
+            penalty_breakdown.append("HIGH_volatility: -12")
         elif volatility_upper == "EXTREME":
-            penalties += 10
-            penalty_breakdown.append("EXTREME_volatility: -10")
+            penalties += 18
+            penalty_breakdown.append("EXTREME_volatility: -18")
+        # LOW volatility = 0 penalty (no entry)
         
-        # Distribution penalties
+        # Distribution penalties (spec: STABLE 0 / UNSTABLE 8 / UNSTABLE_EXTREME 15)
         dist_upper = distribution_flag.upper() if isinstance(distribution_flag, str) else str(distribution_flag).upper()
         if dist_upper == "UNSTABLE":
-            penalties += 5
-            penalty_breakdown.append("UNSTABLE_distribution: -5")
+            penalties += 8
+            penalty_breakdown.append("UNSTABLE_distribution: -8")
         elif dist_upper == "UNSTABLE_EXTREME":
-            penalties += 10
-            penalty_breakdown.append("UNSTABLE_EXTREME_distribution: -10")
+            penalties += 15
+            penalty_breakdown.append("UNSTABLE_EXTREME_distribution: -15")
+        # STABLE distribution = 0 penalty (no entry)
         
         # RCL penalty (if not explicitly approved)
         rcl_action = rcl_decision.get("action", "").lower() if rcl_decision else ""
@@ -177,10 +185,10 @@ class TruthModeValidator:
             penalties += 10
             penalty_breakdown.append("rcl_fail: -10")
         
-        # Stale line penalty
+        # Stale line penalty (spec: -6)
         if stale_line:
-            penalties += 5
-            penalty_breakdown.append("stale_line: -5")
+            penalties += 6
+            penalty_breakdown.append("stale_line: -6")
         
         # FINAL LEG SCORE
         leg_score = max(0, min(100, base + edge_bonus + state_bonus - penalties))

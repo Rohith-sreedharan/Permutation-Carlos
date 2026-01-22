@@ -106,7 +106,7 @@ class ParlayArchitectService:
                 f"Need {leg_count} legs, but no day has enough games.\n\n"
                 f"📊 Games by day:\n{day_breakdown}\n\n"
                 f"💡 Options:\n"
-                f"   • Reduce leg count to 2\n"
+                f"   • Reduce leg count to 3\n"
                 f"   • Enable multi-sport parlays\n"
                 f"   • Try a different sport"
             )
@@ -226,8 +226,8 @@ class ParlayArchitectService:
             risk_profile=risk_profile
         )
         
-        # Check if we have enough legs (minimum 2 for any parlay)
-        if len(selected_legs["legs"]) < 2:
+        # Check if we have enough legs (minimum 3 for any parlay)
+        if len(selected_legs["legs"]) < 3:
             raise ValueError(
                 f"⚠️ Unable to generate parlay - insufficient quality legs.\n\n"
                 f"📊 Results:\n"
@@ -281,7 +281,7 @@ class ParlayArchitectService:
         })
         
         # Check if we have enough legs meeting min_score
-        if len(eligible_legs_filtered) >= 2:
+        if len(eligible_legs_filtered) >= 3:
             # SUCCESS - Select top legs by leg_score, apply correlation rules
             final_legs = self._select_by_leg_score_with_correlation(
                 eligible_legs_filtered,
@@ -295,7 +295,7 @@ class ParlayArchitectService:
             # FALLBACK LADDER:
             # Step 1: Expand sports to ALL (if not already)
             # Step 2: Relax truth mode: STRICT → STANDARD → FLEX
-            # Step 3: Reduce leg_count down to 2
+            # Step 3: Reduce leg_count down to 3
             
             # Try expanding sports first
             if not current_multi_sport and sport_key != "all":
@@ -321,7 +321,7 @@ class ParlayArchitectService:
                     "eligible_total": len(eligible_legs_filtered)
                 })
                 
-                if len(eligible_legs_filtered) >= 2:
+                if len(eligible_legs_filtered) >= 3:
                     final_legs = self._select_by_leg_score_with_correlation(
                         eligible_legs_filtered,
                         min(current_leg_count, len(eligible_legs_filtered))
@@ -343,7 +343,7 @@ class ParlayArchitectService:
                     "eligible_total": len(eligible_legs_filtered)
                 })
                 
-                if len(eligible_legs_filtered) >= 2:
+                if len(eligible_legs_filtered) >= 3:
                     final_legs = self._select_by_leg_score_with_correlation(
                         eligible_legs_filtered,
                         min(current_leg_count, len(eligible_legs_filtered))
@@ -353,25 +353,25 @@ class ParlayArchitectService:
                     final_stats["min_score_used"] = 45
                     print(f"✅ [FLEX mode] {len(final_legs)} legs selected")
             
-            # If still not enough, reduce leg count to 2
-            if not final_legs and len(eligible_legs_filtered) >= 2:
-                print(f"🔄 [Fallback 4] Reducing to minimum 2 legs...")
-                current_leg_count = 2
+            # If still not enough, reduce leg count to 3
+            if not final_legs and len(eligible_legs_filtered) >= 3:
+                print(f"🔄 [Fallback 4] Reducing to minimum 3 legs...")
+                current_leg_count = 3
                 final_legs = self._select_by_leg_score_with_correlation(
                     eligible_legs_filtered,
-                    2
+                    3
                 )
                 final_stats = stats
                 fallback_steps.append({
                     "step": "reduce_to_min_legs",
-                    "leg_count": 2,
+                    "leg_count": 3,
                     "eligible_total": len(eligible_legs_filtered),
                     "selected": len(final_legs)
                 })
-                print(f"✅ [2-leg minimum] {len(final_legs)} legs selected")
+                print(f"✅ [3-leg minimum] {len(final_legs)} legs selected")
         
         # FINAL CHECK: If still not enough, return BLOCKED response
-        if not final_legs or len(final_legs) < 2:
+        if not final_legs or len(final_legs) < 3:
             # BLOCKED STATE - Return structured blocked response with diagnostics
             best_single = self._find_best_single(scored_legs)
             
@@ -389,7 +389,7 @@ class ParlayArchitectService:
                     "truth_mode_attempted": [s["truth_mode"] for s in fallback_steps if "truth_mode" in s],
                     "fallback_steps": fallback_steps
                 },
-                "minimum_required": 2,
+                "minimum_required": 3,
                 "failed": [
                     {
                         "game": leg.get('event', 'Unknown'),
