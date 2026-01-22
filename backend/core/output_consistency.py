@@ -483,3 +483,7 @@ def get_output_validator() -> OutputConsistencyValidator:
     if _validator_instance is None:
         _validator_instance = OutputConsistencyValidator()
     return _validator_instance
+
+
+# Export singleton for easy import
+output_consistency_validator = get_output_validator()
