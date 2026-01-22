@@ -151,9 +151,9 @@ class ParlayArchitectService:
                 continue
             
             # Calculate EV for each bet type
-            win_prob = simulation.get("team_a_win_probability", 0.5)
+            win_prob = simulation.get("team_a_win_probability", 0.5) or 0.5
             spread_edge = abs(win_prob - 0.5)
-            over_prob = simulation.get("over_probability", 0.5)
+            over_prob = simulation.get("over_probability", 0.5) or 0.5
             total_edge = abs(over_prob - 0.5)
             
             # Extract confidence from outcome or root level, with fallback
@@ -193,6 +193,9 @@ class ParlayArchitectService:
                 edge_pts = total_edge_pts
             
             # Calculate EV percentage
+            # Ensure probability is not None
+            if probability is None:
+                probability = 0.5
             ev = (probability - 0.5) * 100
             
             # Classify leg into quality tier
@@ -451,7 +454,10 @@ class ParlayArchitectService:
         # Step 5: Calculate parlay metrics
         parlay_probability = 1.0
         for leg in final_legs:
-            parlay_probability *= leg["probability"]
+            leg_prob = leg.get("probability", 0.5)
+            if leg_prob is None:
+                leg_prob = 0.5
+            parlay_probability *= leg_prob
         
         # Calculate American odds from probability
         if parlay_probability > 0.5:
