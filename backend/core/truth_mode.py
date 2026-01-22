@@ -86,6 +86,8 @@ class TruthModeValidator:
             TruthModeLevel.STANDARD: 60,  # Balanced profile
             TruthModeLevel.FLEX: 45       # High Volatility profile
         }
+        # Minimum data quality threshold for DI checks
+        self.min_data_quality = 0.70
     
     def calculate_leg_score(
         self,
