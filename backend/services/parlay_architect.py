@@ -380,10 +380,29 @@ class ParlayArchitectService:
             # Use final_stats if available, otherwise use stats from initial validation
             diagnostic_stats = final_stats if final_stats else stats
             
+            # Build detailed rejection reason counts
+            rejection_reasons = {}
+            for leg in blocked_legs:
+                reason = leg.get('block_reason', 'unknown')
+                rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+            
+            # Build leg score distribution for eligible but below threshold
+            below_threshold_count = len([leg for leg in eligible_legs if leg.get("leg_score", 0) < min_score])
+            
             blocked_response = {
                 "status": "BLOCKED",
                 "message": "No Valid Parlay Available",
                 "reason": "Insufficient legs meeting Truth Mode quality standards after fallback ladder.",
+                "parlay_debug": {
+                    "total_games_scanned": len(scored_legs),
+                    "attempts": len(fallback_steps),
+                    "fallback_steps": fallback_steps,
+                    "final_eligible_count": len(eligible_legs_filtered) if eligible_legs_filtered else 0,
+                    "min_score_threshold": min_score,
+                    "below_threshold_count": below_threshold_count,
+                    "rejection_reasons": rejection_reasons,
+                    "truth_modes_attempted": [s.get("truth_mode") for s in fallback_steps if "truth_mode" in s]
+                },
                 "diagnostics": {
                     "eligible_total": diagnostic_stats["eligible_total"],
                     "eligible_edge": diagnostic_stats["eligible_edge"],
@@ -398,7 +417,8 @@ class ParlayArchitectService:
                 "failed": [
                     {
                         "game": leg.get('event', 'Unknown'),
-                        "reason": leg.get('block_reason', 'unknown')
+                        "reason": leg.get('block_reason', 'unknown'),
+                        "leg_score": leg.get('leg_score', 0)
                     }
                     for leg in blocked_legs[:5]
                 ],
