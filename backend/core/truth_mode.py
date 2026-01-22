@@ -1,14 +1,30 @@
 """
-Truth Mode v1.0 - Zero-Lies Enforcement System
-==============================================
+Truth Mode v2.0 - Quality Dial System for Parlay Architect
+===========================================================
 
-PRINCIPLE: No pick is allowed to be shown unless it passes:
-1. Data Integrity Check
-2. Model Validity Check  
-3. RCL Gate (Publish/Block decision)
+PRINCIPLE: Truth Mode is a QUALITY DIAL, not a binary blocker.
 
-If blocked → Return NO PLAY with reason codes
-Applies to ALL sports, ALL endpoints, ALL pick displays
+HARD BLOCKS (only 3):
+1. Data Integrity Fail (DI)
+2. Model Validity Fail (MV)
+3. Critical Sport Blocks (injuries/weather/key players)
+
+EVERYTHING ELSE → Quality scoring (0-100)
+- RCL fail → penalty only
+- Volatility → penalty only
+- Distribution flags → penalty only
+
+TRUTH MODE LEVELS:
+- STRICT (min_score 75): High Confidence profile
+- STANDARD (min_score 60): Balanced profile
+- FLEX (min_score 45): High Volatility profile
+
+FALLBACK LADDER:
+1. Expand sports to ALL
+2. Relax truth mode: STRICT → STANDARD → FLEX
+3. Reduce leg_count down to minimum 2
+
+GUARANTEE: If eligible_total >= 2, output AVAILABLE.
 """
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
@@ -18,16 +34,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class TruthModeLevel(Enum):
+    """Truth Mode quality levels - determines min_score threshold"""
+    STRICT = "STRICT"      # min_score = 75 (High Confidence)
+    STANDARD = "STANDARD"  # min_score = 60 (Balanced)
+    FLEX = "FLEX"          # min_score = 45 (High Volatility)
+
+
 class BlockReason(Enum):
-    """Reason codes for why a pick is blocked"""
+    """Reason codes for HARD BLOCKS only (DI/MV/Critical)"""
     DATA_INTEGRITY_FAIL = "data_integrity_fail"
     MODEL_VALIDITY_FAIL = "model_validity_fail"
-    RCL_BLOCKED = "rcl_blocked"
-    MISSING_SIMULATION = "missing_simulation"
-    INSUFFICIENT_DATA = "insufficient_data"
-    INJURY_UNCERTAINTY = "injury_uncertainty"
-    LINE_MOVEMENT_UNSTABLE = "line_movement_unstable"
-    LOW_CONFIDENCE = "low_confidence"
+    CRITICAL_INJURY = "critical_injury"
+    CRITICAL_WEATHER = "critical_weather"
+    MISSING_KEY_PLAYER = "missing_key_player"
 
 
 class TruthModeResult:
@@ -56,14 +76,132 @@ class TruthModeResult:
 class TruthModeValidator:
     """
     Core Truth Mode validation engine
-    Enforces zero-lies principle across all picks
+    Converts Truth Mode from binary blocker to quality dial
     """
     
     def __init__(self):
-        # Minimum thresholds for publication
-        self.min_confidence = 0.48  # 48% minimum win probability
-        self.min_data_quality = 0.7  # 70% data completeness
-        self.min_stability = 10  # Minimum stability score
+        # Truth Mode level thresholds
+        self.truth_mode_thresholds = {
+            TruthModeLevel.STRICT: 75,    # High Confidence profile
+            TruthModeLevel.STANDARD: 60,  # Balanced profile
+            TruthModeLevel.FLEX: 45       # High Volatility profile
+        }
+    
+    def calculate_leg_score(
+        self,
+        leg: Dict[str, Any],
+        simulation: Optional[Dict[str, Any]] = None,
+        edge_state: str = "NO_PLAY"
+    ) -> Dict[str, Any]:
+        """
+        Calculate 0-100 quality score for a parlay leg
+        
+        FORMULA:
+        leg_score = base + edge_bonus + state_bonus - penalties
+        
+        Base (0-40): clamp((win_prob - 0.50) * 200, 0, 40)
+        Edge Bonus (0-20): clamp(edge_pts * 2.0, 0, 20)
+        State Bonus: EDGE +15, LEAN +7, NO_PLAY +0
+        Penalties:
+          - HIGH volatility: -5
+          - EXTREME volatility: -10
+          - UNSTABLE distribution: -5
+          - UNSTABLE_EXTREME distribution: -10
+          - rcl_fail (publish != true): -10
+          - stale_line flag: -5
+        
+        Returns:
+            {
+                "leg_score": int (0-100),
+                "base": int,
+                "edge_bonus": int,
+                "state_bonus": int,
+                "penalties": int,
+                "breakdown": {...}
+            }
+        """
+        # Extract data
+        win_prob = leg.get("probability", leg.get("win_probability", 0.5))
+        edge_pts = leg.get("edge", leg.get("edge_percentage", 0.0))
+        
+        # If edge_pts is in percentage form (e.g., 5.6 instead of 0.056), convert
+        if edge_pts > 1.0:
+            edge_pts = edge_pts / 100.0
+        
+        volatility = leg.get("volatility", "MEDIUM")
+        distribution_flag = leg.get("distribution_flag", "STABLE")
+        rcl_decision = leg.get("rcl_decision", {})
+        stale_line = leg.get("stale_line", False)
+        
+        # BASE SCORE (0-40)
+        base_raw = (win_prob - 0.50) * 200
+        base = max(0, min(40, int(base_raw)))
+        
+        # EDGE BONUS (0-20)
+        edge_bonus_raw = edge_pts * 100 * 2.0  # Convert to percentage and multiply by 2
+        edge_bonus = max(0, min(20, int(edge_bonus_raw)))
+        
+        # STATE BONUS
+        state_bonus = 0
+        edge_state_upper = edge_state.upper()
+        if edge_state_upper == "EDGE" or edge_state_upper == "OFFICIAL_EDGE":
+            state_bonus = 15
+        elif edge_state_upper == "LEAN" or edge_state_upper == "MODEL_LEAN":
+            state_bonus = 7
+        
+        # PENALTIES
+        penalties = 0
+        penalty_breakdown = []
+        
+        # Volatility penalties
+        volatility_upper = volatility.upper() if isinstance(volatility, str) else str(volatility).upper()
+        if volatility_upper == "HIGH":
+            penalties += 5
+            penalty_breakdown.append("HIGH_volatility: -5")
+        elif volatility_upper == "EXTREME":
+            penalties += 10
+            penalty_breakdown.append("EXTREME_volatility: -10")
+        
+        # Distribution penalties
+        dist_upper = distribution_flag.upper() if isinstance(distribution_flag, str) else str(distribution_flag).upper()
+        if dist_upper == "UNSTABLE":
+            penalties += 5
+            penalty_breakdown.append("UNSTABLE_distribution: -5")
+        elif dist_upper == "UNSTABLE_EXTREME":
+            penalties += 10
+            penalty_breakdown.append("UNSTABLE_EXTREME_distribution: -10")
+        
+        # RCL penalty (if not explicitly approved)
+        rcl_action = rcl_decision.get("action", "").lower() if rcl_decision else ""
+        if rcl_action != "publish":
+            penalties += 10
+            penalty_breakdown.append("rcl_fail: -10")
+        
+        # Stale line penalty
+        if stale_line:
+            penalties += 5
+            penalty_breakdown.append("stale_line: -5")
+        
+        # FINAL LEG SCORE
+        leg_score = max(0, min(100, base + edge_bonus + state_bonus - penalties))
+        
+        return {
+            "leg_score": leg_score,
+            "base": base,
+            "edge_bonus": edge_bonus,
+            "state_bonus": state_bonus,
+            "penalties": penalties,
+            "breakdown": {
+                "win_prob": win_prob,
+                "edge_pts": edge_pts,
+                "edge_state": edge_state,
+                "volatility": volatility,
+                "distribution_flag": distribution_flag,
+                "rcl_approved": rcl_action == "publish",
+                "stale_line": stale_line,
+                "penalty_details": penalty_breakdown
+            }
+        }
     
     def validate_pick(
         self,
@@ -266,32 +404,63 @@ class TruthModeValidator:
     
     def validate_parlay_legs(
         self,
-        legs: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        legs: List[Dict[str, Any]],
+        truth_mode_level: TruthModeLevel = TruthModeLevel.STANDARD
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
         """
-        Validate all legs in a parlay through Truth Mode
+        Validate all legs in a parlay through Truth Mode QUALITY DIAL
+        
+        HARD BLOCKS (only 3):
+        - data_integrity_pass == false
+        - model_validity_pass == false
+        - critical sport blocks (injuries/weather/key players)
+        
+        EVERYTHING ELSE → Quality scoring (0-100)
+        
+        Args:
+            legs: List of potential parlay legs
+            truth_mode_level: STRICT/STANDARD/FLEX (sets min_score threshold)
         
         Returns:
-            Tuple of (valid_legs, blocked_legs)
+            Tuple of (eligible_legs_sorted_by_score, blocked_legs, stats)
+            
+            stats = {
+                "eligible_total": int,
+                "eligible_edge": int,  # edge_state == EDGE
+                "eligible_lean": int,  # edge_state == LEAN
+                "blocked_di": int,     # data integrity fail
+                "blocked_mv": int,     # model validity fail
+                "blocked_critical": int,  # critical sport blocks
+                "truth_mode_used": str,  # STRICT/STANDARD/FLEX
+                "min_score_used": int    # 75/60/45
+            }
         """
         from db.mongo import db
         
-        valid_legs = []
+        eligible_legs = []
         blocked_legs = []
+        
+        # Counters for logging
+        eligible_edge = 0
+        eligible_lean = 0
+        blocked_di = 0
+        blocked_mv = 0
+        blocked_critical = 0
+        
+        min_score = self.truth_mode_thresholds[truth_mode_level]
         
         for leg in legs:
             # Fetch event data if only event_id provided
             event = leg.get("event")
             if isinstance(event, str) or not event:
-                # event_id passed as string, fetch full event
                 event_id = leg.get("event_id") or event
                 event = db.events.find_one({"event_id": event_id})
                 if not event:
-                    # Can't validate without event data
                     leg["truth_mode_blocked"] = True
-                    leg["block_reasons"] = ["event_not_found"]
+                    leg["block_reason"] = "data_integrity_fail"
                     leg["block_details"] = {"error": "Event not found in database"}
                     blocked_legs.append(leg)
+                    blocked_di += 1
                     continue
             
             # Fetch simulation data if not provided
@@ -303,25 +472,158 @@ class TruthModeValidator:
                     sort=[("created_at", -1)]
                 )
             
-            # Validate the leg
-            validation = self.validate_pick(
-                event=event,
-                simulation=simulation,
-                bet_type=leg.get("bet_type", "moneyline"),
-                rcl_decision=leg.get("rcl_decision")
-            )
+            # HARD BLOCK 1: Data Integrity Check
+            data_integrity = self._check_data_integrity(event, simulation)
+            if not data_integrity["passed"]:
+                leg["truth_mode_blocked"] = True
+                leg["block_reason"] = "data_integrity_fail"
+                leg["block_details"] = data_integrity
+                blocked_legs.append(leg)
+                blocked_di += 1
+                continue
             
-            if validation.is_valid:
-                leg["truth_mode_validated"] = True
-                leg["confidence_score"] = validation.confidence_score
-                valid_legs.append(leg)
+            # HARD BLOCK 2: Model Validity Check
+            if simulation:
+                model_validity = self._check_model_validity(simulation, leg.get("bet_type", "moneyline"))
+                if not model_validity["passed"]:
+                    leg["truth_mode_blocked"] = True
+                    leg["block_reason"] = "model_validity_fail"
+                    leg["block_details"] = model_validity
+                    blocked_legs.append(leg)
+                    blocked_mv += 1
+                    continue
             else:
                 leg["truth_mode_blocked"] = True
-                leg["block_reasons"] = [r.value for r in validation.block_reasons]
-                leg["block_details"] = validation.details
+                leg["block_reason"] = "model_validity_fail"
+                leg["block_details"] = {"error": "No simulation available"}
                 blocked_legs.append(leg)
+                blocked_mv += 1
+                continue
+            
+            # HARD BLOCK 3: Critical Sport Blocks (injuries, weather, key players)
+            critical_block = self._check_critical_blocks(event, simulation, leg.get("sport_key"))
+            if critical_block["blocked"]:
+                leg["truth_mode_blocked"] = True
+                leg["block_reason"] = critical_block["reason"]
+                leg["block_details"] = critical_block["details"]
+                blocked_legs.append(leg)
+                blocked_critical += 1
+                continue
+            
+            # NO HARD BLOCKS → Calculate leg_score
+            edge_state = leg.get("edge_state", leg.get("recommendation_state", "NO_PLAY"))
+            score_result = self.calculate_leg_score(leg, simulation, edge_state)
+            
+            # Add leg_score to leg data
+            leg["leg_score"] = score_result["leg_score"]
+            leg["leg_score_breakdown"] = score_result["breakdown"]
+            leg["truth_mode_validated"] = True
+            
+            # All legs that pass hard blocks are eligible (will be filtered by min_score later)
+            eligible_legs.append(leg)
+            
+            # Count by edge_state
+            edge_state_upper = edge_state.upper()
+            if edge_state_upper in ["EDGE", "OFFICIAL_EDGE"]:
+                eligible_edge += 1
+            elif edge_state_upper in ["LEAN", "MODEL_LEAN"]:
+                eligible_lean += 1
         
-        return valid_legs, blocked_legs
+        # Sort eligible legs by leg_score (highest first)
+        eligible_legs_sorted = sorted(eligible_legs, key=lambda x: x["leg_score"], reverse=True)
+        
+        # Build stats
+        stats = {
+            "eligible_total": len(eligible_legs_sorted),
+            "eligible_edge": eligible_edge,
+            "eligible_lean": eligible_lean,
+            "blocked_di": blocked_di,
+            "blocked_mv": blocked_mv,
+            "blocked_critical": blocked_critical,
+            "truth_mode_used": truth_mode_level.value,
+            "min_score_used": min_score
+        }
+        
+        logger.info(
+            f"[Truth Mode {truth_mode_level.value}] Validation complete: "
+            f"eligible={len(eligible_legs_sorted)} (EDGE={eligible_edge}, LEAN={eligible_lean}), "
+            f"blocked={len(blocked_legs)} (DI={blocked_di}, MV={blocked_mv}, Critical={blocked_critical}), "
+            f"min_score={min_score}"
+        )
+        
+        return eligible_legs_sorted, blocked_legs, stats
+    
+    def _check_critical_blocks(
+        self,
+        event: Dict[str, Any],
+        simulation: Dict[str, Any],
+        sport_key: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        HARD BLOCK 3: Critical Sport Blocks
+        
+        Only blocks for CRITICAL issues:
+        - MLB: Missing confirmed starting pitcher
+        - NFL: Missing starting QB (not backup)
+        - NHL: Missing starting goalie
+        - Weather: Extreme conditions (wind >30mph, heavy rain/snow)
+        """
+        # Check for critical injury flags
+        injury_analysis = simulation.get("injury_analysis", {})
+        critical_injuries = injury_analysis.get("critical_injuries", [])
+        
+        # Sport-specific critical checks
+        if sport_key == "baseball_mlb":
+            # MLB: Require confirmed starting pitcher
+            pitcher_confirmed = simulation.get("pitcher_confirmed", True)
+            if not pitcher_confirmed:
+                return {
+                    "blocked": True,
+                    "reason": "critical_injury",
+                    "details": {"sport": "MLB", "issue": "Starting pitcher not confirmed"}
+                }
+        
+        elif sport_key in ["americanfootball_nfl", "americanfootball_ncaaf"]:
+            # NFL/NCAAF: Check for starting QB injury
+            qb_injury = any(
+                inj.get("position") == "QB" and inj.get("status") == "OUT"
+                for inj in critical_injuries
+            )
+            if qb_injury:
+                return {
+                    "blocked": True,
+                    "reason": "critical_injury",
+                    "details": {"sport": sport_key, "issue": "Starting QB injured/out"}
+                }
+        
+        elif sport_key == "icehockey_nhl":
+            # NHL: Check for starting goalie
+            goalie_confirmed = simulation.get("goalie_confirmed", True)
+            if not goalie_confirmed:
+                return {
+                    "blocked": True,
+                    "reason": "critical_injury",
+                    "details": {"sport": "NHL", "issue": "Starting goalie not confirmed"}
+                }
+        
+        # Weather check (all sports)
+        weather = simulation.get("weather", {})
+        wind_mph = weather.get("wind_mph", 0)
+        conditions = weather.get("conditions", "").lower()
+        
+        if wind_mph > 30 or "extreme" in conditions:
+            return {
+                "blocked": True,
+                "reason": "critical_weather",
+                "details": {
+                    "wind_mph": wind_mph,
+                    "conditions": conditions,
+                    "issue": "Extreme weather conditions"
+                }
+            }
+        
+        # No critical blocks
+        return {"blocked": False}
     
     def create_no_play_response(
         self,

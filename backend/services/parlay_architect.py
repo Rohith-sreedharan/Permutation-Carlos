@@ -241,36 +241,159 @@ class ParlayArchitectService:
                 f"   • Check back in 5-10 minutes for new simulations"
             )
         
-        # Step 3.5: TRUTH MODE VALIDATION - Enforce zero-lies principle
-        print(f"🛡️ [Truth Mode] Validating {len(selected_legs['legs'])} legs through zero-lies gates...")
-        valid_legs, blocked_legs = truth_mode_validator.validate_parlay_legs(selected_legs["legs"])
+        # Step 3.5: TRUTH MODE VALIDATION with FALLBACK LADDER
+        from core.truth_mode import TruthModeLevel
         
-        if blocked_legs:
-            print(f"⚠️ [Truth Mode] {len(blocked_legs)} leg(s) blocked:")
-            for leg in blocked_legs:
-                print(f"   ❌ {leg.get('event', 'Unknown')}: {leg.get('block_reasons', [])}")
+        # Map risk_profile to Truth Mode level
+        truth_mode_map = {
+            "high_confidence": TruthModeLevel.STRICT,
+            "balanced": TruthModeLevel.STANDARD,
+            "high_volatility": TruthModeLevel.FLEX
+        }
+        initial_truth_mode = truth_mode_map.get(risk_profile, TruthModeLevel.STANDARD)
         
-        print(f"✅ [Truth Mode] {len(valid_legs)} leg(s) validated and approved")
+        # FALLBACK LADDER implementation
+        fallback_steps = []
+        final_legs = None
+        final_stats = None
+        current_leg_count = leg_count
+        current_truth_mode = initial_truth_mode
+        current_multi_sport = multi_sport
         
-        # Use only Truth Mode validated legs
-        if len(valid_legs) < 2:
-            # BLOCKED STATE - Return structured blocked response with next-best actions
-            best_single = self._find_best_single(scored_legs)
+        # Step 1: Try with initial settings
+        print(f"🛡️ [Truth Mode {current_truth_mode.value}] Validating {len(selected_legs['legs'])} legs...")
+        eligible_legs, blocked_legs, stats = truth_mode_validator.validate_parlay_legs(
+            selected_legs["legs"],
+            truth_mode_level=current_truth_mode
+        )
+        
+        # Filter by min_score threshold
+        min_score = stats["min_score_used"]
+        eligible_legs_filtered = [leg for leg in eligible_legs if leg["leg_score"] >= min_score]
+        
+        fallback_steps.append({
+            "step": "initial",
+            "truth_mode": current_truth_mode.value,
+            "leg_count": current_leg_count,
+            "multi_sport": current_multi_sport,
+            "eligible_total": len(eligible_legs_filtered),
+            "min_score": min_score
+        })
+        
+        # Check if we have enough legs meeting min_score
+        if len(eligible_legs_filtered) >= 2:
+            # SUCCESS - Select top legs by leg_score, apply correlation rules
+            final_legs = self._select_by_leg_score_with_correlation(
+                eligible_legs_filtered,
+                min(current_leg_count, len(eligible_legs_filtered))
+            )
+            final_stats = stats
+            print(f"✅ [Truth Mode {current_truth_mode.value}] {len(final_legs)} legs selected (leg_score >= {min_score})")
+        else:
+            print(f"⚠️ [Truth Mode {current_truth_mode.value}] Only {len(eligible_legs_filtered)} legs meet min_score {min_score}. Starting fallback ladder...")
             
-            # Calculate next refresh time (simulations update every 5-10 minutes)
-            next_refresh_seconds = 300  # 5 minutes
+            # FALLBACK LADDER:
+            # Step 1: Expand sports to ALL (if not already)
+            # Step 2: Relax truth mode: STRICT → STANDARD → FLEX
+            # Step 3: Reduce leg_count down to 2
+            
+            # Try expanding sports first
+            if not current_multi_sport and sport_key != "all":
+                print(f"🔄 [Fallback 1] Expanding to ALL SPORTS...")
+                # Would need to re-fetch events - for now, skip to next fallback
+                # In production, this would call generate_optimal_parlay recursively with multi_sport=True
+                current_multi_sport = True
+                fallback_steps.append({
+                    "step": "expand_sports",
+                    "action": "Attempted multi-sport expansion (requires re-fetch)",
+                    "skipped": True
+                })
+            
+            # Try relaxing truth mode
+            if current_truth_mode == TruthModeLevel.STRICT:
+                current_truth_mode = TruthModeLevel.STANDARD
+                print(f"🔄 [Fallback 2] Relaxing to STANDARD mode (min_score 60)...")
+                eligible_legs_filtered = [leg for leg in eligible_legs if leg["leg_score"] >= 60]
+                fallback_steps.append({
+                    "step": "relax_to_standard",
+                    "truth_mode": "STANDARD",
+                    "min_score": 60,
+                    "eligible_total": len(eligible_legs_filtered)
+                })
+                
+                if len(eligible_legs_filtered) >= 2:
+                    final_legs = self._select_by_leg_score_with_correlation(
+                        eligible_legs_filtered,
+                        min(current_leg_count, len(eligible_legs_filtered))
+                    )
+                    final_stats = stats
+                    final_stats["truth_mode_used"] = "STANDARD"
+                    final_stats["min_score_used"] = 60
+                    print(f"✅ [STANDARD mode] {len(final_legs)} legs selected")
+            
+            # If still not enough, relax to FLEX
+            if not final_legs and current_truth_mode == TruthModeLevel.STANDARD:
+                current_truth_mode = TruthModeLevel.FLEX
+                print(f"🔄 [Fallback 3] Relaxing to FLEX mode (min_score 45)...")
+                eligible_legs_filtered = [leg for leg in eligible_legs if leg["leg_score"] >= 45]
+                fallback_steps.append({
+                    "step": "relax_to_flex",
+                    "truth_mode": "FLEX",
+                    "min_score": 45,
+                    "eligible_total": len(eligible_legs_filtered)
+                })
+                
+                if len(eligible_legs_filtered) >= 2:
+                    final_legs = self._select_by_leg_score_with_correlation(
+                        eligible_legs_filtered,
+                        min(current_leg_count, len(eligible_legs_filtered))
+                    )
+                    final_stats = stats
+                    final_stats["truth_mode_used"] = "FLEX"
+                    final_stats["min_score_used"] = 45
+                    print(f"✅ [FLEX mode] {len(final_legs)} legs selected")
+            
+            # If still not enough, reduce leg count to 2
+            if not final_legs and len(eligible_legs_filtered) >= 2:
+                print(f"🔄 [Fallback 4] Reducing to minimum 2 legs...")
+                current_leg_count = 2
+                final_legs = self._select_by_leg_score_with_correlation(
+                    eligible_legs_filtered,
+                    2
+                )
+                final_stats = stats
+                fallback_steps.append({
+                    "step": "reduce_to_min_legs",
+                    "leg_count": 2,
+                    "eligible_total": len(eligible_legs_filtered),
+                    "selected": len(final_legs)
+                })
+                print(f"✅ [2-leg minimum] {len(final_legs)} legs selected")
+        
+        # FINAL CHECK: If still not enough, return BLOCKED response
+        if not final_legs or len(final_legs) < 2:
+            # BLOCKED STATE - Return structured blocked response with diagnostics
+            best_single = self._find_best_single(scored_legs)
             
             blocked_response = {
                 "status": "BLOCKED",
                 "message": "No Valid Parlay Available",
-                "reason": "Current games do not meet Truth Mode standards for safe parlay construction.",
-                "passed_count": len(valid_legs),
-                "failed_count": len(blocked_legs),
+                "reason": "Insufficient legs meeting Truth Mode quality standards after fallback ladder.",
+                "diagnostics": {
+                    "eligible_total": stats["eligible_total"],
+                    "eligible_edge": stats["eligible_edge"],
+                    "eligible_lean": stats["eligible_lean"],
+                    "blocked_di": stats["blocked_di"],
+                    "blocked_mv": stats["blocked_mv"],
+                    "blocked_critical": stats["blocked_critical"],
+                    "truth_mode_attempted": [s["truth_mode"] for s in fallback_steps if "truth_mode" in s],
+                    "fallback_steps": fallback_steps
+                },
                 "minimum_required": 2,
                 "failed": [
                     {
                         "game": leg.get('event', 'Unknown'),
-                        "reason": ', '.join(leg.get('block_reasons', []))
+                        "reason": leg.get('block_reason', 'unknown')
                     }
                     for leg in blocked_legs[:5]
                 ],
@@ -286,22 +409,38 @@ class ParlayArchitectService:
                         {"profile": "high_volatility", "label": "Switch to High Volatility"}
                     ]
                 },
-                "next_refresh_seconds": next_refresh_seconds,
-                "next_refresh_eta": (datetime.now(timezone.utc) + timedelta(seconds=next_refresh_seconds)).isoformat()
+                "next_refresh_seconds": 300,
+                "next_refresh_eta": (datetime.now(timezone.utc) + timedelta(seconds=300)).isoformat()
             }
             
-            # Raise ValueError with the structured response
-            # The API route will catch this and return the proper response
+            # Log comprehensive diagnostics
+            logger.warning(
+                f"[Parlay Architect] BLOCKED after fallback ladder: "
+                f"eligible_total={stats['eligible_total']} "
+                f"(EDGE={stats['eligible_edge']}, LEAN={stats['eligible_lean']}), "
+                f"blocked_total={len(blocked_legs)} "
+                f"(DI={stats['blocked_di']}, MV={stats['blocked_mv']}, Critical={stats['blocked_critical']}), "
+                f"fallback_steps={len(fallback_steps)}"
+            )
+            
             raise ValueError(blocked_response)
         
-        final_legs = valid_legs
-        transparency_message = selected_legs.get("transparency_message")
+        # SUCCESS - Build transparency message
+        transparency_message = selected_legs.get("transparency_message", "")
+        if fallback_steps:
+            fallback_info = f"Truth Mode: {final_stats['truth_mode_used']} (min_score {final_stats['min_score_used']})"
+            if len(fallback_steps) > 1:
+                fallback_info += f" | {len(fallback_steps)} fallback steps applied"
+            transparency_message = f"{transparency_message} | {fallback_info}" if transparency_message else fallback_info
         
-        # Add Truth Mode badge to transparency message
-        if transparency_message:
-            transparency_message += " | Truth Mode: All legs validated ✓"
-        else:
-            transparency_message = "Truth Mode: All legs validated through zero-lies gates ✓"
+        # Log success
+        logger.info(
+            f"[Parlay Architect] SUCCESS: {len(final_legs)} legs selected, "
+            f"truth_mode={final_stats['truth_mode_used']}, "
+            f"min_score={final_stats['min_score_used']}, "
+            f"eligible_total={final_stats['eligible_total']}, "
+            f"fallback_steps={len(fallback_steps)}"
+        )
         
         # Step 5: Calculate parlay metrics
         parlay_probability = 1.0
@@ -509,6 +648,60 @@ class ParlayArchitectService:
         
         # Below all thresholds - still classify as C but flag it
         return "C"
+    
+    def _select_by_leg_score_with_correlation(
+        self,
+        eligible_legs: List[Dict[str, Any]],
+        target_count: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Select legs by leg_score (highest first) while respecting correlation rules
+        
+        CORRELATION RULES:
+        - Same game = reject (0.8 correlation)
+        - Same sport = allow (0.1 correlation)
+        - Different sport = allow (0.0 correlation)
+        
+        Args:
+            eligible_legs: Legs sorted by leg_score (descending)
+            target_count: Number of legs to select
+        
+        Returns:
+            Selected legs (may be fewer than target_count if correlation blocks)
+        """
+        selected = []
+        used_events = set()
+        correlation_blocks = 0
+        
+        for leg in eligible_legs:
+            if len(selected) >= target_count:
+                break
+            
+            event_id = leg.get("event_id")
+            
+            # Skip if event already used (same-game parlay block)
+            if event_id in used_events:
+                correlation_blocks += 1
+                continue
+            
+            # Check correlation with existing legs
+            if selected:
+                correlation = self._check_leg_correlation(leg, selected)
+                if correlation > self.max_correlation:
+                    correlation_blocks += 1
+                    continue
+            
+            # Add leg to selection
+            selected.append(leg)
+            used_events.add(event_id)
+        
+        if correlation_blocks > 0:
+            logger.info(
+                f"[Parlay Architect] Correlation filtering: "
+                f"selected={len(selected)}, blocked={correlation_blocks}"
+            )
+        
+        return selected
     
     def _select_legs_with_tiered_fallback(
         self,

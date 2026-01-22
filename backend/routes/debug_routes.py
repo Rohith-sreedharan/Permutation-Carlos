@@ -1,6 +1,6 @@
 """
-Pick State Debug Endpoint
-Provides detailed diagnostics for each game's PICK/LEAN/NO_PLAY classification
+Edge State Debug Endpoint
+Provides detailed diagnostics for each game's EDGE/LEAN/NO_PLAY classification
 """
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, List
@@ -10,10 +10,10 @@ from db.mongo import db
 router = APIRouter()
 
 
-@router.get("/api/debug/pick-states")
-async def debug_pick_states(sport: str = "americanfootball_nfl", hours: int = 48) -> Dict[str, Any]:
+@router.get("/api/debug/edge-states")
+async def debug_edge_states(sport: str = "americanfootball_nfl", hours: int = 48) -> Dict[str, Any]:
     """
-    Debug endpoint: Per-game pick state diagnostics
+    Debug endpoint: Per-game edge state diagnostics
     
     Shows:
     - market_total, model_total, edge_pts
@@ -34,7 +34,7 @@ async def debug_pick_states(sport: str = "americanfootball_nfl", hours: int = 48
         'created_at': {'$gt': cutoff.isoformat()}
     }).sort('created_at', -1).limit(20))
     
-    # CRITICAL: Import ensure_pick_state to fix UNKNOWN states in old data
+    # CRITICAL: Import ensure_edge_state to fix legacy data
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -47,7 +47,7 @@ async def debug_pick_states(sport: str = "americanfootball_nfl", hours: int = 48
         sim = ensure_pick_state(sim)
         
         event_id = sim.get('event_id', 'unknown')
-        pick_state = sim.get('pick_state', 'UNKNOWN')
+        edge_state = sim.get('edge_state') or sim.get('pick_state', 'NO_PLAY')
         
         # Get market context
         market_total = sim.get('total_line') or sim.get('market_context', {}).get('total_line', 0)
@@ -64,7 +64,7 @@ async def debug_pick_states(sport: str = "americanfootball_nfl", hours: int = 48
         cal_publish = cal_result.get('publish', False)
         cal_block_reasons = cal_result.get('block_reasons', [])
         
-        # Get pick classification
+        # Get classification
         pick_class = sim.get('pick_classification', {})
         can_publish = pick_class.get('can_publish', False) if pick_class else sim.get('can_publish', False)
         can_parlay = pick_class.get('can_parlay', False) if pick_class else sim.get('can_parlay', False)
@@ -88,8 +88,8 @@ async def debug_pick_states(sport: str = "americanfootball_nfl", hours: int = 48
                 "confidence": confidence if confidence else None
             },
             
-            # Pick state
-            "pick_state": pick_state,
+            # Edge state (EDGE/LEAN/NO_PLAY)
+            "edge_state": edge_state,
             "can_publish": can_publish,
             "can_parlay": can_parlay,
             
@@ -147,31 +147,31 @@ async def debug_pick_states(sport: str = "americanfootball_nfl", hours: int = 48
         "state_distribution": state_counts,
         "diagnostics": diagnostics,
         "notes": {
-            "PICK": "Parlay-eligible, meets all thresholds",
-            "LEAN": "Publishable but blocked from parlays",
+            "EDGE": "Parlay-eligible, meets all thresholds",
+            "LEAN": "Publishable but not recommended for parlays",
             "NO_PLAY": "Not publishable, failed governance",
             "UNKNOWN": "ERROR - should not exist in production"
         }
     }
 
 
-@router.get("/api/debug/pick-states/export")
-async def export_pick_states_csv(sport: str = "americanfootball_nfl", hours: int = 48) -> str:
+@router.get("/api/debug/edge-states/export")
+async def export_edge_states_csv(sport: str = "americanfootball_nfl", hours: int = 48) -> str:
     """
-    Export pick state diagnostics as CSV
+    Export edge state diagnostics as CSV
     """
-    data = await debug_pick_states(sport=sport, hours=hours)
+    data = await debug_edge_states(sport=sport, hours=hours)
     
     lines = [
-        "event_id,timestamp,pick_state,can_publish,can_parlay,market_total,model_total,edge_pts,over_prob,variance,confidence,failure_reason"
+        "event_id,timestamp,edge_state,can_publish,can_parlay,market_total,model_total,edge_pts,over_prob,variance,confidence,failure_reason"
     ]
     
     for d in data['diagnostics']:
         m = d['metrics']
         lines.append(
-            f"{d['event_id']},{d['timestamp']},{d['pick_state']},{d['can_publish']},{d['can_parlay']},"
+            f"{d['event_id']},{d['timestamp']},{d['edge_state']},{d['can_publish']},{d['can_parlay']},"
             f"{m['market_total']},{m['model_total']},{m['edge_pts']},{m['over_prob']},{m['variance']},{m['confidence']},"
             f"\"{d['failure_reason'] or 'SUCCESS'}\""
         )
     
-    return "\n".join(lines)
+    return "\n".join(lines)"
