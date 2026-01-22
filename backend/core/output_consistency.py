@@ -79,6 +79,10 @@ class SharpSideOutput:
     edge_points: float
     reasoning: str
     validator_status: ValidatorStatus
+    delta: float = 0.0  # Delta value (delta_home for spread, delta_total for total, edge for ML)
+    sharp_team: Optional[str] = None  # Team with sharp side value
+    sharp_line: Optional[float] = None  # Line value for sharp side
+    has_edge: bool = False  # Whether edge exceeds threshold
 
 
 class OutputConsistencyValidator:
@@ -176,6 +180,25 @@ class OutputConsistencyValidator:
         Returns:
             SharpSideOutput with market-scoped sharp side
         """
+        # Handle None values
+        if market_spread_home is None or fair_spread_home is None:
+            logger.warning(f"Missing spread data: market={market_spread_home}, fair={fair_spread_home}")
+            return SharpSideOutput(
+                sharp_market=MarketType.SPREAD,
+                sharp_selection="NO PLAY",
+                sharp_action=SharpAction.NO_SHARP_PLAY,
+                edge_points=0.0,
+                reasoning="Missing market or fair spread data",
+                validator_status=ValidatorStatus(
+                    passed=False,
+                    errors=[ValidationError.MISSING_DATA],
+                    warnings=[],
+                    details={"market_spread_home": market_spread_home, "fair_spread_home": fair_spread_home}
+                ),
+                delta=0.0,
+                has_edge=False
+            )
+        
         # Calculate delta
         delta_home = market_spread_home - fair_spread_home
         edge_points = abs(delta_home)
@@ -193,7 +216,9 @@ class OutputConsistencyValidator:
                     errors=[],
                     warnings=[],
                     details={"delta_home": delta_home, "edge_points": edge_points}
-                )
+                ),
+                delta=delta_home,
+                has_edge=False
             )
         
         # Determine sharp side based on delta_home
@@ -239,7 +264,11 @@ class OutputConsistencyValidator:
             sharp_action=sharp_action,
             edge_points=edge_points,
             reasoning=reasoning,
-            validator_status=validator_status
+            validator_status=validator_status,
+            delta=delta_home,
+            sharp_team=sharp_team,
+            sharp_line=sharp_line,
+            has_edge=True
         )
     
     def calculate_total_sharp_side(
@@ -263,6 +292,25 @@ class OutputConsistencyValidator:
         Returns:
             SharpSideOutput for total market
         """
+        # Handle None values
+        if market_total is None or fair_total is None:
+            logger.warning(f"Missing total data: market={market_total}, fair={fair_total}")
+            return SharpSideOutput(
+                sharp_market=MarketType.TOTAL,
+                sharp_selection="NO PLAY",
+                sharp_action=SharpAction.NO_SHARP_PLAY,
+                edge_points=0.0,
+                reasoning="Missing market or fair total data",
+                validator_status=ValidatorStatus(
+                    passed=False,
+                    errors=[ValidationError.MISSING_DATA],
+                    warnings=[],
+                    details={"market_total": market_total, "fair_total": fair_total}
+                ),
+                delta=0.0,
+                has_edge=False
+            )
+        
         delta_total = fair_total - market_total
         edge_points = abs(delta_total)
         
@@ -278,7 +326,9 @@ class OutputConsistencyValidator:
                     errors=[],
                     warnings=[],
                     details={"delta_total": delta_total, "edge_points": edge_points}
-                )
+                ),
+                delta=delta_total,
+                has_edge=False
             )
         
         if delta_total > 0:
@@ -308,7 +358,9 @@ class OutputConsistencyValidator:
                     "market_total": market_total,
                     "fair_total": fair_total
                 }
-            )
+            ),
+            delta=delta_total,
+            has_edge=True
         )
     
     def calculate_ml_sharp_side(
@@ -334,6 +386,12 @@ class OutputConsistencyValidator:
         Returns:
             SharpSideOutput for moneyline
         """
+        # Handle None values - use 0.5 defaults
+        if p_win_home is None or p_win_away is None:
+            logger.warning(f"Missing ML probabilities: p_win_home={p_win_home}, p_win_away={p_win_away}")
+            p_win_home = p_win_home or 0.5
+            p_win_away = p_win_away or 0.5
+        
         edge = abs(p_win_home - p_win_away)
         
         if edge < edge_threshold:
@@ -348,7 +406,9 @@ class OutputConsistencyValidator:
                     errors=[],
                     warnings=[],
                     details={"p_win_home": p_win_home, "p_win_away": p_win_away, "edge": edge}
-                )
+                ),
+                delta=edge,
+                has_edge=False
             )
         
         if p_win_home > p_win_away:
@@ -371,7 +431,10 @@ class OutputConsistencyValidator:
                 errors=[],
                 warnings=[],
                 details={"p_win_home": p_win_home, "p_win_away": p_win_away, "edge": edge}
-            )
+            ),
+            delta=edge,
+            sharp_team=sharp_team,
+            has_edge=True
         )
     
     def build_debug_payload(

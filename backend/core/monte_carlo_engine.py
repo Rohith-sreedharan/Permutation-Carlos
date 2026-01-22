@@ -551,6 +551,11 @@ class MonteCarloEngine:
         # Extract numeric score from ConfidenceResult
         confidence_score = confidence_result.score if hasattr(confidence_result, 'score') else confidence_result
         
+        # Ensure confidence_score is always an int
+        if not isinstance(confidence_score, (int, float)):
+            confidence_score = 65  # Fallback default
+        confidence_score = int(confidence_score)
+        
         # 🔴 ANTI-OVER BIAS: Apply divergence penalty to confidence
         # Large divergences from market should reduce conviction
         if bookmaker_total_line and abs(median_total - bookmaker_total_line) > 3.5:
@@ -559,7 +564,7 @@ class MonteCarloEngine:
             divergence_penalty = min(25, excess_divergence * 3.0)  # Max 25 point penalty
             
             original_confidence = confidence_score
-            confidence_score = max(30, confidence_score - divergence_penalty)
+            confidence_score = int(max(30, confidence_score - divergence_penalty))
             
             logger.warning(
                 f"🔴 Market Divergence Penalty: {median_total:.1f} vs market {bookmaker_total_line:.1f} "
@@ -749,18 +754,19 @@ class MonteCarloEngine:
             logger.error(f"❌ Probability validation failed: {prob_validation.errors}")
         
         # Calculate SPREAD sharp side using CORRECTED delta_home logic
+        # Ensure we have valid values (use 0.0 if None)
         spread_sharp_result = output_consistency_validator.calculate_spread_sharp_side(
             home_team=home_team_name,
             away_team=away_team_name,
-            market_spread_home=vegas_spread_home_perspective,
-            fair_spread_home=model_spread_home_perspective,
+            market_spread_home=vegas_spread_home_perspective if vegas_spread_home_perspective is not None else 0.0,
+            fair_spread_home=model_spread_home_perspective if model_spread_home_perspective is not None else 0.0,
             edge_threshold=3.0
         )
         
         # Calculate TOTAL sharp side
         total_sharp_result = output_consistency_validator.calculate_total_sharp_side(
-            market_total=bookmaker_total_line,
-            fair_total=rcl_total,
+            market_total=bookmaker_total_line if bookmaker_total_line is not None else 0.0,
+            fair_total=rcl_total if rcl_total is not None else 0.0,
             edge_threshold=3.0
         )
         
@@ -768,8 +774,8 @@ class MonteCarloEngine:
         ml_sharp_result = output_consistency_validator.calculate_ml_sharp_side(
             home_team=home_team_name,
             away_team=away_team_name,
-            p_win_home=p_win_home,
-            p_win_away=p_win_away,
+            p_win_home=p_win_home if p_win_home is not None else 0.5,
+            p_win_away=p_win_away if p_win_away is not None else 0.5,
             edge_threshold=0.10  # 10% edge for ML
         )
         
@@ -1138,7 +1144,7 @@ class MonteCarloEngine:
                     # Market and fair lines (signed from home perspective)
                     "market_spread_home": vegas_spread_home_perspective,
                     "fair_spread_home": model_spread_home_perspective,
-                    "delta_home": spread_sharp_result.delta,
+                    "delta_home": spread_sharp_result.delta if spread_sharp_result else 0.0,
                     
                     # Legacy fields for backward compatibility
                     "vegas_spread": vegas_spread_home_perspective,
@@ -1150,15 +1156,15 @@ class MonteCarloEngine:
                     "sharp_side_reason": spread_analysis.sharp_side_reason,
                     
                     # NEW: Market-scoped sharp side (corrected logic)
-                    "sharp_market": spread_sharp_result.sharp_market,
-                    "sharp_selection": spread_sharp_result.sharp_selection,
-                    "sharp_action": spread_sharp_result.sharp_action,
-                    "sharp_team": spread_sharp_result.sharp_team,
-                    "sharp_line": spread_sharp_result.sharp_line,
-                    "has_edge": spread_sharp_result.has_edge,
+                    "sharp_market": spread_sharp_result.sharp_market.value if spread_sharp_result else "SPREAD",
+                    "sharp_selection": spread_sharp_result.sharp_selection if spread_sharp_result else None,
+                    "sharp_action": spread_sharp_result.sharp_action.value if spread_sharp_result else "NO_SHARP_PLAY",
+                    "sharp_team": spread_sharp_result.sharp_team if spread_sharp_result else None,
+                    "sharp_line": spread_sharp_result.sharp_line if spread_sharp_result else None,
+                    "has_edge": spread_sharp_result.has_edge if spread_sharp_result else False,
                     
                     # Legacy sharp_side (keep for backward compatibility)
-                    "sharp_side": spread_sharp_result.sharp_selection,
+                    "sharp_side": spread_sharp_result.sharp_selection if spread_sharp_result else None,
                     
                     **spread_edge_api
                 },
@@ -1168,7 +1174,7 @@ class MonteCarloEngine:
                     # Market and fair lines
                     "market_total": bookmaker_total_line,
                     "fair_total": rcl_total,
-                    "delta_total": total_sharp_result.delta,
+                    "delta_total": total_sharp_result.delta if total_sharp_result else 0.0,
                     
                     # Legacy fields
                     "vegas_total": bookmaker_total_line,
@@ -1184,13 +1190,13 @@ class MonteCarloEngine:
                     "edge_reasoning": total_reasoning if total_analysis.has_edge else None,
                     
                     # NEW: Market-scoped sharp side
-                    "sharp_market": total_sharp_result.sharp_market,
-                    "sharp_selection": total_sharp_result.sharp_selection,
-                    "sharp_action": total_sharp_result.sharp_action,
-                    "has_edge": total_sharp_result.has_edge,
+                    "sharp_market": total_sharp_result.sharp_market.value if total_sharp_result else "TOTAL",
+                    "sharp_selection": total_sharp_result.sharp_selection if total_sharp_result else None,
+                    "sharp_action": total_sharp_result.sharp_action.value if total_sharp_result else "NO_SHARP_PLAY",
+                    "has_edge": total_sharp_result.has_edge if total_sharp_result else False,
                     
                     # Legacy sharp_side (keep for backward compatibility)
-                    "sharp_side": total_sharp_result.sharp_selection,
+                    "sharp_side": total_sharp_result.sharp_selection if total_sharp_result else None,
                     
                     **total_edge_api
                 },
@@ -1198,12 +1204,12 @@ class MonteCarloEngine:
                 # ===== MONEYLINE MARKET =====
                 "moneyline": {
                     # NEW: ML sharp side analysis
-                    "sharp_market": ml_sharp_result.sharp_market,
-                    "sharp_selection": ml_sharp_result.sharp_selection,
-                    "sharp_action": ml_sharp_result.sharp_action,
-                    "sharp_team": ml_sharp_result.sharp_team,
-                    "has_edge": ml_sharp_result.has_edge,
-                    "edge_pct": round(ml_sharp_result.delta * 100, 2) if ml_sharp_result.delta else 0.0
+                    "sharp_market": ml_sharp_result.sharp_market.value if ml_sharp_result else "ML",
+                    "sharp_selection": ml_sharp_result.sharp_selection if ml_sharp_result else None,
+                    "sharp_action": ml_sharp_result.sharp_action.value if ml_sharp_result else "NO_SHARP_PLAY",
+                    "sharp_team": ml_sharp_result.sharp_team if ml_sharp_result else None,
+                    "has_edge": ml_sharp_result.has_edge if ml_sharp_result else False,
+                    "edge_pct": round(ml_sharp_result.delta * 100, 2) if ml_sharp_result and ml_sharp_result.delta else 0.0
                 },
                 
                 # ===== DEBUG PAYLOAD (DEV TOGGLE) =====
@@ -1211,20 +1217,19 @@ class MonteCarloEngine:
                     game_id=event_id,
                     home_team=home_team_name,
                     away_team=away_team_name,
-                    market_spread_home=vegas_spread_home_perspective,
-                    fair_spread_home=model_spread_home_perspective,
-                    market_total=bookmaker_total_line,
-                    fair_total=rcl_total,
+                    market_spread_home=vegas_spread_home_perspective if vegas_spread_home_perspective is not None else 0.0,
+                    fair_spread_home=model_spread_home_perspective if model_spread_home_perspective is not None else 0.0,
+                    market_total=bookmaker_total_line if bookmaker_total_line is not None else 0.0,
+                    fair_total=rcl_total if rcl_total is not None else 0.0,
                     p_win_home=p_win_home,
                     p_win_away=p_win_away,
                     p_cover_home=p_cover_home,
                     p_cover_away=p_cover_away,
                     p_over=over_probability,
                     p_under=under_probability,
-                    spread_sharp=spread_sharp_result,
-                    total_sharp=total_sharp_result,
-                    ml_sharp=ml_sharp_result,
-                    validator_status=prob_validation
+                    sharp_spread=spread_sharp_result,
+                    sharp_total=total_sharp_result,
+                    sharp_ml=ml_sharp_result
                 ),
                 
                 "disclaimer": STANDARD_DISCLAIMER
