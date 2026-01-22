@@ -48,6 +48,8 @@ class BlockReason(Enum):
     CRITICAL_INJURY = "critical_injury"
     CRITICAL_WEATHER = "critical_weather"
     MISSING_KEY_PLAYER = "missing_key_player"
+    MISSING_SIMULATION = "missing_simulation"  # Added for validate_pick compatibility
+    RCL_BLOCKED = "rcl_blocked"  # Added for validate_pick compatibility
 
 
 class TruthModeResult:
