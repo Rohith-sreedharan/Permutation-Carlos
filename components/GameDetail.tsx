@@ -438,7 +438,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     distribution_favor: winProb > 0.5 ? ((winProb - 0.5) * 2) * 100 : ((0.5 - winProb) * 2) * 100,
     injury_impact: simulation.injury_impact?.reduce((sum: number, inj: any) => sum + Math.abs(inj.offensive_impact || 0) + Math.abs(inj.defensive_impact || 0), 0) || 0,
     // CRITICAL: Model spread must preserve SIGN (+underdog, -favorite)
-    // DO NOT use Math.abs() - sign determines Sharp Side selection
+    // DO NOT use Math.abs() - sign determines Model Direction
     model_spread: simulation.avg_margin || 0
   };
   
@@ -848,7 +848,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                   
                   <div className="bg-charcoal/50 p-3 rounded-lg border border-electric-blue/30 relative group">
-                    <div className="text-xs text-light-gray mb-1">Model Spread</div>
+                    <div className="text-xs text-light-gray mb-1">Fair Spread (Model)</div>
+                    <div className="text-[10px] text-gray-500 -mt-1 mb-1">Fair line estimate (pricing), not a score prediction</div>
                     <div className="text-lg font-bold text-electric-blue font-teko">
                       {(() => {
                         const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
@@ -877,7 +878,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         • Negative (−) = Favorite spread
                       </p>
                       <p className="text-xs text-purple-300 leading-relaxed">
-                        Sharp Side Rule:<br/>
+                        Model Direction Formula:<br/>
                         If model &gt; market → Sharp = FAVORITE<br/>
                         If model &lt; market → Sharp = UNDERDOG
                       </p>
@@ -886,7 +887,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   
                   <div className="bg-purple-900/30 p-3 rounded-lg border-2 border-purple-500/50 relative group">
                     <div className="text-xs text-purple-300 mb-1 font-bold flex items-center gap-1">
-                      🎯 Sharp Side
+                      Model Direction (Informational)
                     </div>
                     <div className="text-lg font-bold text-white font-teko">
                       {(() => {
@@ -922,7 +923,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         return '';
                       })()}
                     </div>
-                    {/* Sharp Side Tooltip */}
+                    {/* Model Direction Tooltip */}
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 p-4 bg-purple-900/95 border border-purple-400/50 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
                       <p className="text-xs text-purple-200 font-semibold mb-2">
                         ⚡ This is THE BET if model has edge
@@ -1018,7 +1019,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           <div className="flex items-start gap-4">
             <div className="text-4xl">🎯</div>
             <div className="flex-1">
-              <h3 className="text-2xl font-bold text-purple-300 mb-2 font-teko">SHARP SIDE DETECTED</h3>
+              <h3 className="text-2xl font-bold text-purple-300 mb-2 font-teko">MODEL DIRECTION (INFORMATIONAL)</h3>
               
               {/* INSTITUTIONAL INTERPRETATION NOTICE */}
               <div className="mb-4 p-3 bg-gold/10 border border-gold/30 rounded-lg">
@@ -1139,13 +1140,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 
                 return (
                 <div className="p-4 bg-charcoal/50 rounded-lg border border-purple-500/30">
-                  {/* Sharp Side Callout - PROMINENT */}
+                  {/* Model Direction Callout - INFORMATIONAL */}
                   <div className="mb-4 p-4 bg-linear-to-r from-purple-900/50 to-blue-900/50 rounded-lg border-2 border-purple-400/50">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">🎯</span>
                         <div>
-                          <div className="text-xs text-purple-300 uppercase font-bold mb-1">Sharp Side Selection</div>
+                          <div className="text-xs text-purple-300 uppercase font-bold mb-1">Model Direction</div>
                           <div className="text-xl font-bold text-white">{spreadContext.sharpSideDisplay}</div>
                         </div>
                       </div>
@@ -1185,13 +1186,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       </div>
                     </div>
                     <div className="bg-navy/50 p-3 rounded">
-                      <div className="text-xs text-gray-400 mb-1">Model Spread</div>
+                      <div className="text-xs text-gray-400 mb-1">Fair Spread (Model)</div>
                       <div className="text-base font-bold text-purple-300">
                         {spreadContext.modelSpreadDisplay}
                       </div>
                     </div>
                     <div className="bg-purple-900/50 p-3 rounded border border-purple-500/30">
-                      <div className="text-xs text-purple-300 mb-1 font-bold">🎯 Sharp Side</div>
+                      <div className="text-xs text-purple-300 mb-1 font-bold">Model Direction (Informational)</div>
                       <div className="text-base font-bold text-white">
                         {spreadContext.sharpSideDisplay}
                       </div>
@@ -1351,7 +1352,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
                     <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
                     <div className="text-xs text-yellow-300 mt-1">
-                      Sharp side is on {sharp_market} market, not SPREAD. Recommendation hidden.
+                      Model direction is on {sharp_market} market, not SPREAD. Recommendation hidden.
                     </div>
                   </div>
                 )}
@@ -1374,10 +1375,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {/* Sharp Side (Only if NOT mismatched and has edge) */}
+                {/* Model Direction (Only if NOT mismatched and has edge) */}
                 {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
                   <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                    <div className="text-xs text-purple-300 uppercase mb-1">Sharp Side (Spread)</div>
+                    <div className="text-xs text-purple-300 uppercase mb-1">Model Direction (Spread)</div>
                     <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
                     <div className="text-xs text-gray-400 mt-2">
                       Edge: {spreadData?.edge_points?.toFixed(1)} pts | Grade: {spreadData?.edge_grade}
@@ -1425,7 +1426,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
                     <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
                     <div className="text-xs text-yellow-300 mt-1">
-                      Sharp side is on {sharp_market} market, not MONEYLINE. Recommendation hidden.
+                      Model direction is on {sharp_market} market, not MONEYLINE. Recommendation hidden.
                     </div>
                   </div>
                 )}
@@ -1450,7 +1451,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
                 {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
                   <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                    <div className="text-xs text-purple-300 uppercase mb-1">Sharp Side (Moneyline)</div>
+                    <div className="text-xs text-purple-300 uppercase mb-1">Model Direction (ML)</div>
                     <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
                     <div className="text-xs text-gray-400 mt-2">
                       Edge: {mlData?.edge_pct?.toFixed(1)}% probability advantage
@@ -1499,7 +1500,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
                     <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
                     <div className="text-xs text-yellow-300 mt-1">
-                      Sharp side is on {sharp_market} market, not TOTAL. Recommendation hidden.
+                      Model direction is on {sharp_market} market, not TOTAL. Recommendation hidden.
                     </div>
                   </div>
                 )}
@@ -1524,7 +1525,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
                 {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
                   <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                    <div className="text-xs text-purple-300 uppercase mb-1">Sharp Side (Total)</div>
+                    <div className="text-xs text-purple-300 uppercase mb-1">Model Direction (Total)</div>
                     <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
                     <div className="text-xs text-gray-400 mt-2">
                       Edge: {totalData?.edge_points?.toFixed(1)} pts | Grade: {totalData?.edge_grade}

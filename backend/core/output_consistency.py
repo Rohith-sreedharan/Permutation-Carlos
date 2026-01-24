@@ -149,6 +149,8 @@ class OutputConsistencyValidator:
         away_team: str,
         market_spread_home: float,
         fair_spread_home: float,
+        p_cover_home: Optional[float] = None,
+        p_cover_away: Optional[float] = None,
         edge_threshold: float = 2.0
     ) -> SharpSideOutput:
         """
@@ -243,18 +245,48 @@ class OutputConsistencyValidator:
         
         sharp_selection = f"{sharp_team} {sharp_line:+.1f}"
         
+        # CRITICAL VALIDATOR: Prevent contradictions where sharp pick has <50% cover probability
+        errors = []
+        warnings = []
+        passed = True
+        
+        if p_cover_home is not None and p_cover_away is not None:
+            # Determine which team was picked
+            pick_side = "HOME" if delta_home > 0 else "AWAY"
+            p_pick_cover = p_cover_home if pick_side == "HOME" else p_cover_away
+            
+            # If our sharp pick has <50% cover probability, this is a fatal contradiction
+            if p_pick_cover < 0.50:
+                errors.append(
+                    f"SPREAD_PICK_CONTRADICTS_COVER_PROB: {sharp_team} {sharp_line:+.1f} "
+                    f"has only {p_pick_cover*100:.1f}% cover probability. Cannot recommend side with <50% cover."
+                )
+                passed = False
+                # Override to NO PLAY
+                sharp_selection = "NO PLAY"
+                sharp_action = SharpAction.NO_SHARP_PLAY
+                sharp_team = ""
+                sharp_line = 0.0
+                reasoning = (
+                    f"BLOCKED: Edge calculation suggests {sharp_team} but cover probability "
+                    f"is only {p_pick_cover*100:.1f}%. This indicates a data mapping error or "
+                    f"team/side swap. Blocking to prevent incorrect recommendation."
+                )
+        
         # Validate sharp direction
         validator_status = ValidatorStatus(
-            passed=True,
-            errors=[],
-            warnings=[],
+            passed=passed,
+            errors=errors,
+            warnings=warnings,
             details={
                 "delta_home": delta_home,
                 "edge_points": edge_points,
                 "market_spread_home": market_spread_home,
                 "fair_spread_home": fair_spread_home,
                 "sharp_team": sharp_team,
-                "sharp_line": sharp_line
+                "sharp_line": sharp_line,
+                "p_cover_home": p_cover_home,
+                "p_cover_away": p_cover_away
             }
         )
         
@@ -268,7 +300,7 @@ class OutputConsistencyValidator:
             delta=delta_home,
             sharp_team=sharp_team,
             sharp_line=sharp_line,
-            has_edge=True
+            has_edge=(True if passed else False)
         )
     
     def calculate_total_sharp_side(

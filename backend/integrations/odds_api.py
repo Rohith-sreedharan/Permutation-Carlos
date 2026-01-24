@@ -1,13 +1,17 @@
 import os
 import requests
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.timezone import parse_iso_to_est, format_est_date, format_est_datetime, now_utc
+from core.sim_integrity import normalize_spread_from_odds_api, CanonicalOdds
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # API Key Failover Strategy
 # Primary key from environment, fallback keys hardcoded
@@ -272,11 +276,45 @@ def extract_market_lines(event: dict) -> dict:
             
             # Extract spread
             if market_key == "spreads" and spread_line is None and len(outcomes) >= 2:
-                # Use home team spread
+                # Extract both home and away spreads for validation
+                spread_home = None
+                spread_away = None
+                home_team_name = event.get("home_team")
+                away_team_name = event.get("away_team")
+                
                 for outcome in outcomes:
-                    if outcome.get("name") == event.get("home_team"):
-                        spread_line = outcome.get("point", 0)
-                        break
+                    outcome_name = outcome.get("name", "")
+                    outcome_point = outcome.get("point")
+                    
+                    # Match home team (case-insensitive, strip whitespace)
+                    if outcome_name.strip().lower() == home_team_name.strip().lower():
+                        spread_home = outcome_point
+                    # Match away team
+                    elif outcome_name.strip().lower() == away_team_name.strip().lower():
+                        spread_away = outcome_point
+                
+                # SIM INTEGRITY: Use canonical normalization (hard fails on invalid spreads)
+                canonical_odds = normalize_spread_from_odds_api(
+                    home_team=home_team_name,
+                    away_team=away_team_name,
+                    home_spread_raw=spread_home,
+                    away_spread_raw=spread_away,
+                    tolerance=0.01  # Strict tolerance
+                )
+                
+                if canonical_odds is None:
+                    logger.error(
+                        f"❌ REJECTING ODDS SNAPSHOT: {event.get('event_id')} "
+                        f"Spread integrity validation failed. DO NOT SIMULATE."
+                    )
+                    spread_line = None  # Mark as invalid
+                else:
+                    spread_line = canonical_odds.home_spread
+                    logger.info(
+                        f"✅ Canonical spread validated: {home_team_name} {spread_line:+.1f} "
+                        f"(Favorite: {canonical_odds.market_favorite_team}, "
+                        f"Underdog: {canonical_odds.market_underdog_team})"
+                    )
             
             # Extract total
             if market_key == "totals" and total_line is None and len(outcomes) > 0:

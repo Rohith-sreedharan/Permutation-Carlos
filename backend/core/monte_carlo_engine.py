@@ -46,6 +46,15 @@ from core.sharp_analysis import (
 from core.feedback_loop import store_prediction
 from core.reality_check_layer import get_public_total_projection
 from core.output_consistency import output_consistency_validator
+from utils.calibration_logger import calibration_logger
+from utils.team_validator import team_identity_validator, extreme_edge_validator
+from core.sim_integrity import (
+    CanonicalOdds,
+    SimulationMetadata,
+    IntegrityValidator,
+    CURRENT_SIM_VERSION,
+    generate_odds_snapshot_id
+)
 
 logger = logging.getLogger(__name__)
 
@@ -556,7 +565,15 @@ class MonteCarloEngine:
             confidence_score = 65  # Fallback default
         confidence_score = int(confidence_score)
         
-        # 🔴 ANTI-OVER BIAS: Apply divergence penalty to confidence
+        # � CONFIDENCE VALIDATION: Never exceed 100%
+        if confidence_score > 100:
+            logger.error(f"❌ CONFIDENCE OVERFLOW: {confidence_score}% exceeds 100% - clamping to 100")
+            confidence_score = 100
+        elif confidence_score < 0:
+            logger.error(f"❌ CONFIDENCE UNDERFLOW: {confidence_score}% below 0% - clamping to 0")
+            confidence_score = 0
+        
+        # �🔴 ANTI-OVER BIAS: Apply divergence penalty to confidence
         # Large divergences from market should reduce conviction
         if bookmaker_total_line and abs(median_total - bookmaker_total_line) > 3.5:
             divergence = abs(median_total - bookmaker_total_line)
@@ -649,6 +666,22 @@ class MonteCarloEngine:
         home_team_name = team_a.get("name", "Team A")
         away_team_name = team_b.get("name", "Team B")
         
+        # ===== TEAM IDENTITY VALIDATION (CRITICAL) =====
+        # Generate canonical team_key for each team (prevents mapping errors)
+        try:
+            home_team_identity = team_identity_validator.create_team_identity(home_team_name, is_home=True)
+            away_team_identity = team_identity_validator.create_team_identity(away_team_name, is_home=False)
+            
+            home_team_key = home_team_identity.team_key
+            away_team_key = away_team_identity.team_key
+            
+            logger.info(f"🔑 Team keys: HOME={home_team_key} ({home_team_name}), AWAY={away_team_key} ({away_team_name})")
+        except ValueError as e:
+            logger.error(f"❌ Team key generation failed: {e}")
+            # Use fallback keys based on first 3 chars (not ideal but better than crashing)
+            home_team_key = home_team_name[:3].upper()
+            away_team_key = away_team_name[:3].upper()
+        
         # Calculate raw model spread (home perspective: positive = home favored)
         model_spread_home_perspective = avg_margin / iterations
         
@@ -657,14 +690,45 @@ class MonteCarloEngine:
         vegas_spread_home_perspective = market_context.get('current_spread', 0.0)
         
         # SPREAD: Calculate cover probabilities at current market line
-        # Count how many sims have home team covering the vegas spread
-        # Example: If vegas_spread_home = -4.5, home covers if margin > 4.5
+        # CRITICAL FIX: Spread cover logic was inverted
+        # 
+        # 🔒 FINAL LOCKED SPEC — CARD, MARKET & PARLAY LOGIC
+        # ===================================================
+        # EDGE and LEAN determine eligibility.
+        # Model Direction explains bias only.
+        # Diagnostics inform — they do not decide.
+        #
+        # Parlay Eligibility: parlay_eligible = (edge_state == 'EDGE' or edge_state == 'LEAN')
+        # Telegram Posting: telegram_allowed = (edge_state == 'EDGE')
+        # LEANS: Shown on platform, allowed in parlays, NOT auto-posted to Telegram
+        # ===================================================
+        # 
+        # Spread convention: vegas_spread_home is from HOME perspective
+        #   - Negative (e.g., -7.5) = HOME is favorite, needs to win by MORE than 7.5
+        #   - Positive (e.g., +3.5) = HOME is underdog, covers if loses by LESS than 3.5 or wins
+        # 
+        # Cover logic:
+        #   - HOME covers if: margin + vegas_spread_home > 0
+        #   - Example 1: HOME -7.5, margin = +10 → 10 + (-7.5) = 2.5 > 0 ✅ Covers
+        #   - Example 2: HOME -7.5, margin = +5  → 5 + (-7.5) = -2.5 < 0 ❌ Doesn't cover
+        #   - Example 3: HOME +3.5, margin = -2  → -2 + 3.5 = 1.5 > 0 ✅ Covers
+        # 
         margins_array = np.array(results["margins"])
-        home_covers_count = np.sum(margins_array > vegas_spread_home_perspective)
+        home_covers_count = np.sum(margins_array + vegas_spread_home_perspective > 0)
         p_cover_home = float(home_covers_count / iterations)
         p_cover_away = 1.0 - p_cover_home
         
         logger.info(f"Cover Probabilities at market line {vegas_spread_home_perspective}: Home {p_cover_home:.1%}, Away {p_cover_away:.1%}")
+        
+        # SIM INTEGRITY: Generate metadata for versioning
+        odds_snapshot_id = generate_odds_snapshot_id(
+            home_team_name,
+            away_team_name,
+            vegas_spread_home_perspective,
+            datetime.now(timezone.utc)
+        )
+        sim_metadata = SimulationMetadata.create_current(odds_snapshot_id)
+        logger.info(f"📊 Sim Metadata: version={sim_metadata.sim_version}, build={sim_metadata.engine_build_id}, snapshot={sim_metadata.odds_snapshot_id}")
         
         # Determine favorite/underdog based STRICTLY on Vegas spread sign
         # (Vegas is the canonical source of truth for market roles)
@@ -754,14 +818,43 @@ class MonteCarloEngine:
             logger.error(f"❌ Probability validation failed: {prob_validation.errors}")
         
         # Calculate SPREAD sharp side using CORRECTED delta_home logic
-        # Ensure we have valid values (use 0.0 if None)
+        # CRITICAL: Pass cover probabilities to enable contradiction validator
         spread_sharp_result = output_consistency_validator.calculate_spread_sharp_side(
             home_team=home_team_name,
             away_team=away_team_name,
             market_spread_home=vegas_spread_home_perspective if vegas_spread_home_perspective is not None else 0.0,
             fair_spread_home=model_spread_home_perspective if model_spread_home_perspective is not None else 0.0,
+            p_cover_home=p_cover_home if p_cover_home is not None else None,
+            p_cover_away=p_cover_away if p_cover_away is not None else None,
             edge_threshold=3.0
         )
+        
+        # SIM INTEGRITY: Run runtime guards
+        canonical_odds = CanonicalOdds(
+            home_team=home_team_name,
+            away_team=away_team_name,
+            home_spread=vegas_spread_home_perspective
+        )
+        
+        guards_passed, integrity_flags = IntegrityValidator.run_all_guards(
+            home_team=home_team_name,
+            away_team=away_team_name,
+            canonical_odds=canonical_odds,
+            fair_spread_home=model_spread_home_perspective,
+            p_cover_home=p_cover_home,
+            p_cover_away=p_cover_away,
+            p_win_home=p_win_home,
+            p_win_away=p_win_away,
+            confidence=confidence_score,
+            variance_label="HIGH" if variance_total > 15 else "MODERATE"
+        )
+        
+        if not guards_passed:
+            logger.warning(f"⚠️ INTEGRITY GUARDS TRIGGERED:\n" + "\n".join(f"  - {flag}" for flag in integrity_flags))
+            # Force downgrade to NO PLAY
+            spread_sharp_result.sharp_action = "NO_SHARP_PLAY"
+            spread_sharp_result.sharp_selection = "NO PLAY - DATA/LOGIC FLAG"
+            spread_sharp_result.reasoning = "; ".join(integrity_flags)
         
         # Calculate TOTAL sharp side
         total_sharp_result = output_consistency_validator.calculate_total_sharp_side(
@@ -1241,6 +1334,10 @@ class MonteCarloEngine:
             "market_context": market_context,
             "created_at": datetime.now(timezone.utc).isoformat(),
             
+            # SIM INTEGRITY: Version metadata
+            "sim_metadata": sim_metadata.to_dict(),
+            "integrity_flags": integrity_flags if not guards_passed else [],
+            
             # Grading status (for Trust Loop)
             "status": "pending",  # Will be updated to WIN/LOSS/PUSH after game completes
             
@@ -1551,6 +1648,12 @@ class MonteCarloEngine:
         
         # Extract numeric score from ConfidenceResult
         confidence_score = confidence_result.score if hasattr(confidence_result, 'score') else confidence_result
+        
+        # 🔒 CONFIDENCE VALIDATION: Never exceed 100%
+        if isinstance(confidence_score, (int, float)):
+            confidence_score = int(max(0, min(100, confidence_score)))
+        else:
+            confidence_score = 65  # Fallback default
         
         # Reasoning for 1H prediction
         reasoning = self._generate_1h_reasoning(

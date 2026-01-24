@@ -158,13 +158,26 @@ class ParlayArchitectService:
             
             # Extract confidence from outcome or root level, with fallback
             outcome = simulation.get("outcome", {})
-            raw_confidence = outcome.get("confidence", simulation.get("confidence_score", 0.65))
+            raw_confidence = outcome.get("confidence", simulation.get("confidence_score", 65))
             
-            # Normalize confidence to usable range
-            if raw_confidence < 0.30:
+            # Normalize confidence to 0-1 range (backend stores as 0-100 integer)
+            if raw_confidence > 1:
+                # confidence_score is 0-100 integer (e.g., 65) - convert to 0-1 float
+                confidence = raw_confidence / 100.0
+            elif raw_confidence < 0.30:
+                # Already 0-1 float but very low - boost slightly
                 confidence = 0.40 + (raw_confidence / 0.30) * 0.15  # Map 0-0.30 to 0.40-0.55
             else:
+                # Already 0-1 float
                 confidence = raw_confidence
+            
+            # Validate confidence is in valid range
+            if confidence > 1.0:
+                logger.error(f"Invalid confidence {confidence} for {event['event_id']} - clamping to 1.0")
+                confidence = 1.0
+            elif confidence < 0:
+                logger.error(f"Invalid confidence {confidence} for {event['event_id']} - clamping to 0.0")
+                confidence = 0.0
             
             # CRITICAL: Extract edge_state from simulation
             edge_state = simulation.get("edge_state", simulation.get("pick_state", "NO_PLAY"))
@@ -289,9 +302,18 @@ class ParlayArchitectService:
                 eligible_legs_filtered,
                 min(current_leg_count, len(eligible_legs_filtered))
             )
-            final_stats = stats
-            print(f"✅ [Truth Mode {current_truth_mode.value}] {len(final_legs)} legs selected (leg_score >= {min_score})")
-        else:
+            
+            # CRITICAL: Check if correlation filtering reduced leg count below minimum
+            if len(final_legs) < 3:
+                # Correlation blocked too many - treat as insufficient legs
+                print(f"⚠️ [Correlation Filter] Reduced from {len(eligible_legs_filtered)} eligible to {len(final_legs)} legs. Starting fallback ladder...")
+                # Don't set final_stats yet - fall through to fallback ladder
+            else:
+                final_stats = stats
+                print(f"✅ [Truth Mode {current_truth_mode.value}] {len(final_legs)} legs selected (leg_score >= {min_score})")
+        
+        # Enter fallback ladder if: initial check failed OR correlation filtering reduced legs below minimum
+        if (not final_stats and len(eligible_legs_filtered) < 3) or (len(final_legs) < 3 and not final_stats):
             print(f"⚠️ [Truth Mode {current_truth_mode.value}] Only {len(eligible_legs_filtered)} legs meet min_score {min_score}. Starting fallback ladder...")
             
             # FALLBACK LADDER:
@@ -324,14 +346,19 @@ class ParlayArchitectService:
                 })
                 
                 if len(eligible_legs_filtered) >= 3:
-                    final_legs = self._select_by_leg_score_with_correlation(
+                    temp_legs = self._select_by_leg_score_with_correlation(
                         eligible_legs_filtered,
                         min(current_leg_count, len(eligible_legs_filtered))
                     )
-                    final_stats = stats
-                    final_stats["truth_mode_used"] = "STANDARD"
-                    final_stats["min_score_used"] = 60
-                    print(f"✅ [STANDARD mode] {len(final_legs)} legs selected")
+                    # Only accept if correlation didn't reduce below minimum
+                    if len(temp_legs) >= 3:
+                        final_legs = temp_legs
+                        final_stats = stats
+                        final_stats["truth_mode_used"] = "STANDARD"
+                        final_stats["min_score_used"] = 60
+                        print(f"✅ [STANDARD mode] {len(final_legs)} legs selected")
+                    else:
+                        print(f"⚠️ [STANDARD mode] Correlation reduced legs to {len(temp_legs)}, continuing fallback...")
             
             # If still not enough, relax to FLEX
             if not final_legs and current_truth_mode == TruthModeLevel.STANDARD:
@@ -346,31 +373,49 @@ class ParlayArchitectService:
                 })
                 
                 if len(eligible_legs_filtered) >= 3:
-                    final_legs = self._select_by_leg_score_with_correlation(
+                    temp_legs = self._select_by_leg_score_with_correlation(
                         eligible_legs_filtered,
                         min(current_leg_count, len(eligible_legs_filtered))
                     )
-                    final_stats = stats
-                    final_stats["truth_mode_used"] = "FLEX"
-                    final_stats["min_score_used"] = 45
-                    print(f"✅ [FLEX mode] {len(final_legs)} legs selected")
+                    # Only accept if correlation didn't reduce below minimum
+                    if len(temp_legs) >= 3:
+                        final_legs = temp_legs
+                        final_stats = stats
+                        final_stats["truth_mode_used"] = "FLEX"
+                        final_stats["min_score_used"] = 45
+                        print(f"✅ [FLEX mode] {len(final_legs)} legs selected")
+                    else:
+                        print(f"⚠️ [FLEX mode] Correlation reduced legs to {len(temp_legs)}, continuing fallback...")
             
             # If still not enough, reduce leg count to 3
             if not final_legs and len(eligible_legs_filtered) >= 3:
                 print(f"🔄 [Fallback 4] Reducing to minimum 3 legs...")
                 current_leg_count = 3
-                final_legs = self._select_by_leg_score_with_correlation(
+                temp_legs = self._select_by_leg_score_with_correlation(
                     eligible_legs_filtered,
                     3
                 )
-                final_stats = stats
-                fallback_steps.append({
-                    "step": "reduce_to_min_legs",
-                    "leg_count": 3,
-                    "eligible_total": len(eligible_legs_filtered),
-                    "selected": len(final_legs)
-                })
-                print(f"✅ [3-leg minimum] {len(final_legs)} legs selected")
+                # Only accept if correlation didn't reduce below minimum
+                if len(temp_legs) >= 3:
+                    final_legs = temp_legs
+                    final_stats = stats
+                    fallback_steps.append({
+                        "step": "reduce_to_min_legs",
+                        "leg_count": 3,
+                        "eligible_total": len(eligible_legs_filtered),
+                        "selected": len(final_legs)
+                    })
+                    print(f"✅ [3-leg minimum] {len(final_legs)} legs selected")
+                else:
+                    print(f"⚠️ [3-leg minimum] Correlation reduced legs to {len(temp_legs)}, marking as BLOCKED")
+                    fallback_steps.append({
+                        "step": "reduce_to_min_legs_failed",
+                        "leg_count": 3,
+                        "eligible_total": len(eligible_legs_filtered),
+                        "selected_before_correlation": len(eligible_legs_filtered),
+                        "selected_after_correlation": len(temp_legs),
+                        "fail_reason": "CORRELATION_BLOCK"
+                    })
         
         # FINAL CHECK: If still not enough, return BLOCKED response
         if not final_legs or len(final_legs) < 3:
@@ -389,10 +434,24 @@ class ParlayArchitectService:
             # Build leg score distribution for eligible but below threshold
             below_threshold_count = len([leg for leg in eligible_legs if leg.get("leg_score", 0) < min_score])
             
+            # Determine primary fail reason
+            fail_reason = "INSUFFICIENT_QUALIFIED_LEGS"
+            if len(eligible_legs_filtered) >= 3 and len(final_legs) < 3:
+                fail_reason = "CORRELATION_BLOCK"
+            elif len(eligible_legs) > 0 and len(eligible_legs_filtered) < 3:
+                fail_reason = "TRUTH_MODE_BLOCK"
+            elif len(scored_legs) == 0:
+                fail_reason = "MARKET_DATA_MISSING"
+            
             blocked_response = {
                 "status": "BLOCKED",
+                "parlay_status": "FAIL",
+                "fail_reason": fail_reason,
                 "message": "No Valid Parlay Available",
                 "reason": "Insufficient legs meeting Truth Mode quality standards after fallback ladder.",
+                "requested_count": leg_count,
+                "eligible_pool_count": len(eligible_legs_filtered) if eligible_legs_filtered else 0,
+                "selected_count": len(final_legs) if final_legs else 0,
                 "parlay_debug": {
                     "total_games_scanned": len(scored_legs),
                     "attempts": len(fallback_steps),
@@ -497,8 +556,13 @@ class ParlayArchitectService:
         
         parlay_data = {
             "parlay_id": parlay_id,
+            "status": "SUCCESS",
+            "parlay_status": "PASS",
             "sport": sport_key,
             "leg_count": len(final_legs),
+            "requested_count": leg_count,
+            "eligible_pool_count": len(eligible_legs_filtered) if eligible_legs_filtered else 0,
+            "selected_count": len(final_legs),
             "risk_profile": risk_profile,
             "legs": final_legs,
             "parlay_odds": american_odds,
@@ -562,26 +626,46 @@ class ParlayArchitectService:
         """
         Calculate correlation between new leg and existing legs
         
-        CROSS-SPORT SUPPORT:
+        CROSS-SPORT SUPPORT + TEAM-BASED CORRELATION:
         - Same game = high correlation (bad) → 0.8
-        - Same sport, different games = low correlation → 0.1
+        - Same team involved (even different games) = medium correlation → 0.5
+        - Same sport, different games/teams = low correlation → 0.1
         - Different sports = ZERO correlation (independent) → 0.0
         
-        This enables cross-sport parlays (NFL + NBA + NHL in single parlay)
+        This enables cross-sport parlays while blocking correlated team outcomes
         """
         max_correlation = 0.0
+        
+        # Extract teams from new leg's event string (format: "Away @ Home")
+        new_event = new_leg.get("event", "")
+        new_teams = set()
+        if " @ " in new_event:
+            away, home = new_event.split(" @ ")
+            new_teams = {away.strip(), home.strip()}
         
         for leg in existing_legs:
             if leg["event_id"] == new_leg["event_id"]:
                 # Same game - very high correlation (blocks same-game parlays)
                 correlation = 0.8
-            elif leg["sport"] == new_leg["sport"]:
-                # Same sport, different games - low correlation
-                correlation = 0.1
             else:
-                # Different sports - ZERO correlation (fully independent)
-                # This allows cross-sport composition: NFL + NBA + NHL
-                correlation = 0.0
+                # Check for same team involvement
+                leg_event = leg.get("event", "")
+                leg_teams = set()
+                if " @ " in leg_event:
+                    away, home = leg_event.split(" @ ")
+                    leg_teams = {away.strip(), home.strip()}
+                
+                # If any team overlaps, it's correlated
+                if new_teams and leg_teams and new_teams & leg_teams:
+                    # Same team involved (e.g., Warriors in one game, Warriors in another)
+                    correlation = 0.5
+                elif leg.get("sport") == new_leg.get("sport"):
+                    # Same sport, different games/teams - low correlation
+                    correlation = 0.1
+                else:
+                    # Different sports - ZERO correlation (fully independent)
+                    # This allows cross-sport composition: NFL + NBA + NHL
+                    correlation = 0.0
             
             max_correlation = max(max_correlation, correlation)
         

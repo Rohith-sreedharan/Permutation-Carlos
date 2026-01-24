@@ -1,20 +1,27 @@
 /**
- * Edge State System v2.0 — 3-State Classification
+ * Edge State System v3.0 — 3-State Classification
  * 
  * CRITICAL: Every game resolves to ONE AND ONLY ONE state
  * 
- * Master States (NON-NEGOTIABLE):
- * - OFFICIAL_EDGE: Actionable play, eligible for Telegram & PickPlay
- * - MODEL_LEAN: Informational only, clearly labeled as non-actionable
- * - NO_ACTION: Suppressed - no bet language anywhere
+ * Master States (LOCKED - FINAL SPEC):
+ * - EDGE: Certified advantage, actionable for single picks and parlays
+ * - LEAN: Directional value, higher variance, allowed in parlays
+ * - NEUTRAL: No actionable value, informational only
  * 
- * RULE: ONLY OFFICIAL_EDGE can generate betting recommendations
+ * PARLAY ELIGIBILITY:
+ * parlay_eligible = (edge_state === EDGE || edge_state === LEAN)
+ * 
+ * TELEGRAM POSTING:
+ * telegram_allowed = (edge_state === EDGE)
+ * 
+ * RULE: EDGE and LEAN determine eligibility. Model Direction explains bias only.
+ *       Diagnostics inform — they do not decide.
  */
 
 export enum EdgeState {
-  OFFICIAL_EDGE = 'official_edge',         // ✅ Actionable play
-  MODEL_LEAN = 'model_lean',               // ⚠️ Informational only
-  NO_ACTION = 'no_action'                  // ⛔ Suppressed
+  EDGE = 'EDGE',           // ✅ Certified advantage
+  LEAN = 'LEAN',           // ⚠️ Directional value, higher variance  
+  NEUTRAL = 'NEUTRAL'      // ⛔ No actionable value
 }
 
 // Confidence reason codes for debugging
@@ -55,8 +62,10 @@ export interface EdgeClassification {
 }
 
 // HYSTERESIS THRESHOLDS - prevent edge flicker
-const EDGE_PROMOTE_THRESHOLD = 4.0;   // pts to promote to OFFICIAL_EDGE
-const EDGE_DEMOTE_THRESHOLD = 3.0;    // pts to demote from OFFICIAL_EDGE
+const EDGE_PROMOTE_THRESHOLD = 4.0;   // pts to promote to EDGE
+const EDGE_DEMOTE_THRESHOLD = 3.0;    // pts to demote from EDGE
+const LEAN_PROMOTE_THRESHOLD = 1.5;   // pts to promote to LEAN
+const LEAN_DEMOTE_THRESHOLD = 1.0;    // pts to demote from LEAN
 const CONFIDENCE_PROMOTE_THRESHOLD = 50;  // confidence to promote
 const CONFIDENCE_DEMOTE_THRESHOLD = 40;   // confidence to demote
 
@@ -164,8 +173,8 @@ export function calculateConfidenceScore(
  * Confidence bands:
  * - 70%+ → Very stable (rare, strong EDGE)
  * - 50–69% → Playable EDGE  
- * - 25–49% → MODEL LEAN only
- * - <25% → NO_ACTION (blocked)
+ * - 25–49% → LEAN only
+ * - <25% → NEUTRAL (blocked)
  */
 export function classifySpreadEdge(
   spreadDeviation: number,
@@ -180,7 +189,7 @@ export function classifySpreadEdge(
   if (confidence === null) {
     stateReasons.push('Confidence unavailable (missing inputs)');
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side: null,
       magnitude: spreadDeviation,
       probability: 0.5,
@@ -198,7 +207,7 @@ export function classifySpreadEdge(
   if (spreadDeviation < 2.0) {
     stateReasons.push(`Edge magnitude too small (${spreadDeviation.toFixed(1)} pts < 2.0)`);
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side: null,
       magnitude: spreadDeviation,
       probability: 0.5,
@@ -218,7 +227,7 @@ export function classifySpreadEdge(
   let effectiveConfidencePromote = CONFIDENCE_PROMOTE_THRESHOLD;
   let effectiveConfidenceDemote = CONFIDENCE_DEMOTE_THRESHOLD;
   
-  if (previousState === EdgeState.OFFICIAL_EDGE) {
+  if (previousState === EdgeState.EDGE) {
     // Currently an EDGE - use demote thresholds
     effectivePromoteThreshold = EDGE_DEMOTE_THRESHOLD;
     effectiveConfidencePromote = CONFIDENCE_DEMOTE_THRESHOLD;
@@ -229,13 +238,13 @@ export function classifySpreadEdge(
   const isConfidenceLean = confidence >= 25 && confidence < effectiveConfidencePromote;
   const isHighVolatility = volatility > 300;
   
-  // NO_ACTION: Confidence < 25% OR (low edge AND high volatility)
+  // NEUTRAL: Confidence < 25% OR (low edge AND high volatility)
   if (isConfidenceBlocked || (spreadDeviation < 3.0 && isHighVolatility)) {
     stateReasons.push(`Confidence too low (${confidence}% < 25%)`);
     if (isHighVolatility) stateReasons.push(`High volatility (σ=${volatility.toFixed(0)})`);
     
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side: spreadDeviation >= 2.0 ? valueSide : null,
       magnitude: spreadDeviation,
       probability: 0.5,
@@ -255,7 +264,7 @@ export function classifySpreadEdge(
     if (isHighVolatility) stateReasons.push(`Volatility elevated (σ=${volatility.toFixed(0)})`);
     
     return {
-      state: EdgeState.MODEL_LEAN,
+      state: EdgeState.LEAN,
       side: valueSide,
       magnitude: spreadDeviation,
       probability: 0.5 + (spreadDeviation / 40),
@@ -275,7 +284,7 @@ export function classifySpreadEdge(
     stateReasons.push(`Confidence sufficient (${confidence}% >= ${effectiveConfidencePromote}%)`);
     
     return {
-      state: EdgeState.OFFICIAL_EDGE,
+      state: EdgeState.EDGE,
       side: valueSide,
       magnitude: spreadDeviation,
       probability: 0.55 + (spreadDeviation / 40),
@@ -292,7 +301,7 @@ export function classifySpreadEdge(
   // Default to MODEL_LEAN for edge cases
   stateReasons.push(`Edge in buffer zone (${spreadDeviation.toFixed(1)} pts)`);
   return {
-    state: EdgeState.MODEL_LEAN,
+    state: EdgeState.LEAN,
     side: valueSide,
     magnitude: spreadDeviation,
     probability: 0.5 + (spreadDeviation / 40),
@@ -324,7 +333,7 @@ export function classifyTotalEdge(
   if (confidence === null) {
     stateReasons.push('Confidence unavailable');
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side: null,
       magnitude: totalDeviation,
       probability: 0.5,
@@ -342,7 +351,7 @@ export function classifyTotalEdge(
   if (totalDeviation < 2.0) {
     stateReasons.push(`Total deviation too small (${totalDeviation.toFixed(1)} pts)`);
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side: null,
       magnitude: totalDeviation,
       probability: 0.5,
@@ -363,7 +372,7 @@ export function classifyTotalEdge(
   if (!side) {
     stateReasons.push('No directional edge (probs near 50%)');
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side: null,
       magnitude: totalDeviation,
       probability: 0.5,
@@ -381,7 +390,7 @@ export function classifyTotalEdge(
   let effectivePromoteThreshold = EDGE_PROMOTE_THRESHOLD;
   let effectiveConfidencePromote = CONFIDENCE_PROMOTE_THRESHOLD;
   
-  if (previousState === EdgeState.OFFICIAL_EDGE) {
+  if (previousState === EdgeState.EDGE) {
     effectivePromoteThreshold = EDGE_DEMOTE_THRESHOLD;
     effectiveConfidencePromote = CONFIDENCE_DEMOTE_THRESHOLD;
   }
@@ -395,7 +404,7 @@ export function classifyTotalEdge(
   if (blockedByConfidence || (blockedByVolatility && blockedByEV)) {
     stateReasons.push(`Blocked: confidence=${confidence}%, volatility=${volatility.toFixed(0)}, EV=${expectedValue.toFixed(2)}%`);
     return {
-      state: EdgeState.NO_ACTION,
+      state: EdgeState.NEUTRAL,
       side,
       magnitude: totalDeviation,
       probability: sideProb / 100,
@@ -417,7 +426,7 @@ export function classifyTotalEdge(
     if (blockedByEV) stateReasons.push(`Negative EV (${expectedValue.toFixed(2)}%)`);
     
     return {
-      state: EdgeState.MODEL_LEAN,
+      state: EdgeState.LEAN,
       side,
       magnitude: totalDeviation,
       probability: sideProb / 100,
@@ -435,7 +444,7 @@ export function classifyTotalEdge(
   if (totalDeviation >= effectivePromoteThreshold && confidence >= effectiveConfidencePromote && expectedValue > 0) {
     stateReasons.push(`All thresholds met: edge=${totalDeviation.toFixed(1)}, conf=${confidence}%, EV=+${expectedValue.toFixed(2)}%`);
     return {
-      state: EdgeState.OFFICIAL_EDGE,
+      state: EdgeState.EDGE,
       side,
       magnitude: totalDeviation,
       probability: sideProb / 100,
@@ -452,7 +461,7 @@ export function classifyTotalEdge(
   // Default MODEL_LEAN
   stateReasons.push('Edge in buffer zone');
   return {
-    state: EdgeState.MODEL_LEAN,
+    state: EdgeState.LEAN,
     side,
     magnitude: totalDeviation,
     probability: sideProb / 100,
@@ -477,7 +486,7 @@ export function getEdgeStateStyling(state: EdgeState): {
   label: string;
 } {
   switch (state) {
-    case EdgeState.OFFICIAL_EDGE:
+    case EdgeState.EDGE:
       return {
         borderColor: 'border-neon-green',
         bgColor: 'bg-neon-green/10',
@@ -486,7 +495,7 @@ export function getEdgeStateStyling(state: EdgeState): {
         label: 'OFFICIAL EDGE'
       };
     
-    case EdgeState.MODEL_LEAN:
+    case EdgeState.LEAN:
       return {
         borderColor: 'border-vibrant-yellow',
         bgColor: 'bg-vibrant-yellow/10',
@@ -495,7 +504,7 @@ export function getEdgeStateStyling(state: EdgeState): {
         label: 'MODEL LEAN'
       };
     
-    case EdgeState.NO_ACTION:
+    case EdgeState.NEUTRAL:
       return {
         borderColor: 'border-gray-600',
         bgColor: 'bg-gray-600/5',
@@ -512,7 +521,7 @@ export function getEdgeStateStyling(state: EdgeState): {
  * RULE: Only highlight if OFFICIAL_EDGE
  */
 export function shouldHighlightSide(classification: EdgeClassification): boolean {
-  return classification.state === EdgeState.OFFICIAL_EDGE && classification.side !== null;
+  return classification.state === EdgeState.EDGE && classification.side !== null;
 }
 
 /**
@@ -522,18 +531,18 @@ export function shouldHighlightSide(classification: EdgeClassification): boolean
  * Show "Model Signal Detected — Blocked by Risk Controls" instead
  */
 export function shouldShowRawMetrics(classification: EdgeClassification): boolean {
-  return classification.state === EdgeState.OFFICIAL_EDGE;
+  return classification.state === EdgeState.EDGE;
 }
 
 /**
  * Get message for blocked/lean signals
  */
 export function getSignalMessage(classification: EdgeClassification): string {
-  if (classification.state === EdgeState.OFFICIAL_EDGE) {
+  if (classification.state === EdgeState.EDGE) {
     return classification.reason;
   }
   
-  if (classification.state === EdgeState.MODEL_LEAN) {
+  if (classification.state === EdgeState.LEAN) {
     return `⚠️ Model Lean — Not an official play. ${classification.reason}`;
   }
   
@@ -547,10 +556,10 @@ export function getSignalMessage(classification: EdgeClassification): string {
  * Get Telegram posting eligibility
  */
 export function getTelegramPostType(classification: EdgeClassification): 'play' | 'lean' | 'none' {
-  if (classification.state === EdgeState.OFFICIAL_EDGE && classification.telegramEligible) {
+  if (classification.state === EdgeState.EDGE && classification.telegramEligible) {
     return 'play';
   }
-  if (classification.state === EdgeState.MODEL_LEAN) {
+  if (classification.state === EdgeState.LEAN) {
     return 'lean';  // Can post as "Model Lean — Not official"
   }
   return 'none';
