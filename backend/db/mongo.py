@@ -4,20 +4,52 @@ from pymongo import MongoClient, UpdateOne
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
+import logging
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.timezone import now_utc, now_est, parse_iso_to_est, format_est_date
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
+# MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DATABASE_NAME", "beatvegas")
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
+# Initialize MongoDB client with error handling
+try:
+    client = MongoClient(
+        MONGO_URI,
+        serverSelectionTimeoutMS=5000,  # 5 second timeout
+        connectTimeoutMS=10000,
+        socketTimeoutMS=10000,
+    )
+    # Test connection
+    client.admin.command('ping')
+    db = client[DB_NAME]
+    logger.info(f"✅ MongoDB connected successfully to {DB_NAME}")
+except Exception as e:
+    logger.error(f"❌ MongoDB connection failed: {e}")
+    logger.error(f"   MONGO_URI format should be: mongodb://username:password@host:port/database")
+    logger.error(f"   Or for auth: mongodb://username:password@host:port/?authSource=admin")
+    raise
 
 
 def ensure_indexes() -> None:
-    """Create core indexes for collections used by the backend."""
+    """
+    Create core indexes for collections used by the backend.
+    
+    NOTE: In production, ensure MongoDB user has sufficient privileges:
+    - readWrite role on the database
+    - Or dbAdmin role to create indexes
+    
+    If you get "Command createIndexes requires authentication" errors:
+    1. Check MONGO_URI includes username:password
+    2. Verify user has dbAdmin or readWrite role
+    3. Example: mongodb://user:pass@host:port/dbname?authSource=admin
+    """
+    try:
     # Original indexes
     db["events"].create_index("event_id", unique=True)
     db["normalized_data"].create_index([("timestamp", -1)])
@@ -139,6 +171,17 @@ def ensure_indexes() -> None:
     db["parlay_fail_event"].create_index([("created_at_utc", -1)])
     db["parlay_fail_event"].create_index([("attempt_id", 1)])
     db["parlay_fail_event"].create_index([("reason_code", 1)])
+    
+    logger.info("✅ Database indexes created successfully")
+    
+    except Exception as e:
+        logger.error(f"❌ Failed to create indexes: {e}")
+        logger.error("   Possible causes:")
+        logger.error("   1. MongoDB user lacks dbAdmin or readWrite role")
+        logger.error("   2. MONGO_URI doesn't include authentication credentials")
+        logger.error("   3. authSource parameter missing in connection string")
+        # Don't raise - allow app to continue without indexes
+        # Indexes improve performance but aren't required for basic operation
 
 
 def insert_many(collection: str, data: List[Dict[str, Any]]) -> Optional[List[Any]]:
