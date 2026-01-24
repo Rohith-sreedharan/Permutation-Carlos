@@ -25,8 +25,13 @@ class CalibrationLogger:
         self.predictions_collection = self.db.prediction_tracking
         
         # Create indexes for fast lookups
-        self.predictions_collection.create_index([("event_id", 1), ("created_at", -1)])
-        self.predictions_collection.create_index([("prediction_time", -1)])
+        try:
+            self.predictions_collection.create_index([("event_id", 1), ("created_at", -1)])
+            self.predictions_collection.create_index([("prediction_time", -1)])
+            logger.info("✅ CalibrationLogger indexes created successfully")
+        except Exception as e:
+            logger.warning(f"⚠️  CalibrationLogger index creation failed: {e}")
+            logger.warning("   Logger will continue without indexes (may have performance impact)")
     
     def log_prediction(
         self,

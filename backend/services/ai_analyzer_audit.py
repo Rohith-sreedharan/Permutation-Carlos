@@ -37,23 +37,29 @@ class AnalyzerAuditLogger:
     
     def _ensure_indexes(self):
         """Create necessary database indexes"""
-        # Index on game_id for quick lookups
-        self.collection.create_index("game_id")
-        
-        # Index on timestamp for time-based queries
-        self.collection.create_index("timestamp")
-        
-        # Index on user_id for rate limiting
-        self.collection.create_index("user_id")
-        
-        # Compound index for user + timestamp (rate limiting)
-        self.collection.create_index([("user_id", 1), ("timestamp", -1)])
-        
-        # Index on blocked flag for monitoring
-        self.collection.create_index("blocked")
-        
-        # Index on fallback_triggered for quality monitoring
-        self.collection.create_index("fallback_triggered")
+        try:
+            # Index on game_id for quick lookups
+            self.collection.create_index("game_id")
+            
+            # Index on timestamp for time-based queries
+            self.collection.create_index("timestamp")
+            
+            # Index on user_id for rate limiting
+            self.collection.create_index("user_id")
+            
+            # Compound index for user + timestamp (rate limiting)
+            self.collection.create_index([("user_id", 1), ("timestamp", -1)])
+            
+            # Index on blocked flag for monitoring
+            self.collection.create_index("blocked")
+            
+            # Index on fallback_triggered for quality monitoring
+            self.collection.create_index("fallback_triggered")
+        except Exception as e:
+            # Log warning but don't crash - app can run without indexes (slower queries)
+            import logging
+            logging.warning(f"⚠️  AIAnalyzerAudit index creation failed: {e}")
+            logging.warning("   Audit logger will continue without indexes (may have performance impact)")
     
     def log(
         self,
