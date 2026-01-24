@@ -256,8 +256,13 @@ async def websocket_endpoint(websocket: WebSocket, connection_id: str | None = N
 async def startup_event():
     """Initialize database indexes and multi-agent system"""
     from db.mongo import ensure_indexes, db, client
-    ensure_indexes()
-    print("✓ Database indexes initialized")
+    
+    try:
+        ensure_indexes()
+        print("✓ Database indexes initialized")
+    except Exception as e:
+        print(f"⚠️  Index creation skipped: {e}")
+        print("   App will continue without indexes (may have performance impact)")
     
     # Initialize v0 audit tables (Phase 1 Option C)
     try:
