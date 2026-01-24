@@ -50,130 +50,130 @@ def ensure_indexes() -> None:
     3. Example: mongodb://user:pass@host:port/dbname?authSource=admin
     """
     try:
-    # Original indexes
-    db["events"].create_index("event_id", unique=True)
-    db["normalized_data"].create_index([("timestamp", -1)])
-    db["predictions"].create_index([("event_id", 1)])
-    db["logs_core_ai"].create_index([("module", 1), ("timestamp", -1)])
-    
-    # A/B Test Event indexes
-    db["ab_test_events"].create_index([("session_id", 1), ("ts", -1)])
-    db["ab_test_events"].create_index([("variant", 1), ("event", 1)])
-    db["ab_test_events"].create_index([("ref", 1)])
-    db["ab_test_events"].create_index([("ts", -1)])
-    
-    # Subscriber indexes
-    db["subscribers"].create_index("email", unique=True)
-    db["subscribers"].create_index([("ref", 1)])
-    db["subscribers"].create_index([("status", 1)])
-    db["subscribers"].create_index("stripe_customer_id", unique=True, sparse=True)
-    db["subscribers"].create_index([("tier", 1)])  # NEW: For tier-based queries
-    
-    # AI Pick indexes
-    db["ai_picks"].create_index("pick_id", unique=True)
-    db["ai_picks"].create_index([("event_id", 1)])
-    db["ai_picks"].create_index([("created_at", -1)])
-    db["ai_picks"].create_index([("outcome", 1)])  # For ROI analysis
-    db["ai_picks"].create_index([("clv_pct", 1)])  # For CLV tracking
-    db["ai_picks"].create_index([("settled_at", -1)])  # NEW: For performance reports
-    
-    # User Action indexes (Module 7 input)
-    db["user_actions"].create_index([("pick_id", 1)])
-    db["user_actions"].create_index([("user_id", 1), ("created_at", -1)])
-    db["user_actions"].create_index([("action", 1)])
-    
-    # Community Message indexes
-    db["community_messages"].create_index([("channel_id", 1), ("ts", -1)])
-    db["community_messages"].create_index([("user_id", 1), ("ts", -1)])
-    db["community_messages"].create_index([("parsed_intent", 1)])
-    db["community_messages"].create_index([("ts", -1)])
-    db["community_messages"].create_index([("message_type", 1)])  # NEW: For bot messages
-    
-    # NEW: User Identity indexes
-    db["user_identity"].create_index("user_id", unique=True)
-    db["user_identity"].create_index([("xp", -1)])  # Leaderboard by XP
-    db["user_identity"].create_index([("rank", 1)])
-    db["user_identity"].create_index([("total_profit", -1)])  # Leaderboard by profit
-    db["user_identity"].create_index([("longest_streak", -1)])  # Leaderboard by streak
-    db["user_identity"].create_index([("winning_picks", -1)])  # Leaderboard by wins
-    
-    # Community Pick Submission indexes
-    db["community_picks"].create_index([("user_id", 1)])
-    db["community_picks"].create_index([("event_id", 1)])
-    db["community_picks"].create_index([("submitted_at", -1)])
-    db["community_picks"].create_index([("outcome", 1)])
-    
-    # User Reputation indexes
-    db["user_reputation"].create_index("user_id", unique=True)
-    db["user_reputation"].create_index([("elo_score", -1)])  # Leaderboard
-    db["user_reputation"].create_index([("roi", -1)])  # Performance ranking
-    
-    # Commission indexes
-    db["commissions"].create_index("commission_id", unique=True)
-    db["commissions"].create_index([("affiliate_id", 1), ("ts", -1)])
-    db["commissions"].create_index([("user_id", 1)])
-    db["commissions"].create_index([("status", 1)])
-    db["commissions"].create_index("stripe_subscription_id", sparse=True)
-    
-    # Affiliate Account indexes
-    db["affiliate_accounts"].create_index("affiliate_id", unique=True)
-    db["affiliate_accounts"].create_index("email", unique=True)
-    db["affiliate_accounts"].create_index([("status", 1)])
-    
-    # NEW: Monte Carlo Simulation indexes
-    db["monte_carlo_simulations"].create_index("simulation_id", unique=True)
-    db["monte_carlo_simulations"].create_index([("event_id", 1), ("created_at", -1)])
-    db["monte_carlo_simulations"].create_index([("created_at", -1)])
-    db["monte_carlo_simulations"].create_index([("confidence_score", -1)])
-    
-    # NEW: Multi-Agent System indexes
-    db["agent_events"].create_index([("event_id", 1)])
-    db["agent_events"].create_index([("event_type", 1), ("timestamp", -1)])
-    db["agent_events"].create_index([("correlation_id", 1)])  # Track related events
-    db["agent_events"].create_index([("source_agent", 1), ("timestamp", -1)])
-    db["agent_events"].create_index([("status", 1)])
-    
-    # NEW: Performance Report indexes
-    db["performance_reports"].create_index("report_id", unique=True)
-    db["performance_reports"].create_index([("generated_at", -1)])
-    
-    # NEW: Recalibration Recommendation indexes
-    db["recalibration_recommendations"].create_index("recommendation_id", unique=True)
-    db["recalibration_recommendations"].create_index([("status", 1), ("generated_at", -1)])
-    db["recalibration_recommendations"].create_index([("based_on_report", 1)])
-    
-    # NEW: Live Event Trigger indexes
-    db["live_triggers"].create_index([("event_id", 1), ("trigger_time", -1)])
-    db["live_triggers"].create_index([("trigger_type", 1)])
-    db["live_triggers"].create_index([("processed", 1), ("trigger_time", -1)])
-    
-    # NEW: Prop Mispricing Detection indexes
-    db["prop_mispricings"].create_index([("event_id", 1)])
-    db["prop_mispricings"].create_index([("edge_pct", -1)])  # Sort by biggest edges
-    db["prop_mispricings"].create_index([("detected_at", -1)])
+        # Original indexes
+        db["events"].create_index("event_id", unique=True)
+        db["normalized_data"].create_index([("timestamp", -1)])
+        db["predictions"].create_index([("event_id", 1)])
+        db["logs_core_ai"].create_index([("module", 1), ("timestamp", -1)])
+        
+        # A/B Test Event indexes
+        db["ab_test_events"].create_index([("session_id", 1), ("ts", -1)])
+        db["ab_test_events"].create_index([("variant", 1), ("event", 1)])
+        db["ab_test_events"].create_index([("ref", 1)])
+        db["ab_test_events"].create_index([("ts", -1)])
+        
+        # Subscriber indexes
+        db["subscribers"].create_index("email", unique=True)
+        db["subscribers"].create_index([("ref", 1)])
+        db["subscribers"].create_index([("status", 1)])
+        db["subscribers"].create_index("stripe_customer_id", unique=True, sparse=True)
+        db["subscribers"].create_index([("tier", 1)])  # NEW: For tier-based queries
+        
+        # AI Pick indexes
+        db["ai_picks"].create_index("pick_id", unique=True)
+        db["ai_picks"].create_index([("event_id", 1)])
+        db["ai_picks"].create_index([("created_at", -1)])
+        db["ai_picks"].create_index([("outcome", 1)])  # For ROI analysis
+        db["ai_picks"].create_index([("clv_pct", 1)])  # For CLV tracking
+        db["ai_picks"].create_index([("settled_at", -1)])  # NEW: For performance reports
+        
+        # User Action indexes (Module 7 input)
+        db["user_actions"].create_index([("pick_id", 1)])
+        db["user_actions"].create_index([("user_id", 1), ("created_at", -1)])
+        db["user_actions"].create_index([("action", 1)])
+        
+        # Community Message indexes
+        db["community_messages"].create_index([("channel_id", 1), ("ts", -1)])
+        db["community_messages"].create_index([("user_id", 1), ("ts", -1)])
+        db["community_messages"].create_index([("parsed_intent", 1)])
+        db["community_messages"].create_index([("ts", -1)])
+        db["community_messages"].create_index([("message_type", 1)])  # NEW: For bot messages
+        
+        # NEW: User Identity indexes
+        db["user_identity"].create_index("user_id", unique=True)
+        db["user_identity"].create_index([("xp", -1)])  # Leaderboard by XP
+        db["user_identity"].create_index([("rank", 1)])
+        db["user_identity"].create_index([("total_profit", -1)])  # Leaderboard by profit
+        db["user_identity"].create_index([("longest_streak", -1)])  # Leaderboard by streak
+        db["user_identity"].create_index([("winning_picks", -1)])  # Leaderboard by wins
+        
+        # Community Pick Submission indexes
+        db["community_picks"].create_index([("user_id", 1)])
+        db["community_picks"].create_index([("event_id", 1)])
+        db["community_picks"].create_index([("submitted_at", -1)])
+        db["community_picks"].create_index([("outcome", 1)])
+        
+        # User Reputation indexes
+        db["user_reputation"].create_index("user_id", unique=True)
+        db["user_reputation"].create_index([("elo_score", -1)])  # Leaderboard
+        db["user_reputation"].create_index([("roi", -1)])  # Performance ranking
+        
+        # Commission indexes
+        db["commissions"].create_index("commission_id", unique=True)
+        db["commissions"].create_index([("affiliate_id", 1), ("ts", -1)])
+        db["commissions"].create_index([("user_id", 1)])
+        db["commissions"].create_index([("status", 1)])
+        db["commissions"].create_index("stripe_subscription_id", sparse=True)
+        
+        # Affiliate Account indexes
+        db["affiliate_accounts"].create_index("affiliate_id", unique=True)
+        db["affiliate_accounts"].create_index("email", unique=True)
+        db["affiliate_accounts"].create_index([("status", 1)])
+        
+        # NEW: Monte Carlo Simulation indexes
+        db["monte_carlo_simulations"].create_index("simulation_id", unique=True)
+        db["monte_carlo_simulations"].create_index([("event_id", 1), ("created_at", -1)])
+        db["monte_carlo_simulations"].create_index([("created_at", -1)])
+        db["monte_carlo_simulations"].create_index([("confidence_score", -1)])
+        
+        # NEW: Multi-Agent System indexes
+        db["agent_events"].create_index([("event_id", 1)])
+        db["agent_events"].create_index([("event_type", 1), ("timestamp", -1)])
+        db["agent_events"].create_index([("correlation_id", 1)])  # Track related events
+        db["agent_events"].create_index([("source_agent", 1), ("timestamp", -1)])
+        db["agent_events"].create_index([("status", 1)])
+        
+        # NEW: Performance Report indexes
+        db["performance_reports"].create_index("report_id", unique=True)
+        db["performance_reports"].create_index([("generated_at", -1)])
+        
+        # NEW: Recalibration Recommendation indexes
+        db["recalibration_recommendations"].create_index("recommendation_id", unique=True)
+        db["recalibration_recommendations"].create_index([("status", 1), ("generated_at", -1)])
+        db["recalibration_recommendations"].create_index([("based_on_report", 1)])
+        
+        # NEW: Live Event Trigger indexes
+        db["live_triggers"].create_index([("event_id", 1), ("trigger_time", -1)])
+        db["live_triggers"].create_index([("trigger_type", 1)])
+        db["live_triggers"].create_index([("processed", 1), ("trigger_time", -1)])
+        
+        # NEW: Prop Mispricing Detection indexes
+        db["prop_mispricings"].create_index([("event_id", 1)])
+        db["prop_mispricings"].create_index([("edge_pct", -1)])  # Sort by biggest edges
+        db["prop_mispricings"].create_index([("detected_at", -1)])
 
-    # NEW: Sport Edge Evaluation indexes
-    db["nhl_evaluations"].create_index("game_id", unique=True)
-    db["nhl_evaluations"].create_index([("updated_at", -1)])
-    db["mlb_evaluations"].create_index("game_id", unique=True)
-    db["mlb_evaluations"].create_index([("updated_at", -1)])
-    
-    # NEW: Parlay Architect indexes
-    db["parlay_generation_audit"].create_index([("created_at_utc", -1)])
-    db["parlay_generation_audit"].create_index([("request.profile", 1), ("result.status", 1)])
-    db["parlay_generation_audit"].create_index([("result.status", 1)])
-    
-    db["parlay_claim"].create_index([("created_at_utc", -1)])
-    db["parlay_claim"].create_index([("attempt_id", 1)])
-    db["parlay_claim"].create_index([("profile_used", 1)])
-    db["parlay_claim"].create_index([("parlay_fingerprint", 1)], unique=True, sparse=True)
-    
-    db["parlay_fail_event"].create_index([("created_at_utc", -1)])
-    db["parlay_fail_event"].create_index([("attempt_id", 1)])
-    db["parlay_fail_event"].create_index([("reason_code", 1)])
-    
-    logger.info("✅ Database indexes created successfully")
-    
+        # NEW: Sport Edge Evaluation indexes
+        db["nhl_evaluations"].create_index("game_id", unique=True)
+        db["nhl_evaluations"].create_index([("updated_at", -1)])
+        db["mlb_evaluations"].create_index("game_id", unique=True)
+        db["mlb_evaluations"].create_index([("updated_at", -1)])
+        
+        # NEW: Parlay Architect indexes
+        db["parlay_generation_audit"].create_index([("created_at_utc", -1)])
+        db["parlay_generation_audit"].create_index([("request.profile", 1), ("result.status", 1)])
+        db["parlay_generation_audit"].create_index([("result.status", 1)])
+        
+        db["parlay_claim"].create_index([("created_at_utc", -1)])
+        db["parlay_claim"].create_index([("attempt_id", 1)])
+        db["parlay_claim"].create_index([("profile_used", 1)])
+        db["parlay_claim"].create_index([("parlay_fingerprint", 1)], unique=True, sparse=True)
+        
+        db["parlay_fail_event"].create_index([("created_at_utc", -1)])
+        db["parlay_fail_event"].create_index([("attempt_id", 1)])
+        db["parlay_fail_event"].create_index([("reason_code", 1)])
+        
+        logger.info("✅ Database indexes created successfully")
+        
     except Exception as e:
         logger.error(f"❌ Failed to create indexes: {e}")
         logger.error("   Possible causes:")
