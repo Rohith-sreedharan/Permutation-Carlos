@@ -19,7 +19,7 @@ class CalibrationLogger:
     """
     
     def __init__(self):
-        mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+        mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
         self.client = MongoClient(mongo_uri)
         self.db = self.client.beatvegas
         self.predictions_collection = self.db.prediction_tracking
