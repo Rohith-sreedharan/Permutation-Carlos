@@ -197,6 +197,12 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         },
       });
 
+      if (response.status === 404) {
+        // Event not found - game likely removed or invalid
+        console.warn('First half simulation unavailable: Event not found');
+        return;
+      }
+
       if (response.status === 422) {
         // Structural market error - silently skip
         const error = await response.json();

@@ -554,6 +554,11 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/simulations/${eventId}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 404) {
+        // Event not found - likely stale data or invalid game_id
+        const error = await safeJsonParse(res);
+        throw new Error(error.detail || `Event ${eventId} not found. This game may have been removed or is no longer available.`);
+    }
     if (res.status === 422) {
         // Handle structural market errors (staleness is now graceful)
         const error = await safeJsonParse(res);
