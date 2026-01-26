@@ -547,6 +547,62 @@ async def run_simulation(
             # Non-blocking: audit logging failure doesn't break simulation
             logger.debug(f"Audit logging skipped: {e}")
         
+        # Create market_state documents for parlay eligibility
+        # Extract pick_state from simulation result
+        try:
+            pick_state = result.get('pick_state', 'NO_PLAY')
+            can_parlay = result.get('can_parlay', False)
+            confidence = result.get('confidence_score', 0)
+            
+            # Create market states for each market type (spread, total)
+            market_states_to_create = []
+            
+            # Spread market state
+            if result.get('sharp_analysis', {}).get('spread'):
+                spread_data = result['sharp_analysis']['spread']
+                market_states_to_create.append({
+                    'game_id': request.event_id,
+                    'sport_key': result.get('sport_key', 'basketball_nba'),
+                    'market': 'spread',
+                    'pick_state': pick_state,
+                    'confidence': confidence,
+                    'ev': spread_data.get('edge_points', 0),
+                    'can_parlay': can_parlay,
+                    'sharp_side': spread_data.get('sharp_side', 'NO_PLAY'),
+                    'created_at': datetime.now(timezone.utc)
+                })
+            
+            # Total market state
+            if result.get('sharp_analysis', {}).get('total'):
+                total_data = result['sharp_analysis']['total']
+                market_states_to_create.append({
+                    'game_id': request.event_id,
+                    'sport_key': result.get('sport_key', 'basketball_nba'),
+                    'market': 'total',
+                    'pick_state': pick_state,
+                    'confidence': confidence,
+                    'ev': total_data.get('edge_points', 0),
+                    'can_parlay': can_parlay,
+                    'sharp_side': total_data.get('sharp_side', 'NO_PLAY'),
+                    'created_at': datetime.now(timezone.utc)
+                })
+            
+            # Insert market states
+            if market_states_to_create:
+                for market_state in market_states_to_create:
+                    db.market_state.replace_one(
+                        {
+                            'game_id': market_state['game_id'],
+                            'market': market_state['market']
+                        },
+                        market_state,
+                        upsert=True
+                    )
+                logger.info(f"✅ Created {len(market_states_to_create)} market states for {request.event_id} (pick_state: {pick_state})")
+        except Exception as e:
+            # Non-blocking: market state creation failure doesn't break simulation
+            logger.warning(f"Market state creation failed for {request.event_id}: {e}")
+        
         # Sanitize numpy types
         result = sanitize_mongo_doc(result)
         
