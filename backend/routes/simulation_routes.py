@@ -10,6 +10,7 @@ from core.safety_engine import SafetyEngine, PublicCopyFormatter
 from core.ncaaf_championship_regime import detect_ncaaf_context, NCAAFChampionshipRegimeController
 from core.truth_mode import truth_mode_validator, BlockReason
 from core.market_line_integrity import MarketLineIntegrityError
+from core.sport_config import MarketType, MarketSettlement, validate_market_contract, get_sport_config
 from db.mongo import db
 from middleware.auth import get_current_user_optional, get_user_tier
 from services.post_game_grader import post_game_grader
@@ -135,10 +136,46 @@ def _get_user_tier_from_auth(authorization: Optional[str]) -> str:
         return "free"
 
 
+def _extract_sport_code(sport_key: str) -> str:
+    """
+    Extract sport code from sport_key for market contract validation.
+    
+    Examples:
+        basketball_nba -> NBA
+        americanfootball_nfl -> NFL
+        icehockey_nhl -> NHL
+    """
+    sport_mappings = {
+        'basketball_nba': 'NBA',
+        'americanfootball_nfl': 'NFL',
+        'icehockey_nhl': 'NHL',
+        'basketball_ncaab': 'NCAAB',
+        'americanfootball_ncaaf': 'NCAAF',
+        'baseball_mlb': 'MLB',
+    }
+    
+    # Try exact match first
+    if sport_key in sport_mappings:
+        return sport_mappings[sport_key]
+    
+    # Fallback: extract suffix
+    if '_' in sport_key:
+        suffix = sport_key.split('_')[1].upper()
+        if suffix in ['NBA', 'NFL', 'NHL', 'NCAAB', 'NCAAF', 'MLB']:
+            return suffix
+    
+    # Default to NBA for unknown sports
+    logger.warning(f"Unknown sport_key '{sport_key}', defaulting to NBA")
+    return 'NBA'
+
+
 class SimulationRequest(BaseModel):
     event_id: str
     iterations: int = 10000  # FREE tier default
     mode: str = "full"  # "full" or "basic"
+    # vFinal.1 Multi-Sport Patch: market contract fields
+    market_type: Optional[MarketType] = None  # If None, infer from legacy "market" field
+    market_settlement: MarketSettlement = MarketSettlement.FULL_GAME  # Default per spec
 
 
 @router.get("/{event_id}")
@@ -478,11 +515,42 @@ async def run_simulation(
     Run a new Monte Carlo simulation for an event
     
     🔥 TIERED COMPUTE: Ignores requested iterations, enforces tier-based limits
+    🔒 vFinal.1: Validates market_type + market_settlement contract
     """
     # Fetch event data
     event = db.events.find_one({"event_id": request.event_id})
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Extract sport code from event
+    sport_key = event.get("sport_key", "basketball_nba")
+    # Map sport_key to sport code (e.g., "basketball_nba" -> "NBA")
+    sport_code = _extract_sport_code(sport_key)
+    
+    # vFinal.1 Market Contract Validation
+    # If market_type not provided, this is a legacy request - allow it
+    if request.market_type:
+        try:
+            validate_market_contract(
+                sport_code=sport_code,
+                market_type=request.market_type,
+                market_settlement=request.market_settlement
+            )
+        except ValueError as e:
+            # Return 409 MARKET_CONTRACT_MISMATCH error per spec Section 3.3
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "status": "ERROR",
+                    "error_code": "MARKET_CONTRACT_MISMATCH",
+                    "message": str(e),
+                    "request_context": {
+                        "sport": sport_code,
+                        "market_type": request.market_type.value,
+                        "market_settlement": request.market_settlement.value
+                    }
+                }
+            )
     
     # Determine user's tier and enforce iteration limit
     user_tier = _get_user_tier_from_auth(authorization)

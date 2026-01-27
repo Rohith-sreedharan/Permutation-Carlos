@@ -172,6 +172,14 @@ def ensure_indexes() -> None:
         db["parlay_fail_event"].create_index([("attempt_id", 1)])
         db["parlay_fail_event"].create_index([("reason_code", 1)])
         
+        # NEW: vFinal.1 Multi-Sport Patch - Simulation market indexes
+        # Per spec Section 5.2: Add sport_market_index for efficient multi-sport queries
+        db["simulations"].create_index([
+            ("sport", 1),
+            ("market_type", 1),
+            ("market_settlement", 1)
+        ], name="sport_market_index", background=True)
+        
         logger.info("✅ Database indexes created successfully")
         
     except Exception as e:

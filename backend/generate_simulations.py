@@ -11,8 +11,56 @@ from db.mongo import db
 from core.monte_carlo_engine import MonteCarloEngine
 from integrations.odds_api import extract_market_lines
 from integrations.player_api import get_team_data_with_roster
-from services.market_state_classifier import MarketStateClassifier
 from datetime import datetime, timezone
+
+
+def _create_market_states_from_simulation(event_id: str, result: dict):
+    """Create market_state documents from simulation result"""
+    pick_state = result.get('pick_state', 'NO_PLAY')
+    can_parlay = result.get('can_parlay', False)
+    confidence = result.get('confidence_score', 0)
+    
+    market_states_to_create = []
+    
+    # Spread market state
+    if result.get('sharp_analysis', {}).get('spread'):
+        spread_data = result['sharp_analysis']['spread']
+        market_states_to_create.append({
+            'game_id': event_id,
+            'sport_key': result.get('sport_key', 'basketball_nba'),
+            'market': 'spread',
+            'pick_state': pick_state,
+            'confidence': confidence,
+            'ev': spread_data.get('edge_points', 0),
+            'can_parlay': can_parlay,
+            'sharp_side': spread_data.get('sharp_side', 'NO_PLAY'),
+            'created_at': datetime.now(timezone.utc)
+        })
+    
+    # Total market state
+    if result.get('sharp_analysis', {}).get('total'):
+        total_data = result['sharp_analysis']['total']
+        market_states_to_create.append({
+            'game_id': event_id,
+            'sport_key': result.get('sport_key', 'basketball_nba'),
+            'market': 'total',
+            'pick_state': pick_state,
+            'confidence': confidence,
+            'ev': total_data.get('edge_points', 0),
+            'can_parlay': can_parlay,
+            'sharp_side': total_data.get('sharp_side', 'NO_PLAY'),
+            'created_at': datetime.now(timezone.utc)
+        })
+    
+    # Insert market states
+    if market_states_to_create:
+        for market_state in market_states_to_create:
+            db.market_state.replace_one(
+                {'game_id': market_state['game_id'], 'market': market_state['market']},
+                market_state,
+                upsert=True
+            )
+
 
 async def generate_simulations_for_all_events():
     """Generate simulations for all upcoming events"""
@@ -33,7 +81,6 @@ async def generate_simulations_for_all_events():
         return
     
     engine = MonteCarloEngine()
-    classifier = MarketStateClassifier(db)
     
     success_count = 0
     error_count = 0
@@ -50,9 +97,9 @@ async def generate_simulations_for_all_events():
             # Check if simulation already exists
             existing_sim = db.simulations.find_one({'game_id': event_id})
             if existing_sim:
-                print(f"  ✓ Simulation exists, classifying...")
-                # Just run classifier on existing simulation
-                await classifier.classify_and_store(event_id)
+                print(f"  ✓ Simulation exists, creating market states...")
+                # Create market states from existing simulation
+                _create_market_states_from_simulation(event_id, existing_sim)
                 success_count += 1
                 continue
             
@@ -86,12 +133,12 @@ async def generate_simulations_for_all_events():
             
             print(f"  ✅ Simulation complete")
             
-            # Classify into market state
-            print(f"  🏷️  Classifying...")
-            await classifier.classify_and_store(event_id)
+            # Create market states from result
+            print(f"  🏷️  Creating market states...")
+            _create_market_states_from_simulation(event_id, result)
             
             success_count += 1
-            print(f"  ✅ Market state classified\n")
+            print(f"  ✅ Market states created\n")
             
         except Exception as e:
             error_count += 1
