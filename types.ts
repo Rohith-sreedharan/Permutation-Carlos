@@ -205,13 +205,26 @@ export interface MonteCarloSimulation {
   created_at: string;
   // Sharp Analysis - Model vs Vegas
   sharp_analysis?: {
+    probabilities?: {
+      p_cover_home: number;
+      p_cover_away: number;
+      p_win_home: number;
+      p_win_away: number;
+      p_over: number;
+      p_under: number;
+      validator_status?: 'PASS' | 'FAIL';
+      validator_errors?: string[];
+    };
     total?: {
       has_edge: boolean;
       vegas_total: number;
       model_total: number;
+      market_total?: number;
       edge_points: number;
       edge_direction: 'OVER' | 'UNDER';
       sharp_side: 'OVER' | 'UNDER';
+      sharp_market?: string;
+      sharp_selection?: string;
       edge_grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
       sharp_side_display: string;
       sharp_side_reason?: string;
@@ -259,17 +272,27 @@ export interface MonteCarloSimulation {
       has_edge: boolean;
       vegas_spread: number;
       model_spread: number;
+      market_spread_home?: number;
       edge_points: number;
       edge_direction: 'FAV' | 'DOG';
       sharp_side: 'FAV' | 'DOG';
+      sharp_market?: string;
+      sharp_selection?: string;
       edge_grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
       sharp_side_display: string;
       sharp_side_reason?: string;
+    };
+    moneyline?: {
+      has_edge: boolean;
+      sharp_market?: string;
+      sharp_selection?: string;
+      edge_pct?: number;
     };
     model_line_display?: string;
     vegas_line_display?: string;
     sharp_side_display?: string;
     edge_points_display?: string;
+    debug_payload?: any;
     disclaimer: string;
   };
 }

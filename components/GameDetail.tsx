@@ -78,7 +78,7 @@ const getUncertaintyLabel = (simulation: MonteCarloSimulation | null): string =>
   const pickState = simulation.pick_state || 'UNKNOWN';
   const confidence = (simulation.confidence_score || 0.65) * 100;
   
-  if (pickState === 'NO_PLAY') {
+  if (pickState === 'PASS' || pickState === 'AVOID') {
     return 'No statistical edge — unstable distribution';
   } else if (pickState === 'LEAN') {
     return 'Directional lean only — unstable distribution';
@@ -574,6 +574,83 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     { category: 'Over', picks: Math.round(overProb) },
     { category: 'Under', picks: Math.round(underProb) }
   ];
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6">
+        <button
+          onClick={onBack}
+          className="text-gold hover:text-white mb-4 flex items-center space-x-2 transition"
+        >
+          <span>←</span>
+          <span>Back to Dashboard</span>
+        </button>
+        <div className="flex items-center justify-center h-96">
+          <LoadingSpinner />
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6">
+        <button
+          onClick={onBack}
+          className="text-gold hover:text-white mb-4 flex items-center space-x-2 transition"
+        >
+          <span>←</span>
+          <span>Back to Dashboard</span>
+        </button>
+        <div className="flex flex-col items-center justify-center h-96 space-y-4">
+          <div className="text-6xl">⚠️</div>
+          <div className="text-white text-xl font-bold">Failed to Load Simulation</div>
+          <div className="text-light-gray text-center max-w-md">
+            {error}
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              loadGameData();
+            }}
+            className="mt-4 px-6 py-2 bg-gold text-charcoal font-bold rounded-lg hover:bg-gold/90 transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Missing data state
+  if (!simulation || !event) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6">
+        <button
+          onClick={onBack}
+          className="text-gold hover:text-white mb-4 flex items-center space-x-2 transition"
+        >
+          <span>←</span>
+          <span>Back to Dashboard</span>
+        </button>
+        <div className="flex flex-col items-center justify-center h-96 space-y-4">
+          <div className="text-6xl">🔍</div>
+          <div className="text-white text-xl font-bold">Game Not Found</div>
+          <div className="text-light-gray text-center max-w-md">
+            This game may have been removed or the simulation is not yet available.
+          </div>
+          <button
+            onClick={onBack}
+            className="mt-4 px-6 py-2 bg-gold text-charcoal font-bold rounded-lg hover:bg-gold/90 transition"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0e1a] p-6">
@@ -1368,26 +1445,28 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
                 {/* Model Preference (Probability-Based) */}
                 {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
-                  // SAFETY ASSERTION: Model preference must match probability dominance
-                  const preferredTeam = p_cover_home > p_cover_away ? event.home_team : event.away_team;
-                  const preferredSpread = p_cover_home > p_cover_away ? market_spread : -market_spread;
-                  const preferredProb = Math.max(p_cover_home, p_cover_away);
+                  // Validate probability data integrity
+                  const probSum = p_cover_home + p_cover_away;
+                  const probDiff = Math.abs(p_cover_home - p_cover_away);
+                  const epsilon = 0.001; // 0.1% tie threshold
                   
-                  // Integrity check
-                  if (sharp_selection && !sharp_selection.includes(preferredTeam)) {
-                    console.error('🚨 INTEGRITY VIOLATION: sharp_selection does not match probability dominance', {
-                      sharp_selection,
-                      preferredTeam,
-                      p_cover_home,
-                      p_cover_away
-                    });
+                  // ONLY block if probabilities are invalid
+                  if (isNaN(p_cover_home) || isNaN(p_cover_away) || 
+                      p_cover_home == null || p_cover_away == null ||
+                      Math.abs(probSum - 1.0) > 0.01 || // Sum must be ~100%
+                      probDiff < epsilon) { // Must have clear winner
                     return (
                       <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
                         <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
-                        <div className="text-sm text-red-200">Integrity safeguard triggered — probability mismatch detected</div>
+                        <div className="text-sm text-red-200">Integrity safeguard triggered — invalid probability data</div>
                       </div>
                     );
                   }
+                  
+                  // Valid probabilities - always show argmax
+                  const preferredTeam = p_cover_home > p_cover_away ? event.home_team : event.away_team;
+                  const preferredSpread = p_cover_home > p_cover_away ? market_spread : -market_spread;
+                  const preferredProb = Math.max(p_cover_home, p_cover_away);
                   
                   return (
                     <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
@@ -1466,25 +1545,27 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 </div>
 
                 {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
-                  // SAFETY ASSERTION: Model preference must match probability dominance
-                  const preferredTeam = p_win_home > p_win_away ? event.home_team : event.away_team;
-                  const preferredProb = Math.max(p_win_home, p_win_away);
+                  // Validate probability data integrity
+                  const probSum = p_win_home + p_win_away;
+                  const probDiff = Math.abs(p_win_home - p_win_away);
+                  const epsilon = 0.001; // 0.1% tie threshold
                   
-                  // Integrity check
-                  if (sharp_selection && !sharp_selection.includes(preferredTeam)) {
-                    console.error('🚨 INTEGRITY VIOLATION: ML sharp_selection does not match probability dominance', {
-                      sharp_selection,
-                      preferredTeam,
-                      p_win_home,
-                      p_win_away
-                    });
+                  // ONLY block if probabilities are invalid
+                  if (isNaN(p_win_home) || isNaN(p_win_away) || 
+                      p_win_home == null || p_win_away == null ||
+                      Math.abs(probSum - 1.0) > 0.01 || // Sum must be ~100%
+                      probDiff < epsilon) { // Must have clear winner
                     return (
                       <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
                         <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
-                        <div className="text-sm text-red-200">Integrity safeguard triggered — probability mismatch detected</div>
+                        <div className="text-sm text-red-200">Integrity safeguard triggered — invalid probability data</div>
                       </div>
                     );
                   }
+                  
+                  // Valid probabilities - always show argmax
+                  const preferredTeam = p_win_home > p_win_away ? event.home_team : event.away_team;
+                  const preferredProb = Math.max(p_win_home, p_win_away);
                   
                   return (
                     <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
@@ -1984,8 +2065,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         
         // ===== MASTER EDGE BANNER LOGIC =====
         // CRITICAL UX FIX: Only show "EDGE DETECTED" if OFFICIAL_EDGE
-        const hasOfficialEdge = spreadClassification.state === EdgeState.OFFICIAL_EDGE || 
-                                totalClassification.state === EdgeState.OFFICIAL_EDGE;
+        const hasOfficialEdge = spreadClassification.state === EdgeState.EDGE || 
+                                totalClassification.state === EdgeState.EDGE;
         const showEdgeBanner = hasOfficialEdge;
         
         // Determine if we should show raw metrics (only for OFFICIAL_EDGE)
@@ -2016,9 +2097,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="text-light-gray text-xs uppercase font-bold">Spread Analysis</div>
                   <div className={`font-bold text-sm ${spreadStyling.textColor} flex items-center gap-2`}>
                     <span>{spreadStyling.icon}</span>
-                    {spreadClassification.state === EdgeState.OFFICIAL_EDGE && spreadClassification.side ? (
+                    {spreadClassification.state === EdgeState.EDGE && spreadClassification.side ? (
                       <span>✅ {spreadClassification.side}</span>
-                    ) : spreadClassification.state === EdgeState.MODEL_LEAN ? (
+                    ) : spreadClassification.state === EdgeState.LEAN ? (
                       <span>⚠️ MODEL LEAN</span>
                     ) : (
                       <span>⛔ NO ACTION</span>
@@ -2029,13 +2110,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   {getSignalMessage(spreadClassification)}
                 </div>
                 {/* Show MODEL_LEAN info */}
-                {spreadClassification.state === EdgeState.MODEL_LEAN && (
+                {spreadClassification.state === EdgeState.LEAN && (
                   <div className={`mt-2 text-xs ${spreadStyling.textColor} ${spreadStyling.bgColor} border ${spreadStyling.borderColor} rounded px-2 py-1`}>
                     📊 Model Signal Detected — Blocked by Risk Controls
                   </div>
                 )}
                 {/* Show value explanation if OFFICIAL_EDGE */}
-                {spreadClassification.state === EdgeState.OFFICIAL_EDGE && showSpreadMetrics && valueExplanation && (
+                {spreadClassification.state === EdgeState.EDGE && showSpreadMetrics && valueExplanation && (
                   <div className="mt-2 text-xs text-neon-green bg-neon-green/10 border border-neon-green/30 rounded px-2 py-1">
                     💡 {valueExplanation}
                   </div>
@@ -2048,9 +2129,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="text-light-gray text-xs uppercase font-bold">Total Analysis</div>
                   <div className={`font-bold text-sm ${totalStyling.textColor} flex items-center gap-2`}>
                     <span>{totalStyling.icon}</span>
-                    {totalClassification.state === EdgeState.OFFICIAL_EDGE && totalClassification.side ? (
+                    {totalClassification.state === EdgeState.EDGE && totalClassification.side ? (
                       <span>✅ {totalClassification.side} {totalLine.toFixed(1)}</span>
-                    ) : totalClassification.state === EdgeState.MODEL_LEAN ? (
+                    ) : totalClassification.state === EdgeState.LEAN ? (
                       <span>⚠️ MODEL LEAN</span>
                     ) : (
                       <span>⛔ NO ACTION</span>
@@ -2061,13 +2142,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   {getSignalMessage(totalClassification)}
                 </div>
                 {/* Show MODEL_LEAN info */}
-                {totalClassification.state === EdgeState.MODEL_LEAN && (
+                {totalClassification.state === EdgeState.LEAN && (
                   <div className={`mt-2 text-xs ${totalStyling.textColor} ${totalStyling.bgColor} border ${totalStyling.borderColor} rounded px-2 py-1`}>
                     📊 Model Signal Detected — Blocked by Risk Controls
                   </div>
                 )}
                 {/* Show edge details ONLY if OFFICIAL_EDGE */}
-                {totalClassification.state === EdgeState.OFFICIAL_EDGE && showTotalMetrics && (
+                {totalClassification.state === EdgeState.EDGE && showTotalMetrics && (
                   <div className="mt-2 text-xs text-electric-blue bg-electric-blue/10 border border-electric-blue/30 rounded px-2 py-1">
                     💡 Edge: {totalEdge.toFixed(1)} pts | Probability: {(totalClassification.probability * 100).toFixed(0)}% | EV: +{totalEV.toFixed(1)}%
                   </div>
@@ -2094,26 +2175,26 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               <div className="bg-linear-to-r from-gold/10 to-purple-500/10 border border-gold/40 rounded-lg p-4">
                 <div className="text-light-gray text-xs uppercase mb-2 font-bold">Action Summary</div>
                 <div className="text-white font-semibold text-sm leading-relaxed">
-                  {spreadClassification.state === EdgeState.OFFICIAL_EDGE && totalClassification.state === EdgeState.OFFICIAL_EDGE ? 
+                  {spreadClassification.state === EdgeState.EDGE && totalClassification.state === EdgeState.EDGE ? 
                     '✅ Official edges detected on both spread and total — risk-adjusted execution approved.' :
-                    spreadClassification.state === EdgeState.OFFICIAL_EDGE ? 
-                    `✅ Official spread edge. Total: ${totalClassification.state === EdgeState.MODEL_LEAN ? 'Model lean (informational only)' : 'No action'}.` :
-                    totalClassification.state === EdgeState.OFFICIAL_EDGE ? 
-                    `✅ Official total edge. Spread: ${spreadClassification.state === EdgeState.MODEL_LEAN ? 'Model lean (informational only)' : 'No action'}.` :
-                    spreadClassification.state === EdgeState.MODEL_LEAN || totalClassification.state === EdgeState.MODEL_LEAN ?
+                    spreadClassification.state === EdgeState.EDGE ? 
+                    `✅ Official spread edge. Total: ${totalClassification.state === EdgeState.LEAN ? 'Model lean (informational only)' : 'No action'}.` :
+                    totalClassification.state === EdgeState.EDGE ? 
+                    `✅ Official total edge. Spread: ${spreadClassification.state === EdgeState.LEAN ? 'Model lean (informational only)' : 'No action'}.` :
+                    spreadClassification.state === EdgeState.LEAN || totalClassification.state === EdgeState.LEAN ?
                     '⚠️ Model signals detected but blocked by risk controls. Informational only — not official plays.' :
                     '⛔ No actionable edges. Market appears efficient on both spread and total.'}
                 </div>
                 {/* Show both sides blocked message */}
-                {spreadClassification.state === EdgeState.MODEL_LEAN && 
-                 totalClassification.state === EdgeState.MODEL_LEAN && (
+                {spreadClassification.state === EdgeState.LEAN && 
+                 totalClassification.state === EdgeState.LEAN && (
                   <div className="mt-2 text-xs text-vibrant-yellow bg-vibrant-yellow/10 border border-vibrant-yellow/30 rounded px-2 py-1">
                     ⚠️ Model Lean on both spread and total — not official plays. View Model Diagnostics for raw analysis.
                   </div>
                 )}
                 {/* NO_ACTION on both */}
-                {spreadClassification.state === EdgeState.NO_ACTION && 
-                 totalClassification.state === EdgeState.NO_ACTION && (
+                {spreadClassification.state === EdgeState.NEUTRAL && 
+                 totalClassification.state === EdgeState.NEUTRAL && (
                   <div className="mt-2 text-xs text-gray-400 bg-gray-600/10 border border-gray-600/30 rounded px-2 py-1">
                     ⛔ Risk controls active. No betting language displayed.
                   </div>
