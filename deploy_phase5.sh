@@ -20,8 +20,14 @@ NC='\033[0m' # No Color
 # Configuration
 ENVIRONMENT=${1:-staging}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BACKEND_DIR="$PROJECT_ROOT/backend"
+
+# Auto-detect backend directory
+if [ -d "$SCRIPT_DIR/backend" ]; then
+    BACKEND_DIR="$SCRIPT_DIR/backend"
+else
+    # Running from root or backend dir
+    BACKEND_DIR="$SCRIPT_DIR"
+fi
 
 echo -e "${BLUE}=========================================${NC}"
 echo -e "${BLUE}BeatVegas vFinal.1 - Phase 5 Deployment${NC}"
@@ -52,12 +58,13 @@ if ! pgrep -x "mongod" > /dev/null; then
 fi
 echo -e "${GREEN}✓ MongoDB is running${NC}"
 
-# Check virtual environment
-if [ ! -d "$BACKEND_DIR/.venv" ]; then
+# Check virtual environment (either activated or exists in backend dir)
+if [ -z "$VIRTUAL_ENV" ] && [ ! -d "$BACKEND_DIR/.venv" ] && [ ! -d ".venv" ]; then
     echo -e "${RED}✗ Virtual environment not found${NC}"
+    echo "Please activate virtual environment or create one in backend/"
     exit 1
 fi
-echo -e "${GREEN}✓ Virtual environment exists${NC}"
+echo -e "${GREEN}✓ Virtual environment available${NC}"
 
 # Check .env file
 if [ ! -f "$BACKEND_DIR/.env" ]; then
@@ -74,7 +81,15 @@ echo ""
 echo -e "${YELLOW}[2/7] Running Tier A integrity tests (33 tests)...${NC}"
 
 cd "$BACKEND_DIR"
-source .venv/bin/activate
+
+# Activate venv only if not already activated
+if [ -z "$VIRTUAL_ENV" ]; then
+    if [ -d ".venv" ]; then
+        source .venv/bin/activate
+    elif [ -d "$BACKEND_DIR/.venv" ]; then
+        source "$BACKEND_DIR/.venv/bin/activate"
+    fi
+fi
 
 if ! python tests/tier_a_integrity.py; then
     echo -e "${RED}✗ Tier A tests failed${NC}"
