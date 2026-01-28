@@ -11,24 +11,26 @@
  * • Positive (+) Model Spread → Underdog spread
  * • Negative (−) Model Spread → Favorite spread
  * 
- * SHARP SIDE SELECTION (NON-NEGOTIABLE):
+ * SHARP SIDE SELECTION (CORRECTED LOGIC):
  * --------------------------------------
- * • If model_spread > market_spread → Sharp side = FAVORITE
- * • If model_spread < market_spread → Sharp side = UNDERDOG
+ * • If model_spread > market_spread → Sharp side = UNDERDOG (dog getting too few points = undervalued)
+ * • If model_spread < market_spread → Sharp side = FAVORITE (dog getting too many points = fav undervalued)
  * 
  * EXAMPLES:
  * ---------
- * Example 1 — Positive Model Spread
+ * Example 1 — Underdog Undervalued
  *   Market: Hawks +5.5, Knicks -5.5
  *   Model Spread: +12.3
  *   
- *   model_spread (+12.3) > market_spread (+5.5) → Sharp side = FAVORITE (Knicks -5.5)
+ *   model_spread (+12.3) > market_spread (+5.5) → Sharp side = UNDERDOG (Hawks +5.5)
+ *   Reason: Model says Hawks should get +12.3, but only getting +5.5 → Hawks undervalued
  * 
- * Example 2 — Negative Model Spread
+ * Example 2 — Favorite Undervalued
  *   Market: Hawks +5.5, Knicks -5.5
- *   Model Spread: −3.2
+ *   Model Spread: +3.2
  *   
- *   model_spread (-3.2) < market_spread (+5.5) → Sharp side = UNDERDOG (Hawks +5.5)
+ *   model_spread (+3.2) < market_spread (+5.5) → Sharp side = FAVORITE (Knicks -5.5)
+ *   Reason: Model says Hawks should only get +3.2, but getting +5.5 → Knicks undervalued
  */
 
 export type SharpSideCode = 'FAV' | 'DOG';
@@ -65,30 +67,32 @@ export interface SpreadContext {
 }
 
 /**
- * UNIVERSAL SHARP SIDE SELECTION RULE (NON-NEGOTIABLE)
+ * UNIVERSAL SHARP SIDE SELECTION RULE (CORRECTED)
  * 
  * @param modelSpread - Signed model output (+underdog, -favorite)
  * @param marketSpreadUnderdog - Market spread from underdog perspective (always positive)
  * @returns 'FAV' or 'DOG'
  * 
  * Rule:
- *   If model_spread > market_spread → Sharp side = FAVORITE
- *   If model_spread < market_spread → Sharp side = UNDERDOG
+ *   If model_spread > market_spread → Sharp side = UNDERDOG (model says dog should get MORE points = dog undervalued)
+ *   If model_spread < market_spread → Sharp side = FAVORITE (model says dog should get LESS points = fav undervalued)
  */
 export function determineSharpSide(
   modelSpread: number,
   marketSpreadUnderdog: number
 ): SharpSideCode {
   if (modelSpread > marketSpreadUnderdog) {
-    // Model expects bigger loss for underdog than market prices
-    // → Market is too generous to underdog
-    // → Sharp side = FAVORITE
-    return 'FAV';
-  } else {
     // Model expects smaller loss for underdog than market prices
-    // → Market is overpricing the favorite
+    // → Underdog should be getting MORE points than they are
+    // → Underdog is UNDERVALUED
     // → Sharp side = UNDERDOG
     return 'DOG';
+  } else {
+    // Model expects bigger loss for underdog than market prices
+    // → Underdog is getting TOO MANY points
+    // → Favorite is UNDERVALUED
+    // → Sharp side = FAVORITE
+    return 'FAV';
   }
 }
 
@@ -193,10 +197,10 @@ export function calculateSpreadContext(
  * Get reasoning text for why this sharp side was selected
  */
 export function getSharpSideReasoning(context: SpreadContext): string {
-  if (context.sharpSide === 'FAV') {
-    return `Model projects ${context.marketUnderdog} to lose by more (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Market is too generous to underdog → Fade the dog.`;
+  if (context.sharpSide === 'DOG') {
+    return `Model projects ${context.marketUnderdog} to lose by less (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Underdog getting too few points → Take the dog.`;
   } else {
-    return `Model projects ${context.marketUnderdog} to lose by less (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Market overpricing favorite → Take the dog.`;
+    return `Model projects ${context.marketUnderdog} to lose by more (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Underdog getting too many points → Fade the dog.`;
   }
 }
 

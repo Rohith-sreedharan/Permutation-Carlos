@@ -893,63 +893,48 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   
                   <div className="bg-purple-900/30 p-3 rounded-lg border-2 border-purple-500/50 relative group">
                     <div className="text-xs text-purple-300 mb-1 font-bold flex items-center gap-1">
-                      Model Direction (Informational)
+                      Model Preference (This Market)
                     </div>
                     <div className="text-lg font-bold text-white font-teko">
                       {(() => {
-                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
-                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                        const probabilities = simulation?.sharp_analysis?.probabilities;
+                        const spreadData = simulation?.sharp_analysis?.spread;
+                        const p_cover_home = probabilities?.p_cover_home || 0.5;
+                        const p_cover_away = probabilities?.p_cover_away || 0.5;
+                        const market_spread = spreadData?.market_spread_home || 0;
                         
-                        if (modelSpread !== undefined && vegasSpread !== 0) {
-                          const context = calculateSpreadContext(
-                            event.home_team,
-                            event.away_team,
-                            vegasSpread,
-                            modelSpread
-                          );
-                          return context.sharpSideDisplay;
+                        // CANONICAL RULE: Model Preference = Side with highest probability
+                        if (p_cover_home > p_cover_away) {
+                          return `${event.home_team} ${market_spread >= 0 ? '+' : ''}${market_spread.toFixed(1)}`;
+                        } else if (p_cover_away > p_cover_home) {
+                          return `${event.away_team} ${-market_spread >= 0 ? '+' : ''}${(-market_spread).toFixed(1)}`;
+                        } else {
+                          return 'No Edge (50/50)';
                         }
-                        return 'Processing...';
                       })()}
                     </div>
                     <div className="text-xs text-purple-200 mt-1">
                       {(() => {
-                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
-                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                        const probabilities = simulation?.sharp_analysis?.probabilities;
+                        const p_cover_home = probabilities?.p_cover_home || 0.5;
+                        const p_cover_away = probabilities?.p_cover_away || 0.5;
                         
-                        if (modelSpread !== undefined && vegasSpread !== 0) {
-                          const context = calculateSpreadContext(
-                            event.home_team,
-                            event.away_team,
-                            vegasSpread,
-                            modelSpread
-                          );
-                          return context.edgeDirection === 'FAV' ? 'Lay Points' : 'Take Points';
+                        if (p_cover_home > p_cover_away) {
+                          return `${(p_cover_home * 100).toFixed(1)}% cover probability`;
+                        } else if (p_cover_away > p_cover_home) {
+                          return `${(p_cover_away * 100).toFixed(1)}% cover probability`;
+                        } else {
+                          return 'Both sides equal';
                         }
-                        return '';
                       })()}
                     </div>
-                    {/* Model Direction Tooltip */}
+                    {/* Model Preference Tooltip */}
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 p-4 bg-purple-900/95 border border-purple-400/50 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
                       <p className="text-xs text-purple-200 font-semibold mb-2">
-                        ⚡ This is THE BET if model has edge
+                        📊 Probability-Based Preference
                       </p>
                       <p className="text-xs text-white leading-relaxed">
-                        {(() => {
-                          const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
-                          const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
-                          
-                          if (modelSpread !== undefined && vegasSpread !== 0) {
-                            const context = calculateSpreadContext(
-                              event.home_team,
-                              event.away_team,
-                              vegasSpread,
-                              modelSpread
-                            );
-                            return getSharpSideReasoning(context);
-                          }
-                          return '';
-                        })()}
+                        Model Preference always reflects the side with the highest cover probability for the SPREAD market. This is independent of fair line pricing or favorite/underdog status.
                       </p>
                     </div>
                   </div>
@@ -1381,16 +1366,41 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {/* Model Direction (Only if NOT mismatched and has edge) */}
-                {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
-                  <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                    <div className="text-xs text-purple-300 uppercase mb-1">Model Direction (Spread)</div>
-                    <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
-                    <div className="text-xs text-gray-400 mt-2">
-                      Edge: {spreadData?.edge_points?.toFixed(1)} pts | Grade: {spreadData?.edge_grade}
+                {/* Model Preference (Probability-Based) */}
+                {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
+                  // SAFETY ASSERTION: Model preference must match probability dominance
+                  const preferredTeam = p_cover_home > p_cover_away ? event.home_team : event.away_team;
+                  const preferredSpread = p_cover_home > p_cover_away ? market_spread : -market_spread;
+                  const preferredProb = Math.max(p_cover_home, p_cover_away);
+                  
+                  // Integrity check
+                  if (sharp_selection && !sharp_selection.includes(preferredTeam)) {
+                    console.error('🚨 INTEGRITY VIOLATION: sharp_selection does not match probability dominance', {
+                      sharp_selection,
+                      preferredTeam,
+                      p_cover_home,
+                      p_cover_away
+                    });
+                    return (
+                      <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
+                        <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
+                        <div className="text-sm text-red-200">Integrity safeguard triggered — probability mismatch detected</div>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                      <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
+                      <div className="text-xl font-bold text-purple-200">
+                        {preferredTeam} {preferredSpread >= 0 ? '+' : ''}{preferredSpread.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        {(preferredProb * 100).toFixed(1)}% cover probability{has_edge ? ` | Edge: ${spreadData?.edge_points?.toFixed(1)} pts` : ''}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })()}
@@ -1455,15 +1465,37 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
-                  <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                    <div className="text-xs text-purple-300 uppercase mb-1">Model Direction (ML)</div>
-                    <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
-                    <div className="text-xs text-gray-400 mt-2">
-                      Edge: {mlData?.edge_pct?.toFixed(1)}% probability advantage
+                {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
+                  // SAFETY ASSERTION: Model preference must match probability dominance
+                  const preferredTeam = p_win_home > p_win_away ? event.home_team : event.away_team;
+                  const preferredProb = Math.max(p_win_home, p_win_away);
+                  
+                  // Integrity check
+                  if (sharp_selection && !sharp_selection.includes(preferredTeam)) {
+                    console.error('🚨 INTEGRITY VIOLATION: ML sharp_selection does not match probability dominance', {
+                      sharp_selection,
+                      preferredTeam,
+                      p_win_home,
+                      p_win_away
+                    });
+                    return (
+                      <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
+                        <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
+                        <div className="text-sm text-red-200">Integrity safeguard triggered — probability mismatch detected</div>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                      <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
+                      <div className="text-xl font-bold text-purple-200">{preferredTeam} ML</div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        {(preferredProb * 100).toFixed(1)}% win probability{has_edge ? ` | Edge: ${mlData?.edge_pct?.toFixed(1)}%` : ''}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })()}
@@ -1529,15 +1561,38 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {!marketMismatch && has_edge && sharp_selection && validatorStatus !== 'FAIL' && (
-                  <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                    <div className="text-xs text-purple-300 uppercase mb-1">Model Direction (Total)</div>
-                    <div className="text-xl font-bold text-purple-200">{sharp_selection}</div>
-                    <div className="text-xs text-gray-400 mt-2">
-                      Edge: {totalData?.edge_points?.toFixed(1)} pts | Grade: {totalData?.edge_grade}
+                {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
+                  // SAFETY ASSERTION: Model preference must match probability dominance
+                  const preferredSide = p_over > p_under ? 'OVER' : 'UNDER';
+                  const preferredProb = Math.max(p_over, p_under);
+                  const preferredDisplay = p_over > p_under ? `Over ${market_total}` : `Under ${market_total}`;
+                  
+                  // Integrity check
+                  if (sharp_selection && !sharp_selection.toUpperCase().includes(preferredSide)) {
+                    console.error('🚨 INTEGRITY VIOLATION: Total sharp_selection does not match probability dominance', {
+                      sharp_selection,
+                      preferredSide,
+                      p_over,
+                      p_under
+                    });
+                    return (
+                      <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
+                        <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
+                        <div className="text-sm text-red-200">Integrity safeguard triggered — probability mismatch detected</div>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                      <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
+                      <div className="text-xl font-bold text-purple-200">{preferredDisplay}</div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        {(preferredProb * 100).toFixed(1)}% probability{has_edge ? ` | Edge: ${totalData?.edge_points?.toFixed(1)} pts` : ''}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })()}
