@@ -35,32 +35,59 @@ class RiskLevel(str, Enum):
     CRITICAL = "critical"
 
 # Global divergence limits (points) - model vs market total difference
-DIVERGENCE_LIMITS = {
-    # NFL
-    ("americanfootball_nfl", EnvironmentType.REGULAR_SEASON): 8,
-    ("americanfootball_nfl", EnvironmentType.PLAYOFF): 6,
-    ("americanfootball_nfl", EnvironmentType.CHAMPIONSHIP): 6,
-    
-    # NBA
-    ("basketball_nba", EnvironmentType.REGULAR_SEASON): 10,
-    ("basketball_nba", EnvironmentType.PLAYOFF): 8,
-    ("basketball_nba", EnvironmentType.FINALS): 6,
-    
-    # NCAAF
-    ("americanfootball_ncaaf", EnvironmentType.REGULAR_SEASON): 10,
-    ("americanfootball_ncaaf", EnvironmentType.PLAYOFF): 8,
-    ("americanfootball_ncaaf", EnvironmentType.CHAMPIONSHIP): 8,
-    
-    # NCAAB
-    ("basketball_ncaab", EnvironmentType.REGULAR_SEASON): 10,
-    ("basketball_ncaab", EnvironmentType.PLAYOFF): 8,
-    ("basketball_ncaab", EnvironmentType.CHAMPIONSHIP): 6,
-    
-    # Default fallback
-    ("default", EnvironmentType.REGULAR_SEASON): 10,
-    ("default", EnvironmentType.PLAYOFF): 8,
-    ("default", EnvironmentType.CHAMPIONSHIP): 6,
+# Tier-aware: paid users get more relaxed limits
+DIVERGENCE_LIMITS_BY_TIER = {
+    "free": {
+        # NFL
+        ("americanfootball_nfl", EnvironmentType.REGULAR_SEASON): 8,
+        ("americanfootball_nfl", EnvironmentType.PLAYOFF): 6,
+        ("americanfootball_nfl", EnvironmentType.CHAMPIONSHIP): 6,
+        
+        # NBA
+        ("basketball_nba", EnvironmentType.REGULAR_SEASON): 10,
+        ("basketball_nba", EnvironmentType.PLAYOFF): 8,
+        ("basketball_nba", EnvironmentType.FINALS): 6,
+        
+        # NCAAF
+        ("americanfootball_ncaaf", EnvironmentType.REGULAR_SEASON): 10,
+        ("americanfootball_ncaaf", EnvironmentType.PLAYOFF): 8,
+        ("americanfootball_ncaaf", EnvironmentType.CHAMPIONSHIP): 8,
+        
+        # NCAAB
+        ("basketball_ncaab", EnvironmentType.REGULAR_SEASON): 10,
+        ("basketball_ncaab", EnvironmentType.PLAYOFF): 8,
+        ("basketball_ncaab", EnvironmentType.CHAMPIONSHIP): 6,
+        
+        # Default fallback
+        ("default", EnvironmentType.REGULAR_SEASON): 10,
+        ("default", EnvironmentType.PLAYOFF): 8,
+        ("default", EnvironmentType.CHAMPIONSHIP): 6,
+    },
+    "starter": {
+        # Paid tier: +2 points relaxation
+        ("americanfootball_nfl", EnvironmentType.REGULAR_SEASON): 10,
+        ("basketball_nba", EnvironmentType.REGULAR_SEASON): 12,
+        ("basketball_ncaab", EnvironmentType.REGULAR_SEASON): 12,
+        ("default", EnvironmentType.REGULAR_SEASON): 12,
+    },
+    "pro": {
+        # Pro tier: +4 points relaxation
+        ("americanfootball_nfl", EnvironmentType.REGULAR_SEASON): 12,
+        ("basketball_nba", EnvironmentType.REGULAR_SEASON): 14,
+        ("basketball_ncaab", EnvironmentType.REGULAR_SEASON): 14,
+        ("default", EnvironmentType.REGULAR_SEASON): 14,
+    },
+    "elite": {
+        # Elite tier: +5 points relaxation
+        ("americanfootball_nfl", EnvironmentType.REGULAR_SEASON): 13,
+        ("basketball_nba", EnvironmentType.REGULAR_SEASON): 15,
+        ("basketball_ncaab", EnvironmentType.REGULAR_SEASON): 15,
+        ("default", EnvironmentType.REGULAR_SEASON): 15,
+    }
 }
+
+# Legacy fallback (used if tier not specified)
+DIVERGENCE_LIMITS = DIVERGENCE_LIMITS_BY_TIER["free"]
 
 # Risk thresholds
 RISK_THRESHOLD_HIGH = 0.7  # Above this = exploration_only
@@ -94,6 +121,7 @@ class SafetyEngine:
         variance: float,
         confidence: float,
         market_type: str = "total",  # total, spread, moneyline, prop
+        user_tier: str = "free",  # NEW: tier-aware divergence limits
         **context
     ) -> Dict[str, Any]:
         """
@@ -108,6 +136,9 @@ class SafetyEngine:
                 "suppression_reasons": [list of reasons if suppressed],
                 "warnings": [list of user-facing warnings],
                 "divergence_score": float (abs difference),
+                "divergence_limit": float (tier-aware),
+                "is_suppressed": bool,
+                "suppression_reason": str | None,
                 "environment_risk": float,
                 "variance_risk": float,
                 "badges": [list of UI badges to show]
@@ -143,9 +174,11 @@ class SafetyEngine:
         if not weather_valid:
             self.suppression_reasons.append("Weather data missing or invalid")
         
-        # Step 7: Check divergence limits
-        divergence_limit = self._get_divergence_limit(sport_key, environment)
-        if divergence_score > divergence_limit:
+        # Step 7: Check divergence limits (TIER-AWARE)
+        divergence_limit = self._get_divergence_limit_for_tier(sport_key, environment, user_tier)
+        divergence_exceeded = divergence_score > divergence_limit
+        
+        if divergence_exceeded:
             self.suppression_reasons.append(
                 f"Divergence {divergence_score:.1f} exceeds limit {divergence_limit}"
             )
@@ -156,7 +189,21 @@ class SafetyEngine:
         )
         
         # Step 9: Determine output mode based on risk
-        if risk_score > RISK_THRESHOLD_HIGH or len(self.suppression_reasons) > 0:
+        is_suppressed = len(self.suppression_reasons) > 0
+        suppression_reason = None
+        
+        if is_suppressed:
+            # Primary suppression reason (most critical)
+            if divergence_exceeded:
+                suppression_reason = "DIVERGENCE_EXCEEDED"
+            elif not market_match_valid:
+                suppression_reason = "MARKET_MISMATCH"
+            elif not weather_valid:
+                suppression_reason = "WEATHER_DATA_MISSING"
+            else:
+                suppression_reason = "SAFETY_THRESHOLD_EXCEEDED"
+        
+        if risk_score > RISK_THRESHOLD_HIGH or is_suppressed:
             output_mode = OutputMode.EXPLORATION_ONLY
             eligible_for_official_pick = False
         else:
@@ -208,6 +255,8 @@ class SafetyEngine:
             "warnings": warnings,
             "divergence_score": divergence_score,
             "divergence_limit": divergence_limit,
+            "is_suppressed": is_suppressed,  # NEW: explicit boolean
+            "suppression_reason": suppression_reason,  # NEW: enum string
             "environment_risk": environment_risk,
             "variance_risk": variance_risk,
             "badges": badges,
@@ -315,13 +364,36 @@ class SafetyEngine:
         return True
     
     def _get_divergence_limit(self, sport_key: str, environment: EnvironmentType) -> float:
-        """Get divergence limit for sport/environment"""
+        """Get divergence limit for sport/environment (legacy method - use _get_divergence_limit_for_tier)"""
         key = (sport_key, environment)
         if key in DIVERGENCE_LIMITS:
             return DIVERGENCE_LIMITS[key]
         
         # Fallback to default
         return DIVERGENCE_LIMITS[("default", environment)]
+    
+    def _get_divergence_limit_for_tier(
+        self, sport_key: str, environment: EnvironmentType, user_tier: str
+    ) -> float:
+        """Get tier-aware divergence limit (NEW)"""
+        # Normalize tier name
+        tier = user_tier.lower() if user_tier else "free"
+        if tier not in DIVERGENCE_LIMITS_BY_TIER:
+            tier = "free"
+        
+        tier_limits = DIVERGENCE_LIMITS_BY_TIER[tier]
+        key = (sport_key, environment)
+        
+        if key in tier_limits:
+            return tier_limits[key]
+        
+        # Fallback to default for this tier
+        default_key = ("default", environment)
+        if default_key in tier_limits:
+            return tier_limits[default_key]
+        
+        # Ultimate fallback to free tier
+        return DIVERGENCE_LIMITS_BY_TIER["free"].get(key, 10)
     
     def _calculate_composite_risk(
         self,

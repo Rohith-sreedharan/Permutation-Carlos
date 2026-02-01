@@ -407,12 +407,14 @@ async def get_simulation(
                     weather_data=event.get("weather"),
                     variance=variance,
                     confidence=confidence,
-                    market_type="total"
+                    market_type="total",
+                    user_tier=user_tier  # NEW: pass tier for tier-aware limits
                 )
                 
                 print(f"🛡️ Safety Evaluation: output_mode={safety_result['output_mode']}, "
                       f"risk_score={safety_result['risk_score']:.2f}, "
-                      f"divergence={safety_result['divergence_score']:.1f}pts")
+                      f"divergence={safety_result['divergence_score']:.1f}pts, "
+                      f"is_suppressed={safety_result['is_suppressed']}")
                 
                 # Inject metadata (including safety results)
                 simulation["metadata"] = {
@@ -425,7 +427,7 @@ async def get_simulation(
                     "ci_95": simulation.get("confidence_intervals", {}).get("ci_95", [0, 0]),
                     "generated_at": datetime.now(timezone.utc).isoformat(),
                     "cached": False,
-                    # Safety engine results
+                    # Safety engine results (legacy flat structure)
                     "output_mode": safety_result["output_mode"],
                     "risk_level": safety_result["risk_level"],
                     "risk_score": safety_result["risk_score"],
@@ -434,7 +436,21 @@ async def get_simulation(
                     "environment_type": safety_result["environment_type"],
                 }
                 
-                # Add safety warnings and badges to top-level
+                # NEW: Add comprehensive safety object for frontend transparency
+                simulation["safety"] = {
+                    "output_mode": safety_result["output_mode"],
+                    "risk_score": safety_result["risk_score"],
+                    "risk_level": safety_result["risk_level"],
+                    "divergence_points": safety_result["divergence_score"],
+                    "divergence_limit": safety_result["divergence_limit"],
+                    "is_suppressed": safety_result["is_suppressed"],
+                    "suppression_reason": safety_result["suppression_reason"],
+                    "eligible_for_official_pick": safety_result["eligible_for_official_pick"],
+                    "warnings": safety_result["warnings"],
+                    "badges": safety_result["badges"],
+                }
+                
+                # Add safety warnings and badges to top-level (legacy)
                 simulation["safety_warnings"] = safety_result["warnings"]
                 simulation["safety_badges"] = safety_result["badges"]
                 simulation["suppression_reasons"] = safety_result["suppression_reasons"]
