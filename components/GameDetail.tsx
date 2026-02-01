@@ -417,18 +417,38 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     const color = score >= 75 ? '#7CFC00' : score >= 50 ? '#FFD700' : '#FF4444';
 
     return (
-      <div className="(
-    <div className="min-h-screen bg-[#0a0e1a] flex items-center justify-center">
-      <div className="text-center">
-        <LoadingSpinner />
-        {retryAttempt > 0 && (
-          <div className="mt-4 text-electric-blue text-sm font-semibold animate-pulse">
-            Attempt {retryAttempt + 1}/3...
+      <div className="inline-flex flex-col items-center gap-1">
+        <div className="relative" style={{ width: 128, height: 128 }}>
+          <svg width={128} height={128} className="transform -rotate-90">
+            <circle
+              cx={64}
+              cy={64}
+              r={radius}
+              fill="none"
+              stroke="#1e293b"
+              strokeWidth={6}
+            />
+            <circle
+              cx={64}
+              cy={64}
+              r={radius}
+              fill="none"
+              stroke={color}
+              strokeWidth={6}
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="font-bold text-2xl" style={{ color }}>
+              {Math.round(score)}
+            </span>
           </div>
-        )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
   
   if (error && !error.startsWith('Loading...')) return (
     <div className="min-h-screen bg-[#0a0e1a] p-6">
