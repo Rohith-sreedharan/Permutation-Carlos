@@ -47,6 +47,12 @@ class TeamIdentityValidator:
             "western carolina catamounts": "WCU",
             "western carolina": "WCU",
             "catamounts": "WCU",
+            "maryland terrapins": "MD",
+            "maryland": "MD",
+            "terrapins": "MD",
+            "purdue boilermakers": "PUR",
+            "purdue": "PUR",
+            "boilermakers": "PUR",
             # Add more as needed - this should be comprehensive
         }
     

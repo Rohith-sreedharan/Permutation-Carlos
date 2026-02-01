@@ -149,126 +149,32 @@ def get_team_roster(team_name: str, sport_key: str) -> List[Dict[str, Any]]:
                 return _get_fallback_roster(team_name, sport_key)
         
         else:
-            # Fallback for other sports (MLB, NHL, NCAAB)
-            return _get_fallback_roster(team_name, sport_key)
+            # For other sports (MLB, NHL, NCAAB) - must have real data or fail
+            logger.error(f"❌ No roster data available for {team_name} ({sport_key})")
+            raise ValueError(f"No roster data available for {team_name}. Cannot run simulation without real player data.")
         
-        if roster:
-            logger.info(f"✅ Fetched {len(roster)} REAL players for {team_name} from ESPN")
-        else:
-            logger.warning(f"No players found for {team_name}, using fallback")
-            return _get_fallback_roster(team_name, sport_key)
+        if not roster:
+            logger.error(f"❌ No players found for {team_name}")
+            raise ValueError(f"No players found for {team_name}. Cannot run simulation without real player data.")
         
+        logger.info(f"✅ Fetched {len(roster)} REAL players for {team_name} from ESPN")
         return roster
         
+    except ValueError:
+        # Re-raise data validation errors
+        raise
     except Exception as e:
-        logger.error(f"Error fetching roster for {team_name}: {e}")
-        return _get_fallback_roster(team_name, sport_key)
+        logger.error(f"❌ Error fetching roster for {team_name}: {e}")
+        raise ValueError(f"Failed to fetch roster for {team_name}: {e}")
 
 
-def _get_fallback_roster(team_name: str, sport_key: str) -> List[Dict[str, Any]]:
-    """
-    Fallback to synthetic roster if ESPN API fails
-    
-    This is only used as a last resort when ESPN API is unavailable.
-    """
-    logger.warning(f"Using fallback synthetic roster for {team_name}")
-    
-    # Sport-specific stat ranges and positions
-    sport_configs = {
-        "basketball_nba": {
-            "roster_size": 12,
-            "ppg_range": (8, 28),
-            "apg_range": (2, 9),
-            "rpg_range": (3, 11),
-            "per_range": (12, 25),
-            "minutes_range": (15, 36),
-            "positions": ["PG", "SG", "SF", "PF", "C", "PG", "SG", "SF", "PF", "C", "SG", "PF"]  # 12 players
-        },
-        "americanfootball_nfl": {
-            "roster_size": 8,  # Key skill positions
-            "ppg_range": (0, 2),  # TDs per game
-            "apg_range": (0, 0),  # Not used for NFL
-            "rpg_range": (40, 110),  # Rushing/Receiving yards per game
-            "per_range": (10, 22),
-            "minutes_range": (45, 65),  # Snap percentage
-            "positions": ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "RB"]  # 1 QB, 3 RB, 3 WR, 1 TE
-        },
-        "americanfootball_ncaaf": {
-            "roster_size": 8,
-            "ppg_range": (0, 2),
-            "apg_range": (0, 0),
-            "rpg_range": (40, 110),
-            "per_range": (10, 22),
-            "minutes_range": (45, 65),
-            "positions": ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "RB"]
-        },
-        "baseball_mlb": {
-            "roster_size": 9,  # Lineup
-            "ppg_range": (0.3, 1.2),  # Runs per game
-            "apg_range": (0, 0),
-            "rpg_range": (0.5, 1.8),  # Hits per game
-            "per_range": (8, 18),
-            "minutes_range": (3, 5),  # At bats per game
-            "positions": ["1B", "2B", "3B", "SS", "OF", "OF", "OF", "C", "DH"]
-        },
-        "icehockey_nhl": {
-            "roster_size": 12,
-            "ppg_range": (0.2, 1.2),  # Goals per game
-            "apg_range": (0.3, 1.5),  # Assists per game
-            "rpg_range": (0, 0),
-            "per_range": (9, 20),
-            "minutes_range": (12, 22),  # Ice time per game
-            "positions": ["C", "C", "LW", "LW", "RW", "RW", "D", "D", "D", "D", "G", "G"]
-        }
-    }
-    
-    config = sport_configs.get(sport_key, sport_configs["basketball_nba"])
-    roster = []
-    
-    # Realistic player name pools (synthetic but believable)
-    first_names = ["Marcus", "DeAndre", "Tyler", "Jordan", "Anthony", "Kevin", "Brandon", "Chris", 
-                   "Isaiah", "Jaylen", "Malik", "Darius", "Xavier", "Cameron", "Terrence", "Josh"]
-    last_names = ["Williams", "Johnson", "Smith", "Brown", "Davis", "Wilson", "Moore", "Taylor",
-                  "Anderson", "Thomas", "Jackson", "White", "Harris", "Martin", "Thompson", "Garcia"]
-    
-    # Generate roster with varied stats
-    for i in range(config["roster_size"]):
-        # Star players have higher stats
-        is_star = i < 3
-        is_starter = i < 5  # First 5 players are starters
-        multiplier = 1.2 if is_star else (0.8 if i > 8 else 1.0)
-        
-        # Random injury chance (10% OUT, 5% QUESTIONABLE, 85% ACTIVE)
-        rand = random.random()
-        if rand < 0.10:
-            status = "OUT"
-        elif rand < 0.15:
-            status = "QUESTIONABLE"
-        else:
-            status = "ACTIVE"
-        
-        # Generate realistic synthetic name (deterministic for same team/index)
-        random.seed(hash(team_name) + i)
-        first = random.choice(first_names)
-        last = random.choice(last_names)
-        random.seed()  # Reset seed
-        
-        player = {
-            "name": f"{first} {last}",
-            "position": config["positions"][i % len(config["positions"])],  # Assign sport-specific position
-            "status": status,
-            "is_starter": is_starter,
-            "ppg": round(random.uniform(*config["ppg_range"]) * multiplier, 1),
-            "apg": round(random.uniform(*config["apg_range"]) * multiplier, 1),
-            "rpg": round(random.uniform(*config["rpg_range"]) * multiplier, 1),
-            "per": round(random.uniform(*config["per_range"]) * multiplier, 1),
-            "avg_minutes": round(random.uniform(*config["minutes_range"]) * multiplier, 1),
-            "usage_rate": round(random.uniform(0.15, 0.32) * multiplier, 3)
-        }
-        
-        roster.append(player)
-    
-    return roster
+# ============================================================================
+# DEPRECATED: Synthetic roster fallback removed for production safety
+# ============================================================================
+# Using fake data in production is dangerous and misleading.
+# If real roster data is unavailable, the simulation should fail with a clear error
+# rather than proceeding with synthetic data that could mislead users.
+# ============================================================================
 
 
 def get_team_data_with_roster(team_name: str, sport_key: str, is_home: bool) -> Dict[str, Any]:
