@@ -53,6 +53,9 @@ class TeamIdentityValidator:
             "purdue boilermakers": "PUR",
             "purdue": "PUR",
             "boilermakers": "PUR",
+            "fairfield stags": "FAIR",
+            "fairfield": "FAIR",
+            "stags": "FAIR",
             # Add more as needed - this should be comprehensive
         }
     

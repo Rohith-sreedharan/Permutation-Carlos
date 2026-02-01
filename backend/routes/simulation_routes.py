@@ -345,16 +345,32 @@ async def get_simulation(
             
             # Get team rosters with real player data
             sport_key = event.get("sport_key", "basketball_nba")
-            team_a_data = get_team_data_with_roster(
-                event.get("home_team", "Team A"),
-                sport_key,
-                is_home=True
-            )
-            team_b_data = get_team_data_with_roster(
-                event.get("away_team", "Team B"),
-                sport_key,
-                is_home=False
-            )
+            try:
+                team_a_data = get_team_data_with_roster(
+                    event.get("home_team", "Team A"),
+                    sport_key,
+                    is_home=True
+                )
+                team_b_data = get_team_data_with_roster(
+                    event.get("away_team", "Team B"),
+                    sport_key,
+                    is_home=False
+                )
+            except ValueError as roster_error:
+                # Return 404 with clear message instead of 500 error
+                error_msg = str(roster_error)
+                print(f"⚠️ Roster unavailable for {event_id}: {error_msg}")
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error": "roster_unavailable",
+                        "message": error_msg,
+                        "event_id": event_id,
+                        "home_team": event.get("home_team"),
+                        "away_team": event.get("away_team"),
+                        "suggestion": "This game cannot be simulated due to missing roster data. Check back later or try a different game."
+                    }
+                )
             
             # Extract real market lines from bookmakers
             market_context = extract_market_lines(event)
