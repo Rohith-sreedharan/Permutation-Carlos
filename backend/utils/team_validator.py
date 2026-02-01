@@ -43,6 +43,10 @@ class TeamIdentityValidator:
             "heat": "MIA",
             "portland trail blazers": "POR",
             "trail blazers": "POR",
+            # NCAAB
+            "western carolina catamounts": "WCU",
+            "western carolina": "WCU",
+            "catamounts": "WCU",
             # Add more as needed - this should be comprehensive
         }
     

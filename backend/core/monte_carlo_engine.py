@@ -40,7 +40,8 @@ from core.sharp_analysis import (
     format_for_api,
     explain_edge_reasoning,
     STANDARD_DISCLAIMER,
-    TotalAnalysis
+    TotalAnalysis,
+    SpreadAnalysis
 )
 from core.sharp_side_selection import select_sharp_side_spread, SharpSideSelection
 from core.sport_configs import VolatilityLevel
@@ -813,20 +814,7 @@ class MonteCarloEngine:
         )
         
         # Convert SharpSideSelection to SpreadAnalysis format for backward compatibility
-        from dataclasses import dataclass
-        @dataclass
-        class SpreadAnalysis:
-            vegas_spread: float
-            model_spread: float
-            edge_points: float
-            edge_direction: str
-            sharp_side: Optional[str]
-            sharp_side_reason: str
-            edge_grade: str
-            edge_strength: str
-            @property
-            def has_edge(self) -> bool:
-                return self.edge_direction in ['DOG', 'FAVORITE']
+        # SpreadAnalysis is now imported from sharp_analysis module
         
         # Map sharp_action to edge_direction
         if sharp_side_result.sharp_action == "TAKE_POINTS" or sharp_side_result.sharp_action == "TAKE_POINTS_LIVE":
