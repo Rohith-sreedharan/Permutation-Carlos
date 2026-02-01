@@ -469,19 +469,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </button>
         </div>
         <div className="text-light-gray text-sm mt-4">
-          Check console for detailed error logsasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            className="transition-all duration-1000"
-          />
-        </svg>
-        <div className="absolute text-center">
-          <div className="text-4xl font-bold" style={{ color }}>{score}</div>
-          <div className="text-sm text-light-gray">CONFIDENCE</div>
+          Check console for detailed error logs
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   if (loading) return <LoadingSpinner />;
   if (error) return (
@@ -2981,12 +2973,12 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </div>
         )}
       </div>
-    </div>
 
-    {/* DEV-ONLY: Debug Panel for Simulation Integrity */}
-    {process.env.NODE_ENV === 'development' && simulation && event && (
-      <SimulationDebugPanel simulation={simulation} event={event} />
-    )}
+      {/* DEV-ONLY: Debug Panel for Simulation Integrity */}
+      {process.env.NODE_ENV === 'development' && simulation && event && (
+        <SimulationDebugPanel simulation={simulation} event={event} />
+      )}
+    </div>
   );
 };
 
