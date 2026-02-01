@@ -53,6 +53,8 @@ import {
 } from '../utils/modelSpreadLogic';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart } from 'recharts';
 import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } from '../types';
+import SimulationDebugPanel from './SimulationDebugPanel';
+import { IntegrityLogger, validateSnapshotConsistency, handleSnapshotMismatch } from '../utils/integrityLogger';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -96,6 +98,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [firstHalfLoading, setFirstHalfLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'distribution' | 'injuries' | 'props' | 'movement' | 'pulse' | 'firsthalf'>('distribution');
   const [activeMarketTab, setActiveMarketTab] = useState<'spread' | 'moneyline' | 'total'>('spread');
   const [showDebugPayload, setShowDebugPayload] = useState(false);
@@ -154,11 +157,19 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     }
   };
 
-  const loadGameData = async () => {
+  const loadGameData = async (retryCount = 0) => {
     if (!gameId) return;
+
+    const MAX_RETRIES = 2;
+    const RETRY_DELAY = 1000; // 1 second base delay
+    const startTime = performance.now();
 
     try {
       setLoading(true);
+      setRetryAttempt(retryCount);
+      setError(null);
+      
+      console.log(`🔄 [GameDetail] Fetch attempt ${retryCount + 1}/${MAX_RETRIES + 1} for game ${gameId}`);
       
       // Fetch simulation data and ALL events from database (all sports)
       const [simData, eventsData] = await Promise.all([
@@ -166,21 +177,86 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         fetchEventsFromDB(undefined, undefined, false, 500) // No sport filter, get all upcoming
       ]);
 
-      console.log('[GameDetail] Fetched events:', eventsData.length);
-      console.log('[GameDetail] Looking for gameId:', gameId);
+      const requestDuration = Math.round(performance.now() - startTime);
+      console.log(`✅ [GameDetail] Success on attempt ${retryCount + 1} (${requestDuration}ms)`);
+      console.log(`[GameDetail] Fetched events: ${eventsData.length}, looking for gameId: ${gameId}`);
+
+      // INTEGRITY CHECK: Validate snapshot consistency
+      const integrityCheck = validateSnapshotConsistency(simData);
+      if (!integrityCheck.valid) {
+        console.error('🚨 Snapshot integrity violation detected:', integrityCheck.errors);
+        
+        // Log violation
+        IntegrityLogger.logSnapshotMismatch({
+          event_id: gameId,
+          market_type: 'ALL',
+          expected_selection_id: 'N/A',
+          received_selection_id: 'N/A',
+          snapshot_hash_values: {
+            main: simData.snapshot_hash || 'MISSING',
+            home_selection: simData.sharp_analysis?.spread?.snapshot_hash,
+            away_selection: simData.sharp_analysis?.moneyline?.snapshot_hash,
+            model_preference: simData.sharp_analysis?.total?.snapshot_hash
+          },
+          full_payload: simData
+        });
+        
+        // Auto-refetch on first violation
+        if (retryCount === 0) {
+          console.log('🔄 Auto-refetching due to integrity violation...');
+          await handleSnapshotMismatch(gameId, 'ALL', () => loadGameData(retryCount + 1));
+          return;
+        } else {
+          // On second violation, show error but allow render with warning
+          console.error('❌ Persistent integrity violations after refetch');
+        }
+      }
 
       setSimulation(simData);
       const gameEvent = eventsData.find((e: EventType) => e.id === gameId);
       
-      console.log('[GameDetail] Found event:', gameEvent);
+      console.log('[GameDetail] Found event:', gameEvent ? '✓' : '✗');
       
       setEvent(gameEvent || null);
       setError(null);
+      setRetryAttempt(0);
     } catch (err: any) {
+      const requestDuration = Math.round(performance.now() - startTime);
+      const statusCode = err.message?.match(/HTTP (\d+)/)?.[1] || 'unknown';
+      
+      // Comprehensive error logging
+      console.error(`❌ [GameDetail] Fetch failed:`, {
+        simulation_id: gameId,
+        event_id: gameId,
+        status_code: statusCode,
+        error_message: err.message || 'Unknown error',
+        attempt_number: `${retryCount + 1}/${MAX_RETRIES + 1}`,
+        request_duration_ms: requestDuration,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Retry logic for transient errors (not for 404s or auth errors)
+      const isRetryable = !err.message?.includes('not found') && 
+                          !err.message?.includes('Session expired') &&
+                          statusCode !== '404' &&
+                          statusCode !== '401';
+      
+      if (retryCount < MAX_RETRIES && isRetryable) {
+        const retryDelay = RETRY_DELAY * (retryCount + 1); // 1s, 2s, 3s
+        console.log(`⏳ [GameDetail] Retrying in ${retryDelay}ms...`);
+        setError(`Loading... (Attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+        setTimeout(() => loadGameData(retryCount + 1), retryDelay);
+        return;
+      }
+      
+      // All retries exhausted or non-retryable error
+      console.error(`🚫 [GameDetail] All retries exhausted or non-retryable error`);
       setError(err.message || 'Failed to load game details');
-      console.error('[GameDetail] Error:', err);
+      setRetryAttempt(0);
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || error) {
+        setLoading(false);
+      }
     }
   };
 
@@ -341,24 +417,39 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     const color = score >= 75 ? '#7CFC00' : score >= 50 ? '#FFD700' : '#FF4444';
 
     return (
-      <div className="relative inline-flex items-center justify-center">
-        <svg className="transform -rotate-90" width="160" height="160">
-          <circle
-            cx="80"
-            cy="80"
-            r={radius}
-            stroke="#1e293b"
-            strokeWidth="12"
-            fill="none"
-          />
-          <circle
-            cx="80"
-            cy="80"
-            r={radius}
-            stroke={color}
-            strokeWidth="12"
-            fill="none"
-            strokeDasharray={circumference}
+      <div className="(
+    <div className="min-h-screen bg-[#0a0e1a] flex items-center justify-center">
+      <div className="text-center">
+        <LoadingSpinner />
+        {retryAttempt > 0 && (
+          <div className="mt-4 text-electric-blue text-sm font-semibold animate-pulse">
+            Attempt {retryAttempt + 1}/3...
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  
+  if (error && !error.startsWith('Loading...')) return (
+    <div className="min-h-screen bg-[#0a0e1a] p-6">
+      <div className="text-center space-y-4">
+        <div className="text-bold-red text-xl mb-4">{error}</div>
+        <div className="flex gap-4 justify-center">
+          <button
+            onClick={() => loadGameData(0)}
+            className="bg-electric-blue text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity flex items-center gap-2"
+          >
+            🔄 Retry
+          </button>
+          <button
+            onClick={onBack}
+            className="bg-gold text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+        <div className="text-light-gray text-sm mt-4">
+          Check console for detailed error logsasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
             className="transition-all duration-1000"
@@ -375,14 +466,22 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   if (loading) return <LoadingSpinner />;
   if (error) return (
     <div className="min-h-screen bg-[#0a0e1a] p-6">
-      <div className="text-center">
+      <div className="text-center space-y-4">
         <div className="text-bold-red text-xl mb-4">{error}</div>
-        <button
-          onClick={onBack}
-          className="bg-gold text-white px-6 py-2 rounded-lg hover:opacity-80"
-        >
-          ← Back to Dashboard
-        </button>
+        <div className="flex gap-4 justify-center">
+          <button
+            onClick={() => loadGameData(0)}
+            className="bg-electric-blue text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity"
+          >
+            🔄 Retry
+          </button>
+          <button
+            onClick={onBack}
+            className="bg-gold text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2036,11 +2135,15 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         }
         
         // ===== CLASSIFY SPREAD EDGE (ACTIONABLE vs MODEL SIGNAL) =====
+        // PRIORITY: Use backend sharp_action if available (gap-based validation)
+        const sharpAction = simulation.sharp_analysis?.spread?.sharp_action || null;
         const spreadClassification = classifySpreadEdge(
           spreadDeviation,
           varianceValue,
           normalizedScore,
-          valueSide || null
+          valueSide || null,
+          undefined,  // previousState
+          sharpAction  // NEW: Pass sharp_action from backend
         );
         
         // Total interpretation (SINGLE calculation)
@@ -2859,6 +2962,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         )}
       </div>
     </div>
+
+    {/* DEV-ONLY: Debug Panel for Simulation Integrity */}
+    {process.env.NODE_ENV === 'development' && simulation && event && (
+      <SimulationDebugPanel simulation={simulation} event={event} />
+    )}
   );
 };
 

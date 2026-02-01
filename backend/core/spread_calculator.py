@@ -103,18 +103,20 @@ class SpreadCalculator:
         home_ev: float,
         away_ev: float,
         home_probability: float,
-        away_probability: float
+        away_probability: float,
+        edge_gap_points: float = 0.0
     ) -> dict:
         """
         Determine sharp side and classification.
         
         Selection Logic (in priority order):
-        1. Choose max(EV)
-        2. If EVs within tolerance: choose higher probability (tie-breaker)
+        1. Choose max(EV) if odds available
+        2. If odds missing (max_ev = 0): use probability + edge_gap fallback
+        3. If EVs within tolerance: choose higher probability (tie-breaker)
         
-        Classification (based on max EV):
-        EDGE: EV >= 3.0%
-        LEAN: 0.5% <= EV < 3.0%
+        Classification (based on max EV or fallback):
+        EDGE: EV >= 3.0% OR (edge_gap >= 3.0 AND win_prob >= 55%)
+        LEAN: 0.5% <= EV < 3.0% OR (edge_gap >= 2.0 AND win_prob >= 52%)
         NEUTRAL: 0% <= EV < 0.5%
         NO_PLAY: EV < 0%
         """
@@ -122,31 +124,66 @@ class SpreadCalculator:
         LEAN_THRESHOLD = 0.5
         EV_TIE_TOLERANCE = 0.1
         
+        # Fallback thresholds when odds missing
+        EDGE_GAP_MIN = 3.0
+        LEAN_GAP_MIN = 2.0
+        EDGE_PROB_MIN = 55.0
+        LEAN_PROB_MIN = 52.0
+        
         ev_diff = abs(home_ev - away_ev)
         
-        if ev_diff < EV_TIE_TOLERANCE:
+        # Check if odds are missing (both EVs are 0)
+        odds_missing = (home_ev == 0.0 and away_ev == 0.0)
+        
+        if odds_missing:
+            # CHANGE 1: Fallback classification using win_prob + edge_gap_points
+            sharp_side = 'home' if home_probability >= away_probability else 'away'
+            max_prob = max(home_probability, away_probability)
+            selection_method = 'gap_probability_fallback'
+            
+            # Classify based on gap + probability
+            if edge_gap_points >= EDGE_GAP_MIN and max_prob >= EDGE_PROB_MIN:
+                classification = 'EDGE'
+                max_ev = 0.0  # No EV available, but classified as EDGE
+            elif edge_gap_points >= LEAN_GAP_MIN and max_prob >= LEAN_PROB_MIN:
+                classification = 'LEAN'
+                max_ev = 0.0
+            else:
+                classification = 'NEUTRAL'
+                max_ev = 0.0
+        elif ev_diff < EV_TIE_TOLERANCE:
             # EV tie: use probability as tie-breaker
             sharp_side = 'home' if home_probability >= away_probability else 'away'
             max_ev = max(home_ev, away_ev)
             selection_method = 'ev_tie_probability'
+            
+            # Determine classification based on EV
+            if max_ev >= EDGE_THRESHOLD:
+                classification = 'EDGE'
+            elif max_ev >= LEAN_THRESHOLD:
+                classification = 'LEAN'
+            elif max_ev >= 0:
+                classification = 'NEUTRAL'
+            else:
+                classification = 'NO_PLAY'
         else:
             # Clear EV winner
             sharp_side = 'home' if home_ev > away_ev else 'away'
             max_ev = max(home_ev, away_ev)
             selection_method = 'ev'
+            
+            # Determine classification
+            if max_ev >= EDGE_THRESHOLD:
+                classification = 'EDGE'
+            elif max_ev >= LEAN_THRESHOLD:
+                classification = 'LEAN'
+            elif max_ev >= 0:
+                classification = 'NEUTRAL'
+            else:
+                classification = 'NO_PLAY'
         
-        # Determine classification
-        if max_ev >= EDGE_THRESHOLD:
-            classification = 'EDGE'
-        elif max_ev >= LEAN_THRESHOLD:
-            classification = 'LEAN'
-        elif max_ev >= 0:
-            classification = 'NEUTRAL'
-        else:
-            classification = 'NO_PLAY'
-        
-        # If NO_PLAY or NEUTRAL, no sharp side
-        if classification in ['NO_PLAY', 'NEUTRAL']:
+        # CHANGE 2: Only null sharp_side for NO_PLAY, not NEUTRAL
+        if classification == 'NO_PLAY':
             sharp_side = None
         
         return {

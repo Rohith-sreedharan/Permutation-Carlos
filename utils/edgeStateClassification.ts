@@ -181,9 +181,32 @@ export function classifySpreadEdge(
   volatility: number,
   confidence: number | null,
   valueSide: string | null,
-  previousState?: EdgeState  // For hysteresis
+  previousState?: EdgeState,  // For hysteresis
+  sharpAction?: string | null  // NEW: Sharp side selection action from backend
 ): EdgeClassification {
   const stateReasons: string[] = [];
+  
+  // PRIORITY OVERRIDE: If backend sharp side logic identified an edge, trust it
+  // Gap-based thresholds (LIVE_ENTRY_THRESHOLD=2.0, FAVORITE_SHARP_THRESHOLD=3.0)
+  // are more reliable than confidence-based classification
+  if (sharpAction && sharpAction !== 'NO_SHARP_PLAY') {
+    stateReasons.push(`Sharp action identified: ${sharpAction}`);
+    stateReasons.push(`Gap-based edge analysis (backend validated)`);
+    
+    return {
+      state: EdgeState.EDGE,
+      side: valueSide,
+      magnitude: spreadDeviation,
+      probability: 0.55 + (spreadDeviation / 40),
+      confidence: confidence || 50,  // Use actual confidence or default
+      confidenceComponents: null,
+      reason: `Official edge: ${sharpAction} — ${spreadDeviation.toFixed(1)} pt gap-validated edge`,
+      actionable: true,
+      showBanner: true,
+      telegramEligible: true,
+      stateReasons
+    };
+  }
   
   // Handle unavailable confidence
   if (confidence === null) {

@@ -56,6 +56,7 @@ class ReasonCode(str, Enum):
     # Downgrade reasons
     VOLATILITY_DOWNGRADED = "VOLATILITY_DOWNGRADED"
     VOLATILITY_BLOCKED = "VOLATILITY_BLOCKED"
+    OVERRIDE_DOWNGRADED = "OVERRIDE_DOWNGRADED"
     DISTRIBUTION_UNSTABLE = "DISTRIBUTION_UNSTABLE"
     PACE_ONLY_EDGE = "PACE_ONLY_EDGE"
     SPREAD_TOO_LARGE = "SPREAD_TOO_LARGE"
@@ -520,11 +521,15 @@ class UniversalEdgeEvaluator:
                 primary_market = PrimaryMarket.MONEYLINE
                 reasons.append(ReasonCode.LEAN_THRESHOLD_MET.value)
         
-        # Apply downgrade if needed
-        if override_result.downgrade or vol_result.forces_downgrade:
+        # Apply downgrade if needed (OVERRIDE ONLY - volatility affects confidence, not classification)
+        if override_result.downgrade:
             if state == EdgeState.EDGE:
                 state = EdgeState.LEAN
-                reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
+                reasons.append(ReasonCode.OVERRIDE_DOWNGRADED.value)
+        
+        # Volatility tracking (informational only - does not change classification)
+        if vol_result.forces_downgrade:
+            reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
         
         if state == EdgeState.NO_PLAY:
             reasons.append(ReasonCode.DEFAULT_NO_PLAY.value)
@@ -634,11 +639,15 @@ class UniversalEdgeEvaluator:
                     primary_market = PrimaryMarket.TOTAL
                     reasons.append(ReasonCode.LEAN_THRESHOLD_MET.value)
         
-        # Apply downgrades
-        if override_result.downgrade or vol_result.forces_downgrade:
+        # Apply downgrades (OVERRIDE ONLY - volatility affects confidence, not classification)
+        if override_result.downgrade:
             if state == EdgeState.EDGE:
                 state = EdgeState.LEAN
-                reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
+                reasons.append(ReasonCode.OVERRIDE_DOWNGRADED.value)
+        
+        # Volatility tracking (informational only - does not change classification)
+        if vol_result.forces_downgrade:
+            reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
         
         if state == EdgeState.NO_PLAY:
             reasons.append(ReasonCode.DEFAULT_NO_PLAY.value)
@@ -764,11 +773,15 @@ class UniversalEdgeEvaluator:
                 primary_market = PrimaryMarket.TOTAL
                 reasons.append(ReasonCode.LEAN_THRESHOLD_MET.value)
         
-        # Apply downgrades
-        if override_result.downgrade or vol_result.forces_downgrade:
+        # Apply downgrades (OVERRIDE ONLY - volatility affects confidence, not classification)
+        if override_result.downgrade:
             if state == EdgeState.EDGE:
                 state = EdgeState.LEAN
-                reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
+                reasons.append(ReasonCode.OVERRIDE_DOWNGRADED.value)
+        
+        # Volatility tracking (informational only - does not change classification)
+        if vol_result.forces_downgrade:
+            reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
         
         # Scheme variance forces downgrade (NCAAF)
         if not is_nfl and simulation.scheme_variance_flag and state == EdgeState.EDGE:
@@ -873,11 +886,15 @@ class UniversalEdgeEvaluator:
                 primary_market = PrimaryMarket.TOTAL
                 reasons.append(ReasonCode.LEAN_THRESHOLD_MET.value)
         
-        # Apply downgrades
-        if override_result.downgrade or vol_result.forces_downgrade:
+        # Apply downgrades (OVERRIDE ONLY - volatility affects confidence, not classification)
+        if override_result.downgrade:
             if state == EdgeState.EDGE:
                 state = EdgeState.LEAN
-                reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
+                reasons.append(ReasonCode.OVERRIDE_DOWNGRADED.value)
+        
+        # Volatility tracking (informational only - does not change classification)
+        if vol_result.forces_downgrade:
+            reasons.append(ReasonCode.VOLATILITY_DOWNGRADED.value)
         
         # Pace-only edge forces downgrade (NCAAB)
         if is_ncaab and simulation.pace_driven_edge and state == EdgeState.EDGE:

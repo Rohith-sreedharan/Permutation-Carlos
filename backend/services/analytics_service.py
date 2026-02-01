@@ -17,6 +17,13 @@ from core.numerical_accuracy import (
     EdgeValidator,
     SimulationTierConfig
 )
+from core.universal_tier_classifier import (
+    SelectionInput,
+    classify,
+    build_classification_result,
+    Tier,
+    market_prob_fair as calc_market_prob_fair
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,69 +102,125 @@ class AnalyticsService:
         confidence: int,
         volatility: str,
         sim_count: int,
-        injury_impact: float = 0.0
+        injury_impact: float = 0.0,
+        american_odds: int = -110,
+        opp_american_odds: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Classify bet as EDGE / LEAN / NEUTRAL using ALL 6 conditions
+        Classify bet as EDGE / LEAN / MARKET_ALIGNED / BLOCKED using Universal Tier Classifier.
         
-        From Spec Section 7:
-        EDGE requires ALL:
-        1. Model prob >= 5pp above implied
-        2. Confidence >= 60
-        3. Volatility != HIGH
-        4. Sim power >= 25K
-        5. Model conviction >= 58%
-        6. Injury impact < 1.5
+        Uses ONLY probability edge + EV + data integrity (per Universal EDGE/LEAN spec).
+        CLV, volatility, line movement, market efficiency CANNOT affect tier.
+        
+        Thresholds (hard-coded):
+        - EDGE: prob_edge >= 5.0% AND ev >= 0.0%
+        - LEAN: prob_edge >= 2.5% AND ev >= -0.5%
+        - MARKET_ALIGNED: does not meet LEAN/EDGE thresholds
+        - BLOCKED: fails data integrity (sims < 20K, invalid prob, stale data)
         
         Returns:
             {
-                'classification': 'EDGE' | 'LEAN' | 'NEUTRAL',
+                'classification': 'EDGE' | 'LEAN' | 'MARKET_ALIGNED' | 'BLOCKED',
+                'prob_edge': 0.056,
+                'ev': 0.045,
+                'p_model': 0.58,
+                'p_market_fair': 0.524,
+                'recommendation': 'Strong Edge - 5.6% probability advantage',
+                'badge_color': 'green' | 'yellow' | 'gray' | 'red',
+                
+                # Legacy conditions (for backward compatibility display only)
                 'conditions_met': {
                     'edge_threshold': True,
-                    'confidence': True,
-                    ...
-                },
-                'recommendation': 'Strong Edge - All conditions met',
-                'badge_color': 'green' | 'yellow' | 'gray'
+                    'ev_threshold': True,
+                    'data_integrity': True
+                }
             }
         """
-        classification = EdgeValidator.classify_edge(
-            model_prob=model_prob,
-            implied_prob=implied_prob,
-            confidence=confidence,
-            volatility=volatility,
-            sim_count=sim_count,
-            injury_impact=injury_impact
+        # Build SelectionInput for universal classifier
+        now_unix = int(datetime.now(timezone.utc).timestamp())
+        
+        selection = SelectionInput(
+            sport="GENERIC",  # Sport-agnostic
+            market_type="GENERIC",
+            selection_id="analytics_request",
+            selection_text="Analysis",
+            timestamp_unix=now_unix,
+            sims_n=sim_count,
+            p_model=model_prob,
+            price_american=american_odds,
+            opp_price_american=opp_american_odds
         )
         
-        # Get detailed conditions for transparency
-        edge_pct = model_prob - implied_prob
-        conditions_met = {
-            'edge_threshold': edge_pct >= 0.05,
-            'confidence': confidence >= 60,
-            'volatility': volatility != 'HIGH',
-            'sim_power': sim_count >= 25000,
-            'model_conviction': model_prob >= 0.58,
-            'injury_stable': injury_impact < 1.5
+        # Classify using universal system
+        result = build_classification_result(selection, now_unix)
+        
+        # Calculate metrics
+        if result.tier == Tier.BLOCKED:
+            # Data integrity failure
+            return {
+                'classification': 'BLOCKED',
+                'prob_edge': None,
+                'ev': None,
+                'p_model': model_prob,
+                'p_market_fair': None,
+                'recommendation': 'Blocked - Data integrity failure (insufficient sims or invalid data)',
+                'badge_color': 'red',
+                'conditions_met': {
+                    'edge_threshold': False,
+                    'ev_threshold': False,
+                    'data_integrity': False
+                }
+            }
+        
+        # Calculate for display (with None checks)
+        edge_pct = result.prob_edge if result.prob_edge is not None else 0.0
+        ev_val = result.ev if result.ev is not None else 0.0
+        
+        # Map tier to response
+        tier_map = {
+            Tier.EDGE: {
+                'classification': 'EDGE',
+                'recommendation': f"Strong Edge - {edge_pct*100:.1f}% probability advantage with {ev_val*100:+.1f}% EV",
+                'badge_color': 'green'
+            },
+            Tier.LEAN: {
+                'classification': 'LEAN',
+                'recommendation': f"Lean - {edge_pct*100:.1f}% probability advantage with {ev_val*100:+.1f}% EV",
+                'badge_color': 'yellow'
+            },
+            Tier.MARKET_ALIGNED: {
+                'classification': 'MARKET_ALIGNED',
+                'recommendation': f"Market Aligned - Edge ({edge_pct*100:.1f}%) below threshold",
+                'badge_color': 'gray'
+            }
         }
         
-        # Generate recommendation text
-        if classification == 'EDGE':
-            recommendation = f"Strong Edge - All 6 conditions met ({edge_pct*100:.1f}% edge)"
-            badge_color = 'green'
-        elif classification == 'LEAN':
-            recommendation = f"Lean - {edge_pct*100:.1f}% edge but missing some conditions"
-            badge_color = 'yellow'
-        else:
-            recommendation = "Neutral - No meaningful edge"
-            badge_color = 'gray'
+        tier_info = tier_map.get(result.tier, tier_map[Tier.MARKET_ALIGNED])
+        
+        # Legacy conditions for backward compatibility
+        conditions_met = {
+            'edge_threshold': edge_pct >= 0.05 if result.tier == Tier.EDGE else edge_pct >= 0.025,
+            'ev_threshold': ev_val >= 0.0 if result.tier == Tier.EDGE else ev_val >= -0.005,
+            'data_integrity': True
+        }
         
         return {
-            'classification': classification,
+            'classification': tier_info['classification'],
+            'prob_edge': edge_pct,
+            'ev': ev_val,
+            'p_model': result.p_model,
+            'p_market_fair': result.p_market_fair,
+            'recommendation': tier_info['recommendation'],
+            'badge_color': tier_info['badge_color'],
             'conditions_met': conditions_met,
-            'recommendation': recommendation,
-            'badge_color': badge_color,
-            'edge_percentage': edge_pct
+            
+            # Additional context (volatility/confidence tracked separately, NOT affecting tier)
+            'metadata': {
+                'confidence': confidence,
+                'volatility': volatility,
+                'injury_impact': injury_impact,
+                'note': 'Volatility/confidence/CLV do not affect tier classification per Universal EDGE/LEAN spec'
+            }
         }
     
     @staticmethod

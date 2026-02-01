@@ -278,9 +278,13 @@ export interface MonteCarloSimulation {
       sharp_side: 'FAV' | 'DOG';
       sharp_market?: string;
       sharp_selection?: string;
+      sharp_action?: string;  // NEW: Gap-based sharp side action (TAKE_POINTS, TAKE_POINTS_LIVE, LAY_POINTS, NO_SHARP_PLAY)
       edge_grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
       sharp_side_display: string;
       sharp_side_reason?: string;
+      recommended_bet?: string;  // NEW: Human-readable bet recommendation
+      edge_after_penalty?: number;  // NEW: Edge after volatility penalty
+      reasoning?: string;  // NEW: Detailed reasoning for sharp action
     };
     moneyline?: {
       has_edge: boolean;

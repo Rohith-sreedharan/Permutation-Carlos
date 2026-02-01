@@ -36,13 +36,14 @@ from core.numerical_accuracy import (
     get_debug_label
 )
 from core.sharp_analysis import (
-    calculate_spread_edge,
     calculate_total_edge,
     format_for_api,
     explain_edge_reasoning,
     STANDARD_DISCLAIMER,
     TotalAnalysis
 )
+from core.sharp_side_selection import select_sharp_side_spread, SharpSideSelection
+from core.sport_configs import VolatilityLevel
 from core.feedback_loop import store_prediction
 from core.reality_check_layer import get_public_total_projection
 from core.output_consistency import output_consistency_validator
@@ -792,15 +793,78 @@ class MonteCarloEngine:
         model_spread_formatted = model_spread_favorite_perspective
         vegas_spread_formatted = vegas_spread_favorite_perspective
         
-        # Calculate spread edge
-        spread_analysis = calculate_spread_edge(
+        # Map volatility to VolatilityLevel enum
+        if volatility_label == "STABLE":
+            volatility_enum = VolatilityLevel.LOW
+        elif volatility_label == "MODERATE":
+            volatility_enum = VolatilityLevel.MEDIUM
+        elif volatility_label == "HIGH":
+            volatility_enum = VolatilityLevel.HIGH
+        else:
+            volatility_enum = VolatilityLevel.EXTREME
+        
+        # Calculate spread edge using NEW SHARP SIDE SELECTION (gap-based thresholds)
+        sharp_side_result = select_sharp_side_spread(
+            home_team=home_team_name,
+            away_team=away_team_name,
+            market_spread_home=vegas_spread_home_perspective,
+            model_spread=model_spread_home_perspective,
+            volatility=volatility_enum
+        )
+        
+        # Convert SharpSideSelection to SpreadAnalysis format for backward compatibility
+        from dataclasses import dataclass
+        @dataclass
+        class SpreadAnalysis:
+            vegas_spread: float
+            model_spread: float
+            edge_points: float
+            edge_direction: str
+            sharp_side: Optional[str]
+            sharp_side_reason: str
+            edge_grade: str
+            edge_strength: str
+            @property
+            def has_edge(self) -> bool:
+                return self.edge_direction in ['DOG', 'FAVORITE']
+        
+        # Map sharp_action to edge_direction
+        if sharp_side_result.sharp_action == "TAKE_POINTS" or sharp_side_result.sharp_action == "TAKE_POINTS_LIVE":
+            edge_direction = "DOG"
+        elif sharp_side_result.sharp_action == "LAY_POINTS":
+            edge_direction = "FAVORITE"
+        else:
+            edge_direction = "NO_EDGE"
+        
+        # Grade edge strength based on edge_after_penalty
+        if sharp_side_result.edge_after_penalty >= 6.0:
+            edge_grade = "S"
+            edge_strength = "HIGH"
+        elif sharp_side_result.edge_after_penalty >= 4.0:
+            edge_grade = "A"
+            edge_strength = "HIGH"
+        elif sharp_side_result.edge_after_penalty >= 3.0:
+            edge_grade = "B"
+            edge_strength = "MEDIUM"
+        elif sharp_side_result.edge_after_penalty >= 2.0:
+            edge_grade = "C"
+            edge_strength = "MEDIUM"
+        elif sharp_side_result.edge_after_penalty >= 1.0:
+            edge_grade = "D"
+            edge_strength = "LOW"
+        else:
+            edge_grade = "F"
+            edge_strength = "LOW"
+        
+        spread_analysis = SpreadAnalysis(
             vegas_spread=vegas_spread_formatted,
             model_spread=model_spread_formatted,
-            favorite_team=favorite_team,
-            underdog_team=underdog_team,
-            threshold=3.0,
-            confidence_score=confidence_score,
-            variance=variance_total
+            edge_points=sharp_side_result.edge_after_penalty,
+            edge_direction=edge_direction,
+            sharp_side=sharp_side_result.sharp_side_display if edge_direction in ['DOG', 'FAVORITE'] else None,
+            sharp_side_reason=sharp_side_result.reasoning,
+            edge_grade=edge_grade,
+            edge_strength=edge_strength
         )
         
         # ===== OUTPUT CONSISTENCY VALIDATION =====
@@ -1251,13 +1315,22 @@ class MonteCarloEngine:
                     # NEW: Market-scoped sharp side (corrected logic)
                     "sharp_market": spread_sharp_result.sharp_market.value if spread_sharp_result else "SPREAD",
                     "sharp_selection": spread_sharp_result.sharp_selection if spread_sharp_result else None,
-                    "sharp_action": spread_sharp_result.sharp_action.value if spread_sharp_result else "NO_SHARP_PLAY",
+                    "sharp_action": sharp_side_result.sharp_action,  # Use NEW sharp side selection result
                     "sharp_team": spread_sharp_result.sharp_team if spread_sharp_result else None,
                     "sharp_line": spread_sharp_result.sharp_line if spread_sharp_result else None,
-                    "has_edge": spread_sharp_result.has_edge if spread_sharp_result else False,
+                    "has_edge": sharp_side_result.edge_after_penalty > 0,  # Use NEW edge calculation
                     
                     # Legacy sharp_side (keep for backward compatibility)
                     "sharp_side": spread_sharp_result.sharp_selection if spread_sharp_result else None,
+                    
+                    # NEW SHARP SIDE SELECTION FIELDS (Gap-based thresholds)
+                    "sharp_side_display": sharp_side_result.sharp_side_display,
+                    "recommended_bet": sharp_side_result.recommended_bet,
+                    "market_favorite": sharp_side_result.market_favorite,
+                    "market_underdog": sharp_side_result.market_underdog,
+                    "edge_after_penalty": sharp_side_result.edge_after_penalty,
+                    "volatility_penalty": sharp_side_result.volatility_penalty,
+                    "reasoning": sharp_side_result.reasoning,
                     
                     **spread_edge_api
                 },

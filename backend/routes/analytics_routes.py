@@ -46,6 +46,8 @@ class EdgeClassificationRequest(BaseModel):
     volatility: str = Field(..., description="Volatility level: LOW, MEDIUM, HIGH")
     sim_count: int = Field(..., description="Number of simulations")
     injury_impact: float = Field(0.0, description="Injury impact score")
+    american_odds: int = Field(-110, description="American odds for this selection (e.g., -110, +150)")
+    opp_american_odds: Optional[int] = Field(None, description="American odds for opposite side (optional, for vig removal)")
 
 
 class ParlayLeg(BaseModel):
@@ -108,21 +110,32 @@ async def calculate_ev(payload: EVCalculationRequest) -> Dict[str, Any]:
 @router.post("/classify-edge")
 async def classify_edge(payload: EdgeClassificationRequest) -> Dict[str, Any]:
     """
-    Classify bet strength: EDGE | LEAN | NEUTRAL
+    Classify bet strength: EDGE | LEAN | MARKET_ALIGNED | BLOCKED
     
-    EDGE requires ALL 6 conditions:
-    1. Model prob >= 5pp above implied
-    2. Confidence >= 60
-    3. Volatility != HIGH
-    4. Sim power >= 25K
-    5. Model conviction >= 58%
-    6. Injury impact < 1.5
+    Uses Universal Tier Classifier (sport-agnostic, deterministic).
+    Classification depends ONLY on:
+    1. Probability edge (model vs market)
+    2. Expected value (EV)
+    3. Data integrity (sims, staleness, validity)
+    
+    Thresholds:
+    - EDGE: prob_edge >= 5.0% AND ev >= 0.0%
+    - LEAN: prob_edge >= 2.5% AND ev >= -0.5%
+    - MARKET_ALIGNED: does not meet LEAN/EDGE thresholds
+    - BLOCKED: insufficient sims (<20K) or invalid data
+    
+    CRITICAL: CLV, volatility, line movement, market efficiency do NOT affect tier.
+    They are tracked separately for execution/sizing decisions.
     
     Returns:
-    - classification: 'EDGE' | 'LEAN' | 'NEUTRAL'
-    - conditions_met: Boolean dict for each condition
+    - classification: 'EDGE' | 'LEAN' | 'MARKET_ALIGNED' | 'BLOCKED'
+    - prob_edge: Probability edge (model - market)
+    - ev: Expected value
+    - p_model: Model probability
+    - p_market_fair: Vig-removed market probability
     - recommendation: User-facing text
-    - badge_color: 'green' | 'yellow' | 'gray'
+    - badge_color: 'green' | 'yellow' | 'gray' | 'red'
+    - metadata: Volatility/confidence (tracked, but not affecting tier)
     """
     try:
         result = AnalyticsService.classify_bet_strength(
@@ -131,10 +144,12 @@ async def classify_edge(payload: EdgeClassificationRequest) -> Dict[str, Any]:
             confidence=int(payload.confidence),
             volatility=payload.volatility,
             sim_count=payload.sim_count,
-            injury_impact=payload.injury_impact
+            injury_impact=payload.injury_impact,
+            american_odds=payload.american_odds,
+            opp_american_odds=payload.opp_american_odds
         )
         
-        logger.info(f"Edge Classified: {result['classification']} (Conditions: {sum(result['conditions_met'].values())}/6)")
+        logger.info(f"Edge Classified: {result['classification']} (Edge: {result.get('prob_edge', 0)*100:.1f}%, EV: {result.get('ev', 0)*100:.1f}%)")
         return result
         
     except Exception as e:
