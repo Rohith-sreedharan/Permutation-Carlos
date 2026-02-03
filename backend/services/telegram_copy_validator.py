@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from pydantic import BaseModel
 
-from backend.db.telegram_schemas import (
+from db.telegram_schemas import (
     TelegramQueueItem,
     ValidatorReport,
 )

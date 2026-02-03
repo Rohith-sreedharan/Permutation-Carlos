@@ -33,7 +33,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 
 # Import explanation layer components
-from backend.services.ui_explanation_layer import (
+from services.ui_explanation_layer import (
     Classification,
     NoActionSubtype,
     GlobalState,
@@ -50,12 +50,12 @@ from backend.services.ui_explanation_layer import (
 )
 
 # Import validation components
-from backend.services.explanation_forbidden_phrases import (
+from services.explanation_forbidden_phrases import (
     check_forbidden_phrases,
     is_action_language_safe
 )
 
-from backend.services.explanation_consistency_validator import (
+from services.explanation_consistency_validator import (
     validate_explanation_consistency,
     ValidationLevel
 )

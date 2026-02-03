@@ -18,7 +18,7 @@ Version: v1.0.0 (Hard-Lock Patch)
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from backend.services.pick_integrity_validator import (
+from services.pick_integrity_validator import (
     PickIntegrityValidator,
     CanonicalActionPayload,
     RecommendedAction,

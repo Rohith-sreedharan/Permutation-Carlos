@@ -5,8 +5,8 @@ Provides read-only access to immutable audit logs
 """
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
-from backend.utils.audit_logger import AuditLogger
-from backend.core.kill_switch import KillSwitch
+from utils.audit_logger import AuditLogger
+from core.kill_switch import KillSwitch
 import logging
 
 logger = logging.getLogger(__name__)

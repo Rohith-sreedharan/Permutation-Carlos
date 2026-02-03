@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import logging
 
 # Import canonical model direction module (SINGLE SOURCE OF TRUTH)
-from backend.core.model_direction_canonical import (
+from core.model_direction_canonical import (
     calculate_model_direction,
     format_display_line,
     to_legacy_format

@@ -29,8 +29,8 @@ from backend.db.telegram_schemas import (
     TelegramPostLog,
     ValidatorReport,
 )
-from backend.services.telegram_templates import render_telegram_post
-from backend.services.telegram_copy_validator import validate_telegram_post
+from services.telegram_templates import render_telegram_post
+from services.telegram_copy_validator import validate_telegram_post
 
 
 logger = logging.getLogger(__name__)
