@@ -39,9 +39,100 @@ class ResultService:
         self.odds_api_key = os.getenv("ODDS_API_KEY")
         self.odds_base_url = os.getenv("ODDS_BASE_URL", "https://api.the-odds-api.com/v4/")
     
+    async def fetch_scores_by_oddsapi_id(self, oddsapi_event_id: str) -> Optional[Dict]:
+        """
+        Fetch final score using exact OddsAPI event ID.
+        
+        ⚠️ CRITICAL: This is the ONLY way to fetch scores in production.
+        No fuzzy team matching allowed.
+        
+        Args:
+            oddsapi_event_id: Exact OddsAPI event ID from provider_event_map
+            
+        Returns:
+            {
+                "event_id": "abc123...",
+                "home_team": "Lakers",
+                "away_team": "Warriors",
+                "home_score": 115,
+                "away_score": 110,
+                "completed": true,
+                "commence_time": "2024-01-15T19:00:00Z"
+            }
+            None if not found or not completed
+        """
+        if not oddsapi_event_id:
+            logger.error("fetch_scores_by_oddsapi_id called with empty ID")
+            return None
+        
+        try:
+            # Call OddsAPI /sports/{sport}/scores endpoint
+            # We need to determine sport first
+            url = f"{self.odds_base_url}sports/basketball_nba/scores"
+            params = {
+                "apiKey": self.odds_api_key,
+                "eventIds": oddsapi_event_id  # Filter by exact ID
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            events = response.json()
+            
+            # Find matching event
+            for event in events:
+                if event.get("id") == oddsapi_event_id:
+                    # Check if completed
+                    if not event.get("completed"):
+                        logger.info(f"Event {oddsapi_event_id} not yet completed")
+                        return None
+                    
+                    # Extract scores
+                    scores = event.get("scores")
+                    if not scores or len(scores) < 2:
+                        logger.warning(f"Event {oddsapi_event_id} missing scores")
+                        return None
+                    
+                    # Parse scores (home/away detection)
+                    home_score = None
+                    away_score = None
+                    
+                    for score_obj in scores:
+                        team_name = score_obj.get("name")
+                        team_score = score_obj.get("score")
+                        
+                        if team_name == event.get("home_team"):
+                            home_score = int(team_score) if team_score else None
+                        elif team_name == event.get("away_team"):
+                            away_score = int(team_score) if team_score else None
+                    
+                    if home_score is None or away_score is None:
+                        logger.warning(f"Event {oddsapi_event_id} incomplete score data")
+                        return None
+                    
+                    return {
+                        "event_id": oddsapi_event_id,
+                        "home_team": event.get("home_team"),
+                        "away_team": event.get("away_team"),
+                        "home_score": home_score,
+                        "away_score": away_score,
+                        "completed": True,
+                        "commence_time": event.get("commence_time")
+                    }
+            
+            logger.warning(f"Event {oddsapi_event_id} not found in OddsAPI response")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Failed to fetch scores for {oddsapi_event_id}: {e}")
+            return None
+    
     async def grade_completed_games(self, hours_back: int = 24) -> Dict:
         """
         Grade all predictions from games that completed in the last N hours.
+        
+        ⚠️ DEPRECATED: Use UnifiedGradingService instead.
+        This method is kept for backward compatibility only.
         
         Args:
             hours_back: How far back to look for completed games
@@ -54,6 +145,11 @@ class ResultService:
                 "units_won": 3.2
             }
         """
+        logger.warning(
+            "result_service.grade_completed_games() is DEPRECATED. "
+            "Use unified_grading_service.UnifiedGradingService instead."
+        )
+        
         since = now_utc() - timedelta(hours=hours_back)
         
         # Find predictions that need grading

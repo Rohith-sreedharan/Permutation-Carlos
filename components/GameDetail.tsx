@@ -1382,7 +1382,12 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="text-sm text-gray-300 mt-3 p-3 bg-navy/30 rounded">
                     <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                       <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                      <span>Edge Direction: {spreadContext.edgeDirection === 'FAV' ? 'Fade the Dog' : 'Take the Dog'}</span>
+                      <span>
+                        {/* ✅ FIX: Text must match direction label */}
+                        {spreadContext.edgeDirection === 'DOG' 
+                          ? 'Take the Dog (underdog getting extra value)' 
+                          : 'Lay the Favorite (favorite discounted)'}
+                      </span>
                     </div>
                     {simulation.sharp_analysis.spread.sharp_side_reason && (
                       <div className="text-xs text-gray-400 mt-1">

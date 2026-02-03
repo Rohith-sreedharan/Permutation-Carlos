@@ -163,7 +163,7 @@ export const SimulationDebugPanel: React.FC<SimulationDebugPanelProps> = ({ simu
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 bg-gray-900 border-2 border-purple-500 rounded-lg shadow-2xl w-[600px] max-h-[80vh] overflow-auto">
+    <div className="fixed bottom-4 right-4 z-50 bg-gray-900 border-2 border-purple-500 rounded-lg shadow-2xl w-150 max-h-[80vh] overflow-auto">
       {/* Header */}
       <div className="bg-purple-600 px-4 py-3 flex items-center justify-between sticky top-0">
         <div className="flex items-center gap-2">

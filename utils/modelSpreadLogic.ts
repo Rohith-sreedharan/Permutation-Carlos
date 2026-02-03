@@ -198,9 +198,9 @@ export function calculateSpreadContext(
  */
 export function getSharpSideReasoning(context: SpreadContext): string {
   if (context.sharpSide === 'DOG') {
-    return `Model projects ${context.marketUnderdog} to lose by less (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Underdog getting too few points → Take the dog.`;
+    return `Take the underdog - Model projects ${context.marketUnderdog} to lose by less (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Market giving too few points.`;
   } else {
-    return `Model projects ${context.marketUnderdog} to lose by more (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Underdog getting too many points → Fade the dog.`;
+    return `Lay the favorite - Model projects ${context.marketUnderdog} to lose by more (${Math.abs(context.modelSpread).toFixed(1)} pts) than market prices (${Math.abs(context.marketSpreadHome).toFixed(1)} pts). Favorite discounted.`;
   }
 }
 

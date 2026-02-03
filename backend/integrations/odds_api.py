@@ -196,7 +196,12 @@ def normalize_event(event: dict) -> dict:
 
     Picks common keys: id -> event_id, sport_key, sport_title, commence_time, home_team, away_team, bookmakers
     Also collects simplified markets/odds summary for easy queries.
+    
+    🔒 CRITICAL: Stores OddsAPI event ID for exact score lookup (no fuzzy matching)
     """
+    # Extract OddsAPI event ID (CRITICAL for grading)
+    oddsapi_event_id = event.get("id")
+    
     # Parse commence_time and compute EST-local date/time strings
     commence_iso = event.get("commence_time")
     est_date = None
@@ -222,6 +227,14 @@ def normalize_event(event: dict) -> dict:
         "bookmakers": event.get("bookmakers", []),
         "raw_markets": event.get("markets", []),
         "created_at": now_utc().isoformat(),
+        
+        # ✅ OddsAPI event ID mapping (REQUIRED for unified grading)
+        "provider_event_map": {
+            "oddsapi": {
+                "event_id": oddsapi_event_id,
+                "raw_payload": event  # Store full payload for debugging
+            }
+        }
     }
 
     # build simple flattened 'odds' list for quick lookups

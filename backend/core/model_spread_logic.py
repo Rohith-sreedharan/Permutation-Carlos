@@ -257,10 +257,10 @@ def format_spread_for_telegram(context: SpreadContext, include_reasoning: bool =
     if include_reasoning:
         if context.sharp_side == SharpSide.FAVORITE:
             lines.append(f"")
-            lines.append(f"Reason: Model projects larger margin than market prices → Fade the dog")
+            lines.append(f"Reason: Lay the favorite - Model projects larger margin than market prices")
         else:
             lines.append(f"")
-            lines.append(f"Reason: Model projects smaller margin than market prices → Take the dog")
+            lines.append(f"Reason: Take the underdog - Model projects smaller margin than market prices")
     
     return "\n".join(lines)
 

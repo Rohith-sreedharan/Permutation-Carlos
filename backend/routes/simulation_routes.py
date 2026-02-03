@@ -15,6 +15,7 @@ from db.mongo import db
 from middleware.auth import get_current_user_optional, get_user_tier
 from services.post_game_grader import post_game_grader
 from utils.mongo_helpers import sanitize_mongo_doc
+from core.canonical_contract_enforcer import enforce_canonical_contract, validate_canonical_contract
 from legacy_config import (
     SIMULATION_TIERS, 
     PRECISION_LABELS, 
@@ -527,6 +528,15 @@ async def get_simulation(
         # Sanitize numpy types before returning
         simulation = sanitize_mongo_doc(simulation)
         
+        # 🔒 ENFORCE CANONICAL CONTRACT: Inject missing fields (snapshot_hash, selection_id, market_settlement)
+        simulation = enforce_canonical_contract(simulation)
+        
+        # Validate contract (log errors but don't block - graceful degradation)
+        is_valid, errors = validate_canonical_contract(simulation)
+        if not is_valid:
+            logger.error(f"❌ [Canonical Contract] Validation failed for {event_id}: {errors}")
+            simulation["integrity_warnings"] = simulation.get("integrity_warnings", []) + errors
+        
         return simulation
         
     except HTTPException:
@@ -706,6 +716,15 @@ async def run_simulation(
         # Sanitize numpy types
         result = sanitize_mongo_doc(result)
         
+        # 🔒 ENFORCE CANONICAL CONTRACT
+        result = enforce_canonical_contract(result)
+        
+        # Validate contract
+        is_valid, errors = validate_canonical_contract(result)
+        if not is_valid:
+            logger.error(f"❌ [Canonical Contract] POST /run validation failed: {errors}")
+            result["integrity_warnings"] = result.get("integrity_warnings", []) + errors
+        
         return result
         
     except Exception as e:
@@ -859,6 +878,15 @@ async def get_period_simulation(
         
         # Sanitize numpy types
         simulation = sanitize_mongo_doc(simulation)
+        
+        # 🔒 ENFORCE CANONICAL CONTRACT
+        simulation = enforce_canonical_contract(simulation)
+        
+        # Validate contract
+        is_valid, errors = validate_canonical_contract(simulation)
+        if not is_valid:
+            logger.error(f"❌ [Canonical Contract] Period simulation validation failed: {errors}")
+            simulation["integrity_warnings"] = simulation.get("integrity_warnings", []) + errors
         
         return simulation
         
