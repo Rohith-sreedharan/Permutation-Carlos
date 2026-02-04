@@ -870,6 +870,16 @@ async def get_period_simulation(
             is_home=False
         )
         
+        # BASELINE MODE: If roster unavailable, use team-level model
+        simulation_mode = "BASELINE"
+        if team_a_data is None or team_b_data is None:
+            logger.info(f"📊 BASELINE MODE activated for {event_id}: roster unavailable")
+            # Use basic team data structure for team-level model
+            team_a_data = {"name": event.get("home_team", "Team A"), "is_home": True}
+            team_b_data = {"name": event.get("away_team", "Team B"), "is_home": False}
+        else:
+            simulation_mode = "FULL_PLAYER_MODEL"
+        
         # Determine user's tier and assigned iterations
         user_tier = _get_user_tier_from_auth(authorization)
         assigned_iterations = SIMULATION_TIERS.get(user_tier, SIM_TIER_FREE)
@@ -894,6 +904,10 @@ async def get_period_simulation(
             period=period,
             iterations=assigned_iterations  # TIERED COMPUTE
         )
+        
+        # Add simulation mode to result
+        simulation["simulation_mode"] = simulation_mode
+        simulation["confidence_penalty"] = 0.0  # Applied via calibration
         
         # Inject tier metadata
         simulation["metadata"] = {

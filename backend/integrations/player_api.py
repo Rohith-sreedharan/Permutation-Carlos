@@ -149,13 +149,14 @@ def get_team_roster(team_name: str, sport_key: str) -> List[Dict[str, Any]]:
                 return _get_fallback_roster(team_name, sport_key)
         
         else:
-            # For other sports (MLB, NHL, NCAAB) - must have real data or fail
-            logger.error(f"❌ No roster data available for {team_name} ({sport_key})")
-            raise ValueError(f"No roster data available for {team_name}. Cannot run simulation without real player data.")
+            # BASELINE MODE: Return None to signal team-level model should be used
+            logger.info(f"📊 BASELINE MODE: No roster data for {team_name} ({sport_key})")
+            return None
         
         if not roster:
-            logger.error(f"❌ No players found for {team_name}")
-            raise ValueError(f"No players found for {team_name}. Cannot run simulation without real player data.")
+            # BASELINE MODE: Return None to signal team-level model should be used
+            logger.info(f"📊 BASELINE MODE: No players found for {team_name}")
+            return None
         
         logger.info(f"✅ Fetched {len(roster)} REAL players for {team_name} from ESPN")
         return roster
@@ -172,16 +173,25 @@ def get_team_roster(team_name: str, sport_key: str) -> List[Dict[str, Any]]:
 # DEPRECATED: Synthetic roster fallback removed for production safety
 # ============================================================================
 # Using fake data in production is dangerous and misleading.
-# If real roster data is unavailable, the simulation should fail with a clear error
-# rather than proceeding with synthetic data that could mislead users.
+# BASELINE MODE ARCHITECTURE
+# ============================================================================
+# When roster data is unavailable, return None to signal BASELINE mode.
+# The simulation will use team-level priors + market structure instead.
+# This ensures continuous operation (HTTP 200) with honest uncertainty.
 # ============================================================================
 
 
 def get_team_data_with_roster(team_name: str, sport_key: str, is_home: bool) -> Dict[str, Any]:
     """
-    Get complete team data including roster for simulation
+    Get complete team data including roster for simulation.
+    
+    Returns None if roster unavailable (signals BASELINE mode).
     """
     roster = get_team_roster(team_name, sport_key)
+    
+    # BASELINE MODE: Roster unavailable
+    if roster is None:
+        return None
     
     # Calculate aggregate injury impact
     injury_impact = 1.0
