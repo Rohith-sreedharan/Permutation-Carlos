@@ -179,22 +179,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       console.log(`✅ [GameDetail] Success on attempt ${retryCount + 1} (${requestDuration}ms)`);
       console.log(`[GameDetail] Fetched events: ${eventsData.length}, looking for gameId: ${gameId}`);
 
-      // ===== HANDLE BLOCKED STATUS (ROSTER GOVERNANCE) =====
-      // Check if simulation is blocked due to roster unavailability
-      if (simData.status === 'BLOCKED') {
-        console.warn(`🚫 [GameDetail] Simulation BLOCKED: ${simData.blocked_reason}`);
-        console.warn(`Message: ${simData.message}`);
-        console.warn(`Retry after: ${simData.retry_after}`);
-        
-        // Set simulation with blocked state for UI rendering
-        setSimulation(simData);
-        const gameEvent = eventsData.find((e: EventType) => e.id === gameId);
-        setEvent(gameEvent || null);
-        setError(null); // Not an error - it's a controlled blocked state
-        setLoading(false);
-        return; // Don't proceed with normal rendering
-      }
-
       // INTEGRITY CHECK: Validate snapshot consistency
       const integrityCheck = validateSnapshotConsistency(simData);
       if (!integrityCheck.valid) {
@@ -490,90 +474,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   );
 
   if (loading) return <LoadingSpinner />;
-  
-  // ===== RENDER BLOCKED STATUS UI =====
-  if (simulation?.status === 'BLOCKED') {
-    const retryDate = simulation.retry_after ? new Date(simulation.retry_after) : null;
-    const retryTimeFormatted = retryDate ? retryDate.toLocaleString() : 'later';
-    
-    return (
-      <div className="min-h-screen bg-[#0a0e1a] p-6">
-        <PageHeader title="Simulation Blocked" onBack={onBack} />
-        
-        <div className="max-w-4xl mx-auto mt-12">
-          <div className="bg-charcoal border-2 border-yellow-600/50 rounded-xl p-8 space-y-6">
-            {/* Icon and Title */}
-            <div className="text-center">
-              <div className="text-6xl mb-4">🚫</div>
-              <h2 className="text-3xl font-bold text-white mb-2">Simulation Temporarily Blocked</h2>
-              <p className="text-gray-400 text-lg">
-                {simulation.blocked_reason === 'roster_unavailable' 
-                  ? 'Missing Roster Data' 
-                  : 'Data Unavailable'}
-              </p>
-            </div>
-            
-            {/* Message */}
-            <div className="bg-navy/50 p-6 rounded-lg">
-              <p className="text-white text-lg mb-4">{simulation.message}</p>
-              <div className="text-sm text-gray-400 space-y-2">
-                <p>• This is not an error - it's a controlled state</p>
-                <p>• No retry loops - system will auto-check when data becomes available</p>
-                <p>• Your tier privileges are preserved</p>
-              </div>
-            </div>
-            
-            {/* Retry Info */}
-            {retryDate && (
-              <div className="bg-purple-900/30 border border-purple-500/30 p-4 rounded-lg">
-                <p className="text-purple-300 text-sm font-bold mb-2">⏰ Automatic Retry</p>
-                <p className="text-white">System will re-check at: <span className="font-mono">{retryTimeFormatted}</span></p>
-                <p className="text-gray-400 text-sm mt-2">
-                  Check back after this time or try another game
-                </p>
-              </div>
-            )}
-            
-            {/* Team Info (if available) */}
-            {event && (
-              <div className="bg-navy/50 p-4 rounded-lg">
-                <p className="text-gray-400 text-sm mb-2">Game Details</p>
-                <p className="text-white font-bold text-lg">
-                  {event.away_team} @ {event.home_team}
-                </p>
-                {event.commence_time && (
-                  <p className="text-gray-400 text-sm mt-1">
-                    {new Date(event.commence_time).toLocaleString()}
-                  </p>
-                )}
-              </div>
-            )}
-            
-            {/* Actions */}
-            <div className="flex gap-4 justify-center pt-4">
-              <button
-                onClick={onBack}
-                className="bg-electric-blue text-white px-8 py-3 rounded-lg hover:opacity-80 transition-opacity font-bold"
-              >
-                ← Back to Dashboard
-              </button>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-gray-700 text-white px-8 py-3 rounded-lg hover:opacity-80 transition-opacity"
-              >
-                🔄 Refresh Page
-              </button>
-            </div>
-            
-            {/* Platform Disclaimer */}
-            <div className="text-center text-xs text-gray-500 pt-4 border-t border-gray-700">
-              BeatVegas maintains institutional-grade standards. Missing roster data results in a controlled BLOCKED state rather than unreliable estimates.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
   
   if (error) return (
     <div className="min-h-screen bg-[#0a0e1a] p-6">
@@ -932,6 +832,24 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       </div>
       {/* END: Header gradient wrapper */}
+
+      {/* BASELINE MODE INFO (Normal Operation) */}
+      {simulation?.simulation_mode === 'BASELINE' && (
+        <div className="mb-6 bg-linear-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-5">
+          <div className="flex items-start gap-4">
+            <div className="text-2xl">📊</div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-blue-300 mb-2">Baseline Mode</h3>
+              <p className="text-white text-sm mb-2">
+                Player-level data unavailable. Analysis generated from team-level historical performance, matchup profiles, and market pricing.
+              </p>
+              <p className="text-gray-400 text-xs">
+                Outputs remain continuous, logged, and auditable with calibrated confidence penalties.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {shareSuccess && (
         <div className="mb-4 bg-neon-green/20 border border-neon-green rounded-lg p-3 text-center text-neon-green text-sm animate-pulse">

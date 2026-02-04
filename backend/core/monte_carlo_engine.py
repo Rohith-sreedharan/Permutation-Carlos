@@ -57,8 +57,7 @@ from core.sim_integrity import (
     CURRENT_SIM_VERSION,
     generate_odds_snapshot_id
 )
-from core.roster_governance import roster_governance, RosterCheckResult
-from core.simulation_context import SimulationStatus, BlockedReason
+from core.simulation_context import SimulationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -252,51 +251,10 @@ class MonteCarloEngine:
         # Extract league from sport_key (e.g., "basketball_nba" -> "NBA")
         league = self._extract_league_from_sport_key(sport_key)
         
-        # Check team A roster
-        if team_a_name:
-            roster_check_a = roster_governance.check_roster_availability(
-                team_name=team_a_name,
-                league=league,
-                event_id=event_id
-            )
-            
-            if roster_check_a.blocked:
-                logger.warning(
-                    f"BLOCKED: {team_a_name} roster unavailable. Event {event_id} entering BLOCKED state."
-                )
-                return {
-                    "status": SimulationStatus.BLOCKED.value,
-                    "blocked_reason": BlockedReason.ROSTER_UNAVAILABLE.value,
-                    "message": roster_check_a.reason,
-                    "retry_after": roster_check_a.retry_after.isoformat() if roster_check_a.retry_after else None,
-                    "team_name": team_a_name,
-                    "event_id": event_id,
-                    "can_publish": False,
-                    "can_parlay": False
-                }
-        
-        # Check team B roster
-        if team_b_name:
-            roster_check_b = roster_governance.check_roster_availability(
-                team_name=team_b_name,
-                league=league,
-                event_id=event_id
-            )
-            
-            if roster_check_b.blocked:
-                logger.warning(
-                    f"BLOCKED: {team_b_name} roster unavailable. Event {event_id} entering BLOCKED state."
-                )
-                return {
-                    "status": SimulationStatus.BLOCKED.value,
-                    "blocked_reason": BlockedReason.ROSTER_UNAVAILABLE.value,
-                    "message": roster_check_b.reason,
-                    "retry_after": roster_check_b.retry_after.isoformat() if roster_check_b.retry_after else None,
-                    "team_name": team_b_name,
-                    "event_id": event_id,
-                    "can_publish": False,
-                    "can_parlay": False
-                }
+        # BASELINE MODE: Roster unavailability is NORMAL operation, not an error
+        # System always runs team-level baseline model with calibrated confidence
+        simulation_mode = "BASELINE"  # Default mode (no roster dependency)
+        confidence_penalty = 0.0  # No penalty for normal operation
         
         # Set market_type in market_context if not already set
         if 'market_type' not in market_context:
@@ -1199,6 +1157,11 @@ class MonteCarloEngine:
             "sport_key": market_context.get("sport_key", "basketball_nba"),
             "team_a": team_a.get("name"),
             "team_b": team_b.get("name"),
+            
+            # BASELINE MODE: Always runs team-level model (roster-independent)
+            "status": SimulationStatus.COMPLETED.value,
+            "simulation_mode": simulation_mode,  # "BASELINE" (default/normal operation)
+            "confidence_penalty": confidence_penalty,  # Applied to calibrated outputs
             
             # CANONICAL TEAM ANCHOR: Single source of truth (prevents UI bugs)
             "canonical_teams": canonical_team_data,

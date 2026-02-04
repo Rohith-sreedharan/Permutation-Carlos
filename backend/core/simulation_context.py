@@ -27,15 +27,6 @@ class SimulationStatus(str, Enum):
     PRICE_MOVED = "PRICE_MOVED"  # Market moved past playable limit
     INVALIDATED = "INVALIDATED"  # Manually invalidated
     FAILED = "FAILED"
-    BLOCKED = "BLOCKED"  # Cannot run due to missing data (roster, etc.)
-
-
-class BlockedReason(str, Enum):
-    """Reasons why a simulation is blocked from running"""
-    ROSTER_UNAVAILABLE = "roster_unavailable"
-    DATA_INSUFFICIENT = "data_insufficient"
-    LEAGUE_RESTRICTION = "league_restriction"
-    INTEGRITY_VIOLATION = "integrity_violation"
 
 
 @dataclass(frozen=True)

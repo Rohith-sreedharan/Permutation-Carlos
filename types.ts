@@ -103,11 +103,10 @@ export interface MonteCarloSimulation {
   volatility?: string;
   confidence_score: number;
   pick_state?: 'PICK' | 'LEAN' | 'AVOID' | 'PASS' | 'UNKNOWN'; // Truth Mode state
-  // NEW: Roster governance states
-  status?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CACHED' | 'PRICE_MOVED' | 'INVALIDATED' | 'FAILED' | 'BLOCKED';
-  blocked_reason?: 'roster_unavailable' | 'data_insufficient' | 'league_restriction' | 'integrity_violation';
+  status?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CACHED' | 'PRICE_MOVED' | 'INVALIDATED' | 'FAILED';
+  simulation_mode?: 'BASELINE';  // Team-level model (default/normal operation)
+  confidence_penalty?: number;  // Applied penalty for data quality
   message?: string;
-  retry_after?: string; // ISO timestamp
   can_publish?: boolean;
   can_parlay?: boolean;
   outcome?: {
