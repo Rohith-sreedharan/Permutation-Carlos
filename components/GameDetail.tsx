@@ -46,8 +46,6 @@ import {
   type EdgeClassification 
 } from '../utils/edgeStateClassification';
 import { 
-  calculateSpreadContext, 
-  getSharpSideReasoning, 
   getEdgeConfidenceLevel,
   type SpreadContext 
 } from '../utils/modelSpreadLogic';
@@ -180,6 +178,22 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       const requestDuration = Math.round(performance.now() - startTime);
       console.log(`✅ [GameDetail] Success on attempt ${retryCount + 1} (${requestDuration}ms)`);
       console.log(`[GameDetail] Fetched events: ${eventsData.length}, looking for gameId: ${gameId}`);
+
+      // ===== HANDLE BLOCKED STATUS (ROSTER GOVERNANCE) =====
+      // Check if simulation is blocked due to roster unavailability
+      if (simData.status === 'BLOCKED') {
+        console.warn(`🚫 [GameDetail] Simulation BLOCKED: ${simData.blocked_reason}`);
+        console.warn(`Message: ${simData.message}`);
+        console.warn(`Retry after: ${simData.retry_after}`);
+        
+        // Set simulation with blocked state for UI rendering
+        setSimulation(simData);
+        const gameEvent = eventsData.find((e: EventType) => e.id === gameId);
+        setEvent(gameEvent || null);
+        setError(null); // Not an error - it's a controlled blocked state
+        setLoading(false);
+        return; // Don't proceed with normal rendering
+      }
 
       // INTEGRITY CHECK: Validate snapshot consistency
       const integrityCheck = validateSnapshotConsistency(simData);
@@ -476,6 +490,91 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   );
 
   if (loading) return <LoadingSpinner />;
+  
+  // ===== RENDER BLOCKED STATUS UI =====
+  if (simulation?.status === 'BLOCKED') {
+    const retryDate = simulation.retry_after ? new Date(simulation.retry_after) : null;
+    const retryTimeFormatted = retryDate ? retryDate.toLocaleString() : 'later';
+    
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6">
+        <PageHeader title="Simulation Blocked" onBack={onBack} />
+        
+        <div className="max-w-4xl mx-auto mt-12">
+          <div className="bg-charcoal border-2 border-yellow-600/50 rounded-xl p-8 space-y-6">
+            {/* Icon and Title */}
+            <div className="text-center">
+              <div className="text-6xl mb-4">🚫</div>
+              <h2 className="text-3xl font-bold text-white mb-2">Simulation Temporarily Blocked</h2>
+              <p className="text-gray-400 text-lg">
+                {simulation.blocked_reason === 'roster_unavailable' 
+                  ? 'Missing Roster Data' 
+                  : 'Data Unavailable'}
+              </p>
+            </div>
+            
+            {/* Message */}
+            <div className="bg-navy/50 p-6 rounded-lg">
+              <p className="text-white text-lg mb-4">{simulation.message}</p>
+              <div className="text-sm text-gray-400 space-y-2">
+                <p>• This is not an error - it's a controlled state</p>
+                <p>• No retry loops - system will auto-check when data becomes available</p>
+                <p>• Your tier privileges are preserved</p>
+              </div>
+            </div>
+            
+            {/* Retry Info */}
+            {retryDate && (
+              <div className="bg-purple-900/30 border border-purple-500/30 p-4 rounded-lg">
+                <p className="text-purple-300 text-sm font-bold mb-2">⏰ Automatic Retry</p>
+                <p className="text-white">System will re-check at: <span className="font-mono">{retryTimeFormatted}</span></p>
+                <p className="text-gray-400 text-sm mt-2">
+                  Check back after this time or try another game
+                </p>
+              </div>
+            )}
+            
+            {/* Team Info (if available) */}
+            {event && (
+              <div className="bg-navy/50 p-4 rounded-lg">
+                <p className="text-gray-400 text-sm mb-2">Game Details</p>
+                <p className="text-white font-bold text-lg">
+                  {event.away_team} @ {event.home_team}
+                </p>
+                {event.commence_time && (
+                  <p className="text-gray-400 text-sm mt-1">
+                    {new Date(event.commence_time).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Actions */}
+            <div className="flex gap-4 justify-center pt-4">
+              <button
+                onClick={onBack}
+                className="bg-electric-blue text-white px-8 py-3 rounded-lg hover:opacity-80 transition-opacity font-bold"
+              >
+                ← Back to Dashboard
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-gray-700 text-white px-8 py-3 rounded-lg hover:opacity-80 transition-opacity"
+              >
+                🔄 Refresh Page
+              </button>
+            </div>
+            
+            {/* Platform Disclaimer */}
+            <div className="text-center text-xs text-gray-500 pt-4 border-t border-gray-700">
+              BeatVegas maintains institutional-grade standards. Missing roster data results in a controlled BLOCKED state rather than unreliable estimates.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
   if (error) return (
     <div className="min-h-screen bg-[#0a0e1a] p-6">
       <div className="text-center space-y-4">
@@ -1303,19 +1402,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               
               {/* Spread Analysis (if exists) */}
               {simulation.sharp_analysis.spread?.has_edge && (() => {
-                // Calculate spread context with team labels using LOCKED LOGIC
-                const vegasSpread = simulation.sharp_analysis.spread.vegas_spread || 0;
-                const modelSpread = simulation.sharp_analysis.spread.model_spread || 0;
-                
-                // Use locked sharp side logic for consistent display
-                const spreadContext = calculateSpreadContext(
-                  event.home_team,
-                  event.away_team,
-                  vegasSpread,  // From home team perspective
-                  modelSpread   // Signed model spread
-                );
-                
-                const edgeConfidence = getEdgeConfidenceLevel(spreadContext.edgePoints);
+                // Use backend-calculated sharp side display (already correct)
+                const sharpSideDisplay = simulation.sharp_analysis.spread.sharp_side_display;
+                const edgePoints = simulation.sharp_analysis.spread.edge_after_penalty || simulation.sharp_analysis.spread.edge_points || 0;
+                const edgeConfidence = getEdgeConfidenceLevel(edgePoints);
                 
                 return (
                 <div className="p-4 bg-charcoal/50 rounded-lg border border-purple-500/30">
@@ -1326,7 +1416,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         <span className="text-2xl">🎯</span>
                         <div>
                           <div className="text-xs text-purple-300 uppercase font-bold mb-1">Model Direction</div>
-                          <div className="text-xl font-bold text-white">{spreadContext.sharpSideDisplay}</div>
+                          <div className="text-xl font-bold text-white">{sharpSideDisplay}</div>
                         </div>
                       </div>
                       <div className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -1336,9 +1426,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       }`}>
                         {edgeConfidence.label}
                       </div>
+                      </div>
                     </div>
                     <div className="text-xs text-purple-200 mt-2">
-                      {getSharpSideReasoning(spreadContext)}
+                      {simulation.sharp_analysis.spread.reasoning || simulation.sharp_analysis.spread.sharp_side_reason}
                     </div>
                   </div>
                   
@@ -1352,7 +1443,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       {simulation.sharp_analysis.spread.edge_grade} GRADE
                     </div>
                     <div className="text-sm text-purple-300">
-                      ({spreadContext.edgePoints.toFixed(1)} pt edge)
+                      ({edgePoints.toFixed(1)} pt edge)
                     </div>
                   </div>
                   
@@ -1361,19 +1452,19 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="bg-navy/50 p-3 rounded">
                       <div className="text-xs text-gray-400 mb-1">Market Spread</div>
                       <div className="text-base font-bold text-white">
-                        {spreadContext.marketSpreadDisplay}
+                        {simulation.sharp_analysis.spread.market_favorite} {simulation.sharp_analysis.spread.market_spread_home < 0 ? simulation.sharp_analysis.spread.market_spread_home.toFixed(1) : '+' + simulation.sharp_analysis.spread.market_spread_home.toFixed(1)}
                       </div>
                     </div>
                     <div className="bg-navy/50 p-3 rounded">
                       <div className="text-xs text-gray-400 mb-1">Fair Spread (Model)</div>
                       <div className="text-base font-bold text-purple-300">
-                        {spreadContext.modelSpreadDisplay}
+                        {simulation.sharp_analysis.spread.market_underdog} +{simulation.sharp_analysis.spread.fair_spread_home.toFixed(1)}
                       </div>
                     </div>
                     <div className="bg-purple-900/50 p-3 rounded border border-purple-500/30">
                       <div className="text-xs text-purple-300 mb-1 font-bold">Model Direction (Informational)</div>
                       <div className="text-base font-bold text-white">
-                        {spreadContext.sharpSideDisplay}
+                        {sharpSideDisplay}
                       </div>
                     </div>
                   </div>
@@ -1383,8 +1474,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
                       <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                       <span>
-                        {/* ✅ FIX: Text must match direction label */}
-                        {spreadContext.edgeDirection === 'DOG' 
+                        {simulation.sharp_analysis.spread.sharp_action === 'DOG' 
                           ? 'Take the Dog (underdog getting extra value)' 
                           : 'Lay the Favorite (favorite discounted)'}
                       </span>

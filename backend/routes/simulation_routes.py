@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi.responses import JSONResponse
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -346,6 +347,13 @@ async def get_simulation(
             
             # Get team rosters with real player data
             sport_key = event.get("sport_key", "basketball_nba")
+            
+            # Initialize Monte Carlo engine
+            from core.monte_carlo_engine import MonteCarloEngine
+            engine = MonteCarloEngine(num_iterations=assigned_iterations)
+            
+            # Try to get team rosters
+            from integrations.player_api import get_team_data_with_roster
             try:
                 team_a_data = get_team_data_with_roster(
                     event.get("home_team", "Team A"),
@@ -358,22 +366,17 @@ async def get_simulation(
                     is_home=False
                 )
             except ValueError as roster_error:
-                # Return 404 with clear message instead of 500 error
+                # Log roster unavailability but DON'T immediately fail
+                # Let monte_carlo_engine handle it with roster governance
                 error_msg = str(roster_error)
-                print(f"⚠️ Roster unavailable for {event_id}: {error_msg}")
-                raise HTTPException(
-                    status_code=404,
-                    detail={
-                        "error": "roster_unavailable",
-                        "message": error_msg,
-                        "event_id": event_id,
-                        "home_team": event.get("home_team"),
-                        "away_team": event.get("away_team"),
-                        "suggestion": "This game cannot be simulated due to missing roster data. Check back later or try a different game."
-                    }
-                )
+                logger.warning(f"Roster fetch failed for {event_id}: {error_msg}")
+                
+                # Create minimal team data - monte_carlo_engine will check roster governance
+                team_a_data = {"name": event.get("home_team", "Team A"), "team": event.get("home_team")}
+                team_b_data = {"name": event.get("away_team", "Team B"), "team": event.get("away_team")}
             
             # Extract real market lines from bookmakers
+            from integrations.odds_api import extract_market_lines
             market_context = extract_market_lines(event)
             
             # Detect championship/postseason context for NCAAF
@@ -403,6 +406,33 @@ async def get_simulation(
                     iterations=assigned_iterations,  # TIERED COMPUTE
                     mode=mode
                 )
+                
+                # ===== HANDLE BLOCKED STATUS =====
+                # If roster unavailable, engine returns BLOCKED status instead of failing
+                if simulation.get("status") == "BLOCKED":
+                    logger.info(f"BLOCKED: Simulation for {event_id} blocked due to: {simulation.get('blocked_reason')}")
+                    
+                    # Return 200 with BLOCKED status (NOT 404)
+                    # Valid events must never 404 due to roster absence
+                    return JSONResponse(
+                        status_code=200,
+                        content={
+                            "status": "BLOCKED",
+                            "blocked_reason": simulation.get("blocked_reason"),
+                            "message": simulation.get("message"),
+                            "retry_after": simulation.get("retry_after"),
+                            "event_id": event_id,
+                            "team_name": simulation.get("team_name"),
+                            "can_publish": False,
+                            "can_parlay": False,
+                            "ui_display": {
+                                "title": "Simulation Blocked",
+                                "description": simulation.get("message"),
+                                "action": "This game is temporarily unavailable for simulation. Please check back later.",
+                                "icon": "🚫"
+                            }
+                        }
+                    )
                 
                 # ========== SAFETY ENGINE EVALUATION ==========
                 safety_engine = SafetyEngine()

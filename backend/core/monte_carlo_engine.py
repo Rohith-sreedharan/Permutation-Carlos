@@ -57,6 +57,8 @@ from core.sim_integrity import (
     CURRENT_SIM_VERSION,
     generate_odds_snapshot_id
 )
+from core.roster_governance import roster_governance, RosterCheckResult
+from core.simulation_context import SimulationStatus, BlockedReason
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +233,7 @@ class MonteCarloEngine:
         
         Returns:
             Simulation results with win probabilities, spread distribution, props
+            OR blocked status if roster unavailable
         """
         if not iterations:
             iterations = self.default_iterations if mode == "full" else 10000
@@ -239,6 +242,61 @@ class MonteCarloEngine:
         
         # Get sport-specific strategy
         sport_key = market_context.get('sport_key', 'basketball_nba')
+        
+        # ===== ROSTER AVAILABILITY GOVERNANCE (INSTITUTIONAL-GRADE) =====
+        # Check roster availability for both teams BEFORE running simulation
+        # This prevents wasted compute and ensures clean BLOCKED state
+        team_a_name = team_a.get('name') or team_a.get('team')
+        team_b_name = team_b.get('name') or team_b.get('team')
+        
+        # Extract league from sport_key (e.g., "basketball_nba" -> "NBA")
+        league = self._extract_league_from_sport_key(sport_key)
+        
+        # Check team A roster
+        if team_a_name:
+            roster_check_a = roster_governance.check_roster_availability(
+                team_name=team_a_name,
+                league=league,
+                event_id=event_id
+            )
+            
+            if roster_check_a.blocked:
+                logger.warning(
+                    f"BLOCKED: {team_a_name} roster unavailable. Event {event_id} entering BLOCKED state."
+                )
+                return {
+                    "status": SimulationStatus.BLOCKED.value,
+                    "blocked_reason": BlockedReason.ROSTER_UNAVAILABLE.value,
+                    "message": roster_check_a.reason,
+                    "retry_after": roster_check_a.retry_after.isoformat() if roster_check_a.retry_after else None,
+                    "team_name": team_a_name,
+                    "event_id": event_id,
+                    "can_publish": False,
+                    "can_parlay": False
+                }
+        
+        # Check team B roster
+        if team_b_name:
+            roster_check_b = roster_governance.check_roster_availability(
+                team_name=team_b_name,
+                league=league,
+                event_id=event_id
+            )
+            
+            if roster_check_b.blocked:
+                logger.warning(
+                    f"BLOCKED: {team_b_name} roster unavailable. Event {event_id} entering BLOCKED state."
+                )
+                return {
+                    "status": SimulationStatus.BLOCKED.value,
+                    "blocked_reason": BlockedReason.ROSTER_UNAVAILABLE.value,
+                    "message": roster_check_b.reason,
+                    "retry_after": roster_check_b.retry_after.isoformat() if roster_check_b.retry_after else None,
+                    "team_name": team_b_name,
+                    "event_id": event_id,
+                    "can_publish": False,
+                    "can_parlay": False
+                }
         
         # Set market_type in market_context if not already set
         if 'market_type' not in market_context:
@@ -1286,6 +1344,12 @@ class MonteCarloEngine:
                 
                 # ===== SPREAD MARKET (CORRECTED DELTA_HOME LOGIC) =====
                 "spread": {
+                    # === SELECTION IDs (CRITICAL - MUST NOT DIVERGE) ===
+                    "home_selection_id": f"{event_id}_spread_home",
+                    "away_selection_id": f"{event_id}_spread_away",
+                    "model_preference_selection_id": f"{event_id}_spread_{'home' if sharp_side_result.sharp_action == 'FAV' and vegas_spread_home_perspective < 0 else 'away'}",
+                    "model_direction_selection_id": f"{event_id}_spread_{'home' if sharp_side_result.sharp_action == 'FAV' and vegas_spread_home_perspective < 0 else 'away'}",
+                    
                     # Market and fair lines (signed from home perspective)
                     "market_spread_home": vegas_spread_home_perspective,
                     "fair_spread_home": model_spread_home_perspective,
@@ -2104,6 +2168,13 @@ class MonteCarloEngine:
             "baseball_mlb": "MLB",
         }
         return mapping.get(sport_key, sport_key.upper())
+    
+    def _extract_league_from_sport_key(self, sport_key: str) -> str:
+        """
+        Extract league identifier from sport_key for roster governance.
+        Same logic as _get_league_code.
+        """
+        return self._get_league_code(sport_key)
     
     def _get_regulation_minutes(self, sport_key: str) -> float:
         """Get regulation time for sport"""

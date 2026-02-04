@@ -62,6 +62,20 @@ class ParlayEligibilityGate:
         block_reasons = {}
         
         for pick in candidate_picks:
+            # Hard gate 0: BLOCKED simulations never eligible
+            # Check if associated simulation is blocked (roster unavailable, etc.)
+            simulation_status = pick.get("simulation_status") or pick.get("status")
+            if simulation_status == "BLOCKED":
+                block_reason = "Simulation blocked (roster unavailable)"
+                blocked.append({
+                    "pick_id": pick.get("pick_id"),
+                    "game": pick.get("event_label", "Unknown"),
+                    "reason": block_reason,
+                    "blocked_reason": pick.get("blocked_reason", "unknown")
+                })
+                block_reasons[pick.get("pick_id", "unknown")] = block_reason
+                continue
+            
             # Run integrity validation
             event_id = pick.get("event_id")
             market_id = pick.get("market_snapshot_id")

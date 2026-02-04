@@ -103,6 +103,13 @@ export interface MonteCarloSimulation {
   volatility?: string;
   confidence_score: number;
   pick_state?: 'PICK' | 'LEAN' | 'AVOID' | 'PASS' | 'UNKNOWN'; // Truth Mode state
+  // NEW: Roster governance states
+  status?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CACHED' | 'PRICE_MOVED' | 'INVALIDATED' | 'FAILED' | 'BLOCKED';
+  blocked_reason?: 'roster_unavailable' | 'data_insufficient' | 'league_restriction' | 'integrity_violation';
+  message?: string;
+  retry_after?: string; // ISO timestamp
+  can_publish?: boolean;
+  can_parlay?: boolean;
   outcome?: {
     recommended_bet?: string | null;
     confidence?: number;

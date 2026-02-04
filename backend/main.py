@@ -120,6 +120,7 @@ from routes.market_state_routes import router as market_state_router
 from routes.parlay_architect_routes import router as parlay_architect_router
 from routes.calibration_routes import router as calibration_router  # NEW: Logging & Calibration System
 from routes.meta import router as meta_router  # NEW: Build/version metadata endpoint
+from routes.roster_monitoring_routes import router as roster_monitoring_router  # NEW: Roster governance monitoring
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -142,6 +143,7 @@ app.include_router(analyzer_router)  # NEW: AI Analyzer - LLM-powered game expla
 app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
 app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
 app.include_router(meta_router)  # NEW: Build/version metadata for validation
+app.include_router(roster_monitoring_router)  # NEW: Roster governance ops monitoring
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)
