@@ -1426,7 +1426,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       }`}>
                         {edgeConfidence.label}
                       </div>
-                      </div>
                     </div>
                     <div className="text-xs text-purple-200 mt-2">
                       {simulation.sharp_analysis.spread.reasoning || simulation.sharp_analysis.spread.sharp_side_reason}
