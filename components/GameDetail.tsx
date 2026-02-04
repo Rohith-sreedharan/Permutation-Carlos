@@ -1040,17 +1040,12 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="text-xs text-light-gray mb-1">Market Spread</div>
                     <div className="text-lg font-bold text-white font-teko">
                       {(() => {
-                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
-                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread || 0;
+                        const marketSpread = simulation?.sharp_analysis?.spread?.market_spread_home;
+                        const marketFavorite = simulation?.sharp_analysis?.spread?.market_favorite;
                         
-                        if (vegasSpread !== 0) {
-                          const context = calculateSpreadContext(
-                            event.home_team,
-                            event.away_team,
-                            vegasSpread,
-                            modelSpread
-                          );
-                          return context.marketSpreadDisplay;
+                        if (marketSpread !== undefined && marketFavorite) {
+                          const spreadValue = marketSpread < 0 ? marketSpread.toFixed(1) : '+' + marketSpread.toFixed(1);
+                          return `${marketFavorite} ${spreadValue}`;
                         }
                         return 'N/A';
                       })()}
@@ -1063,17 +1058,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="text-[10px] text-gray-500 -mt-1 mb-1">Fair line estimate (pricing), not a score prediction</div>
                     <div className="text-lg font-bold text-electric-blue font-teko">
                       {(() => {
-                        const vegasSpread = simulation?.sharp_analysis?.spread?.vegas_spread || 0;
-                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
+                        const fairSpread = simulation?.sharp_analysis?.spread?.fair_spread_home;
+                        const marketUnderdog = simulation?.sharp_analysis?.spread?.market_underdog;
                         
-                        if (modelSpread !== undefined && vegasSpread !== 0) {
-                          const context = calculateSpreadContext(
-                            event.home_team,
-                            event.away_team,
-                            vegasSpread,
-                            modelSpread
-                          );
-                          return context.modelSpreadDisplay;
+                        if (fairSpread !== undefined && marketUnderdog) {
+                          return `${marketUnderdog} +${fairSpread.toFixed(1)}`;
                         }
                         return 'N/A';
                       })()}
