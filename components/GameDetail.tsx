@@ -1621,16 +1621,38 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               return renderSAFEMode('SPREAD', validation.errors);
             }
 
+            // ========================================
+            // SINGLE SELECTION CONTEXT (NON-NEGOTIABLE)
+            // ========================================
+            // Once model_preference_selection_id exists, ALL displayed values
+            // MUST come from that single selection object:
+            // - Market line
+            // - Fair/model line
+            // - Cover probability
+            // - Team name
+            // NO home/away branching. NO fallback logic. NO math derivation.
+            
             const selections = marketView.selections || [];
-            const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
-            const awaySelection = selections.find((s: any) => s.side === 'AWAY' || s.side === 'away');
             const preferredSelection = getPreferredSelection(marketView);
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
+            // SAFE MODE: If no preferred selection, cannot render
+            if (!preferredSelection && hasEdge) {
+              return renderSAFEMode('SPREAD', ['Model preference selection not found in selections array']);
+            }
+            
+            // ALL VALUES FROM SINGLE SELECTION (when edge exists)
+            const displayLine = preferredSelection?.market_line_for_selection || 0;
+            const displayFairLine = preferredSelection?.model_fair_line_for_selection || 0;
+            const displayTeam = preferredSelection?.side === 'HOME' ? event.home_team : event.away_team;
+            const displayProb = preferredSelection?.model_probability || 0.5;
+            
+            // For display only (not used in edge logic): show both teams' probabilities
+            const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
+            const awaySelection = selections.find((s: any) => s.side === 'AWAY' || s.side === 'away');
             const p_cover_home = homeSelection?.model_probability || 0.5;
             const p_cover_away = awaySelection?.model_probability || 0.5;
-            const market_spread = homeSelection?.market_line_for_selection || 0;
             
             return (
               <div>
@@ -1641,53 +1663,61 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   )}
                 </h3>
 
-                {/* Market Mismatch Banner */}
-                {marketMismatch && (
-                  <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
-                    <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
-                    <div className="text-xs text-yellow-300 mt-1">
-                      Model direction is on {sharp_market} market, not SPREAD. Recommendation hidden.
-                    </div>
-                  </div>
-                )}
-
                 {/* Cover Probability Display (SPREAD-SCOPED ONLY) */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="bg-navy/50 p-4 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
-                    <div className="text-sm text-light-gray mb-2">{event.home_team} {market_spread >= 0 ? '+' : ''}{market_spread}</div>
+                    <div className="text-sm text-light-gray mb-2">
+                      {event.home_team} {homeSelection?.market_line_for_selection ?? 0 >= 0 ? '+' : ''}{homeSelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
+                    </div>
                     <div className="text-3xl font-bold text-white font-teko">
                       {(p_cover_home * 100).toFixed(1)}%
                     </div>
                   </div>
                   <div className="bg-navy/50 p-4 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
-                    <div className="text-sm text-light-gray mb-2">{event.away_team} {-market_spread >= 0 ? '+' : ''}{-market_spread}</div>
+                    <div className="text-sm text-light-gray mb-2">
+                      {event.away_team} {awaySelection?.market_line_for_selection ?? 0 >= 0 ? '+' : ''}{awaySelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
+                    </div>
                     <div className="text-3xl font-bold text-white font-teko">
                       {(p_cover_away * 100).toFixed(1)}%
                     </div>
                   </div>
                 </div>
 
-                {/* Model Preference & Direction (CANONICAL) */}
+                {/* Model Preference & Direction (CANONICAL - SINGLE SELECTION BINDING) */}
                 {preferredSelection && hasEdge ? (
                   <div className="mt-4 space-y-3">
+                    {/* MARKET SPREAD - From preferred selection ONLY */}
                     <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                      <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
+                      <div className="text-xs text-purple-300 uppercase mb-1">Market Spread</div>
                       <div className="text-xl font-bold text-purple-200">
-                        {preferredSelection.team_name} {preferredSelection.line >= 0 ? '+' : ''}{preferredSelection.line?.toFixed(1)}
+                        {displayTeam} {displayLine >= 0 ? '+' : ''}{displayLine?.toFixed(1)}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        {(preferredSelection.model_probability * 100).toFixed(1)}% cover probability | Edge: {marketView.edge_points?.toFixed(1)} pts
+                        Market probability: {(preferredSelection.market_probability * 100).toFixed(1)}%
                       </div>
                     </div>
+                    
+                    {/* FAIR SPREAD (MODEL) - From preferred selection ONLY */}
                     <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
-                      <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
+                      <div className="text-xs text-blue-300 uppercase mb-1">Fair Spread (Model)</div>
                       <div className="text-xl font-bold text-blue-200">
-                        {preferredSelection.team_name} {preferredSelection.line >= 0 ? '+' : ''}{preferredSelection.line?.toFixed(1)}
+                        {displayTeam} {displayFairLine >= 0 ? '+' : ''}{displayFairLine?.toFixed(1)}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        Direction always matches preference — single canonical source
+                        Model probability: {(displayProb * 100).toFixed(1)}% | Edge: {marketView.edge_points?.toFixed(1)} pts
+                      </div>
+                    </div>
+                    
+                    {/* MODEL PREFERENCE (INFORMATIONAL) - Same selection */}
+                    <div className="p-4 bg-gold/10 border border-gold/50 rounded-lg">
+                      <div className="text-xs text-gold uppercase mb-1">Model Preference (Informational)</div>
+                      <div className="text-xl font-bold text-gold">
+                        {displayTeam} {displayLine >= 0 ? '+' : ''}{displayLine?.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        All values derived from single selection_id: {preferredSelection.selection_id}
                       </div>
                     </div>
                   </div>
@@ -1720,13 +1750,27 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               return renderSAFEMode('MONEYLINE', validation.errors);
             }
 
+            // ========================================
+            // SINGLE SELECTION CONTEXT (MONEYLINE)
+            // ========================================
             const selections = marketView.selections || [];
-            const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
-            const awaySelection = selections.find((s: any) => s.side === 'AWAY' || s.side === 'away');
             const preferredSelection = getPreferredSelection(marketView);
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
+            // SAFE MODE check
+            if (!preferredSelection && hasEdge) {
+              return renderSAFEMode('MONEYLINE', ['Model preference selection not found']);
+            }
+            
+            // ALL VALUES FROM SINGLE SELECTION
+            const displayTeam = preferredSelection?.side === 'HOME' ? event.home_team : event.away_team;
+            const displayProb = preferredSelection?.model_probability || 0.5;
+            const displayMarketProb = preferredSelection?.market_probability || 0.5;
+            
+            // For display only: show both teams
+            const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
+            const awaySelection = selections.find((s: any) => s.side === 'AWAY' || s.side === 'away');
             const p_win_home = homeSelection?.model_probability || 0.5;
             const p_win_away = awaySelection?.model_probability || 0.5;
             
@@ -1757,17 +1801,44 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {/* Model Preference & Direction (CANONICAL) */}
+                {/* Model Preference (CANONICAL - SINGLE SELECTION) */}
                 {preferredSelection && hasEdge ? (
                   <div className="mt-4 space-y-3">
                     <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                      <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
-                      <div className="text-xl font-bold text-purple-200">{preferredSelection.team_name} ML</div>
+                      <div className="text-xs text-purple-300 uppercase mb-1">Market Win Probability</div>
+                      <div className="text-xl font-bold text-purple-200">{displayTeam} ML</div>
                       <div className="text-xs text-gray-400 mt-2">
-                        {(preferredSelection.model_probability * 100).toFixed(1)}% win probability | Edge: {marketView.edge_points?.toFixed(1)}%
+                        {(displayMarketProb * 100).toFixed(1)}% (market implied)
                       </div>
                     </div>
                     <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
+                      <div className="text-xs text-blue-300 uppercase mb-1">Model Win Probability</div>
+                      <div className="text-xl font-bold text-blue-200">{displayTeam} ML</div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        {(displayProb * 100).toFixed(1)}% (model) | Edge: {marketView.edge_points?.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="p-4 bg-gold/10 border border-gold/50 rounded-lg">
+                      <div className="text-xs text-gold uppercase mb-1">Model Preference (Informational)</div>
+                      <div className="text-xl font-bold text-gold">{displayTeam} ML</div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Single selection: {preferredSelection.selection_id}
+                      </div>
+                    </div>
+                  </div>
+                ) : edgeClass === 'MARKET_ALIGNED' ? (
+                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
+                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
+
+          {/* TOTAL Tab */}
+          {activeMarketTab === 'total' && (() => {
+            const marketView = simulation?.market_views?.total;
                       <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
                       <div className="text-xl font-bold text-blue-200">{preferredSelection.team_name} ML</div>
                       <div className="text-xs text-gray-400 mt-2">
@@ -1804,16 +1875,32 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               return renderSAFEMode('TOTAL', validation.errors);
             }
 
+            // ========================================
+            // SINGLE SELECTION CONTEXT (TOTAL)
+            // ========================================
             const selections = marketView.selections || [];
-            const overSelection = selections.find((s: any) => s.side === 'OVER' || s.side === 'over');
-            const underSelection = selections.find((s: any) => s.side === 'UNDER' || s.side === 'under');
             const preferredSelection = getPreferredSelection(marketView);
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
+            // SAFE MODE check
+            if (!preferredSelection && hasEdge) {
+              return renderSAFEMode('TOTAL', ['Model preference selection not found']);
+            }
+            
+            // ALL VALUES FROM SINGLE SELECTION
+            const displaySide = preferredSelection?.side === 'OVER' ? 'OVER' : 'UNDER';
+            const displayLine = preferredSelection?.market_line_for_selection || 0;
+            const displayFairLine = preferredSelection?.model_fair_line_for_selection || 0;
+            const displayProb = preferredSelection?.model_probability || 0.5;
+            const displayMarketProb = preferredSelection?.market_probability || 0.5;
+            
+            // For display only: show both sides
+            const overSelection = selections.find((s: any) => s.side === 'OVER' || s.side === 'over');
+            const underSelection = selections.find((s: any) => s.side === 'UNDER' || s.side === 'under');
             const p_over = overSelection?.model_probability || 0.5;
             const p_under = underSelection?.model_probability || 0.5;
-            const market_total = overSelection?.line || 0;
+            const market_total = overSelection?.market_line_for_selection || 0;
             
             return (
               <div>
@@ -1825,28 +1912,57 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="bg-navy/50 p-4 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Over Probability</div>
-                    <div className="text-sm text-light-gray mb-2">OVER {market_total}</div>
+                    <div className="text-sm text-light-gray mb-2">OVER {market_total?.toFixed(1)}</div>
                     <div className="text-3xl font-bold text-white font-teko">
                       {(p_over * 100).toFixed(1)}%
                     </div>
                   </div>
                   <div className="bg-navy/50 p-4 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Under Probability</div>
-                    <div className="text-sm text-light-gray mb-2">UNDER {market_total}</div>
+                    <div className="text-sm text-light-gray mb-2">UNDER {market_total?.toFixed(1)}</div>
                     <div className="text-3xl font-bold text-white font-teko">
                       {(p_under * 100).toFixed(1)}%
                     </div>
                   </div>
                 </div>
 
-                {/* Model Preference & Direction (CANONICAL) */}
+                {/* Model Preference (CANONICAL - SINGLE SELECTION) */}
                 {preferredSelection && hasEdge ? (
                   <div className="mt-4 space-y-3">
                     <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
-                      <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
+                      <div className="text-xs text-purple-300 uppercase mb-1">Market Total</div>
                       <div className="text-xl font-bold text-purple-200">
-                        {preferredSelection.team_name} {preferredSelection.line}
+                        {displaySide} {displayLine?.toFixed(1)}
                       </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        {(displayMarketProb * 100).toFixed(1)}% (market implied)
+                      </div>
+                    </div>
+                    <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
+                      <div className="text-xs text-blue-300 uppercase mb-1">Fair Total (Model)</div>
+                      <div className="text-xl font-bold text-blue-200">
+                        {displaySide} {displayFairLine?.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        {(displayProb * 100).toFixed(1)}% (model) | Edge: {marketView.edge_points?.toFixed(1)} pts
+                      </div>
+                    </div>
+                    <div className="p-4 bg-gold/10 border border-gold/50 rounded-lg">
+                      <div className="text-xs text-gold uppercase mb-1">Model Preference (Informational)</div>
+                      <div className="text-xl font-bold text-gold">
+                        {displaySide} {displayLine?.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Single selection: {preferredSelection.selection_id}
+                      </div>
+                    </div>
+                  </div>
+                ) : edgeClass === 'MARKET_ALIGNED' ? (
+                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
+                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                  </div>
+                ) : null}
                       <div className="text-xs text-gray-400 mt-2">
                         {(preferredSelection.model_probability * 100).toFixed(1)}% probability | Edge: {marketView.edge_points?.toFixed(1)} pts
                       </div>
