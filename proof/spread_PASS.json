@@ -1,0 +1,36 @@
+{
+  "schema_version": "mv.v1",
+  "event_id": "4c39604056fc5a080263e18c15c17cd7",
+  "market_type": "SPREAD",
+  "snapshot_hash": "a7f3b2e9d4c1f8a6",
+  "book_key": "fanduel",
+  "integrity_status": "PASS",
+  "integrity_violations": [],
+  "selections": [
+    {
+      "selection_id": "sel_spread_home_Lakers_-5.5_fanduel",
+      "side": "HOME",
+      "market_line_for_selection": -5.5,
+      "model_fair_line_for_selection": -3.2,
+      "market_probability": 0.52,
+      "model_probability": 0.58,
+      "display_label": "Lakers -5.5"
+    },
+    {
+      "selection_id": "sel_spread_away_Warriors_+5.5_fanduel",
+      "side": "AWAY",
+      "market_line_for_selection": 5.5,
+      "model_fair_line_for_selection": 3.2,
+      "market_probability": 0.48,
+      "model_probability": 0.42,
+      "display_label": "Warriors +5.5"
+    }
+  ],
+  "model_preference_selection_id": "sel_spread_home_Lakers_-5.5_fanduel",
+  "edge_class": "EDGE",
+  "edge_points": 2.3,
+  "ui_render_mode": "FULL",
+  "explanation": "Lakers projected to cover by 2.3 points more than market line suggests. Strong defensive matchup advantage.",
+  "grade": "A",
+  "confidence_score": 78
+}

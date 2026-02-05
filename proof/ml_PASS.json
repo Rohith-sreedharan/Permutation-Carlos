@@ -1,0 +1,36 @@
+{
+  "schema_version": "mv.v1",
+  "event_id": "4c39604056fc5a080263e18c15c17cd7",
+  "market_type": "MONEYLINE",
+  "snapshot_hash": "a7f3b2e9d4c1f8a6",
+  "book_key": "fanduel",
+  "integrity_status": "PASS",
+  "integrity_violations": [],
+  "selections": [
+    {
+      "selection_id": "sel_ml_home_Lakers_fanduel",
+      "side": "HOME",
+      "market_line_for_selection": null,
+      "model_fair_line_for_selection": null,
+      "market_probability": 0.65,
+      "model_probability": 0.70,
+      "display_label": "Lakers ML"
+    },
+    {
+      "selection_id": "sel_ml_away_Warriors_fanduel",
+      "side": "AWAY",
+      "market_line_for_selection": null,
+      "model_fair_line_for_selection": null,
+      "market_probability": 0.35,
+      "model_probability": 0.30,
+      "display_label": "Warriors ML"
+    }
+  ],
+  "model_preference_selection_id": "sel_ml_home_Lakers_fanduel",
+  "edge_class": "LEAN",
+  "edge_points": 0.05,
+  "ui_render_mode": "FULL",
+  "explanation": "Lakers favored to win outright. Model sees 5% edge over market implied probability.",
+  "grade": "B",
+  "confidence_score": 65
+}

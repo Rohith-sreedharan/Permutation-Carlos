@@ -1,0 +1,33 @@
+{
+  "schema_version": "mv.v1",
+  "event_id": "test_fail_case",
+  "market_type": "SPREAD",
+  "snapshot_hash": "fail_test_123",
+  "book_key": "fanduel",
+  "integrity_status": "FAIL",
+  "integrity_violations": [
+    "Selection 0: missing selection_id",
+    "Preference selection_id does not match any selection"
+  ],
+  "selections": [
+    {
+      "side": "HOME",
+      "market_line_for_selection": -3.5,
+      "model_fair_line_for_selection": -2.1,
+      "market_probability": 0.51,
+      "model_probability": 0.55
+    },
+    {
+      "selection_id": "sel_away_valid",
+      "side": "AWAY",
+      "market_line_for_selection": 3.5,
+      "model_fair_line_for_selection": 2.1,
+      "market_probability": 0.49,
+      "model_probability": 0.45
+    }
+  ],
+  "model_preference_selection_id": "INVALID",
+  "edge_class": "INVALID",
+  "edge_points": 0.0,
+  "ui_render_mode": "SAFE"
+}

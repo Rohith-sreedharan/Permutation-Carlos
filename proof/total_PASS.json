@@ -1,0 +1,36 @@
+{
+  "schema_version": "mv.v1",
+  "event_id": "4c39604056fc5a080263e18c15c17cd7",
+  "market_type": "TOTAL",
+  "snapshot_hash": "a7f3b2e9d4c1f8a6",
+  "book_key": "fanduel",
+  "integrity_status": "PASS",
+  "integrity_violations": [],
+  "selections": [
+    {
+      "selection_id": "sel_total_over_226.5_fanduel",
+      "side": "OVER",
+      "market_line_for_selection": 226.5,
+      "model_fair_line_for_selection": 224.1,
+      "market_probability": 0.50,
+      "model_probability": 0.54,
+      "display_label": "OVER 226.5"
+    },
+    {
+      "selection_id": "sel_total_under_226.5_fanduel",
+      "side": "UNDER",
+      "market_line_for_selection": 226.5,
+      "model_fair_line_for_selection": 224.1,
+      "market_probability": 0.50,
+      "model_probability": 0.46,
+      "display_label": "UNDER 226.5"
+    }
+  ],
+  "model_preference_selection_id": "sel_total_over_226.5_fanduel",
+  "edge_class": "LEAN",
+  "edge_points": 2.4,
+  "ui_render_mode": "FULL",
+  "explanation": "Game projects to 226.5+ points. Both teams rank top-10 in pace. OVER has slight model edge.",
+  "grade": "B",
+  "confidence_score": 68
+}
