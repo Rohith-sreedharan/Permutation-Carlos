@@ -436,3 +436,95 @@ export interface UserRegistration {
     username: string;
     password: string;
 }
+
+// ========================================
+// CANONICAL MARKETVIEW SCHEMA (mv.v1)
+// Singles Engine - Non-Negotiable Contract
+// ========================================
+
+export type IntegrityStatus = 'PASS' | 'DEGRADE' | 'FAIL';
+export type EdgeClass = 'EDGE' | 'LEAN' | 'MARKET_ALIGNED' | 'NO_PLAY' | 'INVALID';
+export type MarketType = 'SPREAD' | 'MONEYLINE' | 'TOTAL';
+export type SelectionSide = 'HOME' | 'AWAY' | 'OVER' | 'UNDER';
+
+/**
+ * Individual selection within a market
+ * REQUIRED: selection_id, side, market_probability, model_probability
+ * CONDITIONALLY REQUIRED: market_line_for_selection (nullable only for MONEYLINE)
+ */
+export interface MarketSelection {
+  selection_id: string; // REQUIRED: SHA-256(event_id|market_type|side|line|book)
+  side: SelectionSide; // REQUIRED
+  market_line_for_selection: number | null; // REQUIRED (null only for ML)
+  model_fair_line_for_selection: number | null; // REQUIRED
+  market_probability: number; // REQUIRED
+  model_probability: number; // REQUIRED
+  // OPTIONAL fields (never gate rendering)
+  display_label?: string;
+  tooltip?: string;
+}
+
+/**
+ * Canonical MarketView - Single source of truth for frontend rendering
+ * 
+ * REQUIRED FIELDS (missing any = SAFE MODE):
+ * - schema_version, event_id, market_type, snapshot_hash
+ * - selections[2] with all required selection fields
+ * - edge_class, model_preference_selection_id
+ * - integrity_status
+ * 
+ * OPTIONAL FIELDS (never trigger SAFE MODE):
+ * - labels, narratives, grades, tooltips, UI copy
+ */
+export interface MarketView {
+  // REQUIRED: Schema versioning
+  schema_version: string; // REQUIRED: "mv.v1"
+  
+  // REQUIRED: Identifiers
+  event_id: string; // REQUIRED
+  market_type: MarketType; // REQUIRED
+  snapshot_hash: string; // REQUIRED: locks this render to one OddsAPI snapshot
+  book_key?: string; // Book source for this market
+  
+  // REQUIRED: Integrity gates
+  integrity_status: IntegrityStatus; // REQUIRED: PASS|DEGRADE|FAIL
+  integrity_violations: string[]; // REQUIRED: empty array if PASS
+  
+  // REQUIRED: Selections (exactly 2)
+  selections: [MarketSelection, MarketSelection]; // REQUIRED: tuple of 2
+  
+  // REQUIRED: Model preference & edge
+  model_preference_selection_id: string | 'NO_EDGE' | 'INVALID'; // REQUIRED
+  edge_class: EdgeClass; // REQUIRED
+  edge_points: number; // REQUIRED
+  
+  // OPTIONAL: UI enhancements (never gate)
+  ui_render_mode?: 'FULL' | 'SAFE'; // Derived from integrity_status
+  explanation?: string; // Per-market explanation text
+  grade?: 'S' | 'A' | 'B' | 'C' | 'D'; // Visual grade badge
+  confidence_score?: number; // 0-100
+  
+  // OPTIONAL: Debug (dev toggle only)
+  debug_payload?: Record<string, any>;
+}
+
+/**
+ * Complete simulation response with canonical MarketViews
+ */
+export interface MonteCarloSimulation {
+  // ... existing fields ...
+  simulation_id: string;
+  event_id: string;
+  status?: string;
+  message?: string;
+  
+  // CANONICAL MARKET VIEWS (REQUIRED)
+  market_views?: {
+    spread?: MarketView;
+    moneyline?: MarketView;
+    total?: MarketView;
+  };
+  
+  // ... all other existing fields ...
+  [key: string]: any;
+}

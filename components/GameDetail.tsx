@@ -100,6 +100,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [activeTab, setActiveTab] = useState<'distribution' | 'injuries' | 'props' | 'movement' | 'pulse' | 'firsthalf'>('distribution');
   const [activeMarketTab, setActiveMarketTab] = useState<'spread' | 'moneyline' | 'total'>('spread');
   const [showDebugPayload, setShowDebugPayload] = useState(false);
+  
+  // Snapshot tracking for atomic swapping
+  const [lastSnapshotHash, setLastSnapshotHash] = useState<Record<string, string>>({});
 
   // CANONICAL MARKETVIEW HELPERS
   const getSelection = (marketView: any, selectionId: string) => {
@@ -112,6 +115,77 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     return getSelection(marketView, prefId);
   };
 
+  /**
+   * CANONICAL MARKETVIEW VALIDATION
+   * Enforces non-negotiable rules from Singles Engine Brief
+   * 
+   * REQUIRED FIELDS (missing any = SAFE MODE):
+   * - schema_version, event_id, market_type, snapshot_hash
+   * - selections[2] with selection_id, side, probabilities
+   * - edge_class, model_preference_selection_id, integrity_status
+   * 
+   * OPTIONAL FIELDS (never trigger SAFE MODE):
+   * - labels, grades, tooltips, explanation, confidence_score
+   */
+  const validateMarketView = (marketView: any, marketType: string): { valid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    // 1. Schema version check (REQUIRED)
+    if (!marketView.schema_version) {
+      errors.push('Missing schema_version');
+    } else if (marketView.schema_version !== 'mv.v1') {
+      errors.push(`Unknown schema_version: ${marketView.schema_version} (expected mv.v1)`);
+    }
+    
+    // 2. Identifiers (REQUIRED)
+    if (!marketView.event_id) errors.push('Missing event_id');
+    if (!marketView.market_type) errors.push('Missing market_type');
+    if (!marketView.snapshot_hash) errors.push('Missing snapshot_hash');
+    
+    // 3. Integrity status (REQUIRED)
+    if (!marketView.integrity_status) {
+      errors.push('Missing integrity_status');
+    } else if (marketView.integrity_status === 'FAIL') {
+      errors.push(`Backend marked ${marketType} as FAIL: ${marketView.integrity_violations?.join(', ') || 'No details'}`);
+    }
+    
+    // 4. Selections (REQUIRED - exactly 2)
+    if (!marketView.selections || !Array.isArray(marketView.selections)) {
+      errors.push('Missing or invalid selections array');
+    } else if (marketView.selections.length !== 2) {
+      errors.push(`Invalid selections count: ${marketView.selections.length} (expected 2)`);
+    } else {
+      marketView.selections.forEach((sel: any, idx: number) => {
+        if (!sel.selection_id) errors.push(`Selection ${idx}: missing selection_id`);
+        if (!sel.side) errors.push(`Selection ${idx}: missing side`);
+        if (typeof sel.market_probability !== 'number') errors.push(`Selection ${idx}: missing market_probability`);
+        if (typeof sel.model_probability !== 'number') errors.push(`Selection ${idx}: missing model_probability`);
+        // market_line_for_selection nullable only for MONEYLINE
+        if (marketType !== 'MONEYLINE' && typeof sel.market_line_for_selection !== 'number') {
+          errors.push(`Selection ${idx}: missing market_line_for_selection`);
+        }
+      });
+    }
+    
+    // 5. Edge classification (REQUIRED)
+    if (!marketView.edge_class) errors.push('Missing edge_class');
+    if (!marketView.model_preference_selection_id) errors.push('Missing model_preference_selection_id');
+    if (typeof marketView.edge_points !== 'number') errors.push('Missing edge_points');
+    
+    // 6. Edge logic consistency
+    if (marketView.edge_class === 'MARKET_ALIGNED' && marketView.model_preference_selection_id !== 'NO_EDGE') {
+      errors.push('MARKET_ALIGNED must have preference=NO_EDGE');
+    }
+    if (['EDGE', 'LEAN'].includes(marketView.edge_class) && !marketView.selections?.some((s: any) => s.selection_id === marketView.model_preference_selection_id)) {
+      errors.push('Preference selection_id must match one of the selections');
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  };
+
   const renderSAFEMode = (marketType: string, errors: string[]) => {
     return (
       <div className="p-6 bg-red-900/20 border-2 border-red-500 rounded-lg">
@@ -119,8 +193,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         <div className="text-red-300 text-sm mb-3">
           {marketType} market analysis unavailable due to integrity violations. Recalculating...
         </div>
-        <div className="text-xs text-red-300/70 space-y-1">
+        <div className="text-xs text-red-300/70 space-y-1 max-h-40 overflow-y-auto">
           {errors.map((err, idx) => <div key={idx}>• {err}</div>)}
+        </div>
+        <div className="text-xs text-red-300/50 mt-3">
+          This view is blocked to prevent displaying incorrect data. OPTIONAL fields (labels, grades) do not trigger this mode.
         </div>
       </div>
     );
@@ -1519,51 +1596,50 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </button>
         </div>
 
-        {/* Market-Specific Display */}
-        <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-purple-500/30">
+        {/* Market-Specific Display - Keyed by snapshot_hash for atomic swapping */}
+        <div 
+          key={`market-${activeMarketTab}-${simulation?.market_views?.[activeMarketTab]?.snapshot_hash || 'none'}`}
+          className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-purple-500/30"
+        >
           {/* SPREAD Tab */}
           {activeMarketTab === 'spread' && (() => {
             const marketView = simulation?.market_views?.spread;
+            
+            // Independent market handling: missing TOTAL doesn't break SPREAD
             if (!marketView) {
-              return <div className="text-gray-400 p-4">Spread market data unavailable</div>;
+              return (
+                <div className="text-gray-400 p-4 text-center">
+                  <div className="text-lg mb-2">📊 Spread Market Unavailable</div>
+                  <div className="text-sm text-gray-500">This market is not yet available for this event.</div>
+                </div>
+              );
             }
 
-            // SAFE MODE CHECK
-            if (marketView.ui_render_mode === 'SAFE' || !marketView.integrity_status?.is_valid) {
-              return renderSAFEMode('SPREAD', marketView.integrity_status?.errors || []);
+            // Validate REQUIRED fields only (schema_version check)
+            const validation = validateMarketView(marketView, 'SPREAD');
+            if (!validation.valid) {
+              return renderSAFEMode('SPREAD', validation.errors);
             }
 
             const selections = marketView.selections || [];
-            const homeSelection = selections.find((s: any) => s.side === 'home');
-            const awaySelection = selections.find((s: any) => s.side === 'away');
+            const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
+            const awaySelection = selections.find((s: any) => s.side === 'AWAY' || s.side === 'away');
             const preferredSelection = getPreferredSelection(marketView);
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
             const p_cover_home = homeSelection?.model_probability || 0.5;
             const p_cover_away = awaySelection?.model_probability || 0.5;
-            const market_spread = homeSelection?.line || 0;
+            const market_spread = homeSelection?.market_line_for_selection || 0;
             
             return (
               <div>
                 <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
                   📊 SPREAD MARKET
-                  {validatorStatus === 'FAIL' && (
-                    <span className="text-xs px-2 py-1 bg-red-500/20 border border-red-500 text-red-400 rounded">⚠️ VALIDATION FAILED</span>
+                  {marketView.integrity_status === 'DEGRADE' && (
+                    <span className="text-xs px-2 py-1 bg-yellow-500/20 border border-yellow-500 text-yellow-400 rounded">⚠️ DEGRADED</span>
                   )}
                 </h3>
-                
-                {/* Validator Error Banner */}
-                {validatorStatus === 'FAIL' && probabilities?.validator_errors && (
-                  <div className="mb-4 p-3 bg-red-500/10 border-2 border-red-500 rounded-lg">
-                    <div className="text-red-400 font-bold mb-2">⛔ Data Mismatch Detected — Recommendation Withheld</div>
-                    <div className="text-xs text-red-300 space-y-1">
-                      {probabilities.validator_errors.map((error: string, idx: number) => (
-                        <div key={idx}>• {error}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Market Mismatch Banner */}
                 {marketMismatch && (
@@ -1628,18 +1704,25 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {/* MONEYLINE Tab */}
           {activeMarketTab === 'moneyline' && (() => {
             const marketView = simulation?.market_views?.moneyline;
+            
             if (!marketView) {
-              return <div className="text-gray-400 p-4">Moneyline market data unavailable</div>;
+              return (
+                <div className="text-gray-400 p-4 text-center">
+                  <div className="text-lg mb-2">💰 Moneyline Market Unavailable</div>
+                  <div className="text-sm text-gray-500">This market is not yet available for this event.</div>
+                </div>
+              );
             }
 
-            // SAFE MODE CHECK
-            if (marketView.ui_render_mode === 'SAFE' || !marketView.integrity_status?.is_valid) {
-              return renderSAFEMode('MONEYLINE', marketView.integrity_status?.errors || []);
+            // Validate REQUIRED fields only
+            const validation = validateMarketView(marketView, 'MONEYLINE');
+            if (!validation.valid) {
+              return renderSAFEMode('MONEYLINE', validation.errors);
             }
 
             const selections = marketView.selections || [];
-            const homeSelection = selections.find((s: any) => s.side === 'home');
-            const awaySelection = selections.find((s: any) => s.side === 'away');
+            const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
+            const awaySelection = selections.find((s: any) => s.side === 'AWAY' || s.side === 'away');
             const preferredSelection = getPreferredSelection(marketView);
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
@@ -1651,6 +1734,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               <div>
                 <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
                   💰 MONEYLINE MARKET
+                  {marketView.integrity_status === 'DEGRADE' && (
+                    <span className="text-xs px-2 py-1 bg-yellow-500/20 border border-yellow-500 text-yellow-400 rounded">⚠️ DEGRADED</span>
+                  )}
                 </h3>
                 
                 {/* Win Probability Display (ML-SCOPED ONLY) */}
@@ -1702,18 +1788,25 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {/* TOTAL Tab */}
           {activeMarketTab === 'total' && (() => {
             const marketView = simulation?.market_views?.total;
+            
             if (!marketView) {
-              return <div className="text-gray-400 p-4">Total market data unavailable</div>;
+              return (
+                <div className="text-gray-400 p-4 text-center">
+                  <div className="text-lg mb-2">🎯 Total Market Unavailable</div>
+                  <div className="text-sm text-gray-500">This market is not yet available for this event.</div>
+                </div>
+              );
             }
 
-            // SAFE MODE CHECK
-            if (marketView.ui_render_mode === 'SAFE' || !marketView.integrity_status?.is_valid) {
-              return renderSAFEMode('TOTAL', marketView.integrity_status?.errors || []);
+            // Validate REQUIRED fields only
+            const validation = validateMarketView(marketView, 'TOTAL');
+            if (!validation.valid) {
+              return renderSAFEMode('TOTAL', validation.errors);
             }
 
             const selections = marketView.selections || [];
-            const overSelection = selections.find((s: any) => s.side === 'over');
-            const underSelection = selections.find((s: any) => s.side === 'under');
+            const overSelection = selections.find((s: any) => s.side === 'OVER' || s.side === 'over');
+            const underSelection = selections.find((s: any) => s.side === 'UNDER' || s.side === 'under');
             const preferredSelection = getPreferredSelection(marketView);
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';

@@ -91,7 +91,10 @@ class OutputConsistencyValidator:
     """
     
     def __init__(self):
-        self.tolerance = 0.01  # 1% tolerance for probability sums
+        # Singles Engine Brief: Epsilon tolerance for probability sums
+        # Small float drift (≤0.001) => DEGRADE, not FAIL
+        self.epsilon_tolerance = 0.001  # Strict tolerance for required fields
+        self.degrade_tolerance = 0.01   # Looser tolerance triggers DEGRADE
     
     def validate_probability_sums(
         self,
@@ -105,6 +108,11 @@ class OutputConsistencyValidator:
         """
         Validate that probability pairs sum to 1.0
         
+        Singles Engine Brief: Uses epsilon tolerance
+        - abs(sum - 1.0) <= 0.001: PASS
+        - 0.001 < abs(sum - 1.0) <= 0.01: DEGRADE (warn but allow)
+        - abs(sum - 1.0) > 0.01: FAIL
+        
         Returns validator status with pass/fail and details
         """
         errors = []
@@ -115,25 +123,34 @@ class OutputConsistencyValidator:
         if p_win_home is not None and p_win_away is not None:
             ml_sum = p_win_home + p_win_away
             details["ml_sum"] = ml_sum
-            if abs(ml_sum - 1.0) > self.tolerance:
+            diff = abs(ml_sum - 1.0)
+            if diff > self.degrade_tolerance:
                 errors.append(ValidationError.PROB_SUM_FAIL)
-                details["ml_error"] = f"p_win_home + p_win_away = {ml_sum:.4f}, expected 1.0"
+                details["ml_error"] = f"p_win_home + p_win_away = {ml_sum:.4f}, expected 1.0 (diff: {diff:.4f})"
+            elif diff > self.epsilon_tolerance:
+                warnings.append(f"ML prob sum drift: {diff:.4f} (within degrade tolerance)")
         
         # Check spread probabilities
         if p_cover_home is not None and p_cover_away is not None:
             spread_sum = p_cover_home + p_cover_away
             details["spread_sum"] = spread_sum
-            if abs(spread_sum - 1.0) > self.tolerance:
+            diff = abs(spread_sum - 1.0)
+            if diff > self.degrade_tolerance:
                 errors.append(ValidationError.PROB_SUM_FAIL)
-                details["spread_error"] = f"p_cover_home + p_cover_away = {spread_sum:.4f}, expected 1.0"
+                details["spread_error"] = f"p_cover_home + p_cover_away = {spread_sum:.4f}, expected 1.0 (diff: {diff:.4f})"
+            elif diff > self.epsilon_tolerance:
+                warnings.append(f"Spread prob sum drift: {diff:.4f} (within degrade tolerance)")
         
         # Check total probabilities
         if p_over is not None and p_under is not None:
             total_sum = p_over + p_under
             details["total_sum"] = total_sum
-            if abs(total_sum - 1.0) > self.tolerance:
+            diff = abs(total_sum - 1.0)
+            if diff > self.degrade_tolerance:
                 errors.append(ValidationError.PROB_SUM_FAIL)
-                details["total_error"] = f"p_over + p_under = {total_sum:.4f}, expected 1.0"
+                details["total_error"] = f"p_over + p_under = {total_sum:.4f}, expected 1.0 (diff: {diff:.4f})"
+            elif diff > self.epsilon_tolerance:
+                warnings.append(f"Total prob sum drift: {diff:.4f} (within degrade tolerance)")
         
         passed = len(errors) == 0
         return ValidatorStatus(
