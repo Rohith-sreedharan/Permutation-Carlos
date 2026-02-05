@@ -1,0 +1,36 @@
+{
+  "schema_version": "2025-02-05-marketview-v1",
+  "event_id": "29d21b1015a4f76d386601af48083a64",
+  "market_type": "SPREAD",
+  "snapshot_hash": "68bc3bdf38296984",
+  "selections": [
+    {
+      "selection_id": "4a3342579819605f",
+      "team_name": "Los Angeles Lakers",
+      "side": "home",
+      "line": -4.0,
+      "market_type": "spread",
+      "model_probability": 0.4427,
+      "market_probability": 0.4427
+    },
+    {
+      "selection_id": "a8b384b6d380ff05",
+      "team_name": "Philadelphia 76ers",
+      "side": "away",
+      "line": 4.0,
+      "market_type": "spread",
+      "model_probability": 0.5573,
+      "market_probability": 0.5573
+    }
+  ],
+  "model_preference_selection_id": "a8b384b6d380ff05",
+  "model_direction_selection_id": "a8b384b6d380ff05",
+  "edge_class": "EDGE",
+  "edge_points": 2.0496290922300657,
+  "ui_render_mode": "FULL",
+  "integrity_status": {
+    "status": "ok",
+    "is_valid": true,
+    "errors": []
+  }
+}
