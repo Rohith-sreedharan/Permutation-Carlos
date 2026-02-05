@@ -365,7 +365,14 @@ async def get_simulation(
                     sport_key,
                     is_home=False
                 )
-            except ValueError as roster_error:
+                
+                # DEFENSIVE: Ensure roster fetch didn't return None
+                if team_a_data is None:
+                    team_a_data = {"name": event.get("home_team", "Team A"), "team": event.get("home_team")}
+                if team_b_data is None:
+                    team_b_data = {"name": event.get("away_team", "Team B"), "team": event.get("away_team")}
+                    
+            except (ValueError, Exception) as roster_error:
                 # Log roster unavailability but DON'T immediately fail
                 # Let monte_carlo_engine handle it with roster governance
                 error_msg = str(roster_error)

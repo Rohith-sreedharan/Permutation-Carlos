@@ -251,6 +251,13 @@ class MonteCarloEngine:
         # ===== ROSTER AVAILABILITY GOVERNANCE (INSTITUTIONAL-GRADE) =====
         # Check roster availability for both teams BEFORE running simulation
         # This prevents wasted compute and ensures clean BLOCKED state
+        
+        # DEFENSIVE: Handle None team data
+        if team_a is None:
+            team_a = {"name": "Team A", "team": "Team A"}
+        if team_b is None:
+            team_b = {"name": "Team B", "team": "Team B"}
+            
         team_a_name = team_a.get('name') or team_a.get('team')
         team_b_name = team_b.get('name') or team_b.get('team')
         
