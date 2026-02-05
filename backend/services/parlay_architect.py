@@ -443,6 +443,9 @@ class ParlayArchitectService:
             elif len(scored_legs) == 0:
                 fail_reason = "MARKET_DATA_MISSING"
             
+            # Determine if unlocked based on user tier (founder/elite/internal get free access)
+            is_unlocked = user_tier.lower() in ["founder", "elite", "internal"] if user_tier else False
+            
             blocked_response = {
                 "status": "BLOCKED",
                 "parlay_status": "FAIL",
@@ -452,6 +455,7 @@ class ParlayArchitectService:
                 "requested_count": leg_count,
                 "eligible_pool_count": len(eligible_legs_filtered) if eligible_legs_filtered else 0,
                 "selected_count": len(final_legs) if final_legs else 0,
+                "is_unlocked": is_unlocked,  # Add unlock status to blocked response
                 "parlay_debug": {
                     "total_games_scanned": len(scored_legs),
                     "attempts": len(fallback_steps),
