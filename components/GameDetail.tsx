@@ -1839,26 +1839,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {/* TOTAL Tab */}
           {activeMarketTab === 'total' && (() => {
             const marketView = simulation?.market_views?.total;
-                      <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
-                      <div className="text-xl font-bold text-blue-200">{preferredSelection.team_name} ML</div>
-                      <div className="text-xs text-gray-400 mt-2">
-                        Direction always matches preference — single canonical source
-                      </div>
-                    </div>
-                  </div>
-                ) : edgeClass === 'MARKET_ALIGNED' ? (
-                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
-                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })()}
-
-          {/* TOTAL Tab */}
-          {activeMarketTab === 'total' && (() => {
-            const marketView = simulation?.market_views?.total;
             
             if (!marketView) {
               return (
@@ -1954,26 +1934,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
                         Single selection: {preferredSelection.selection_id}
-                      </div>
-                    </div>
-                  </div>
-                ) : edgeClass === 'MARKET_ALIGNED' ? (
-                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
-                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
-                  </div>
-                ) : null}
-                      <div className="text-xs text-gray-400 mt-2">
-                        {(preferredSelection.model_probability * 100).toFixed(1)}% probability | Edge: {marketView.edge_points?.toFixed(1)} pts
-                      </div>
-                    </div>
-                    <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
-                      <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
-                      <div className="text-xl font-bold text-blue-200">
-                        {preferredSelection.team_name} {preferredSelection.line}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-2">
-                        Direction always matches preference — single canonical source
                       </div>
                     </div>
                   </div>
