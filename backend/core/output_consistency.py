@@ -531,25 +531,25 @@ class OutputConsistencyValidator:
             },
             "sharp_sides": {
                 "spread": {
-                    "sharp_market": sharp_spread.sharp_market.value if sharp_spread else None,
+                    "sharp_market": sharp_spread.sharp_market.value if sharp_spread and hasattr(sharp_spread.sharp_market, 'value') else (sharp_spread.sharp_market if sharp_spread else None),
                     "sharp_selection": sharp_spread.sharp_selection if sharp_spread else None,
-                    "sharp_action": sharp_spread.sharp_action.value if sharp_spread else None,
+                    "sharp_action": sharp_spread.sharp_action.value if sharp_spread and hasattr(sharp_spread.sharp_action, 'value') else (sharp_spread.sharp_action if sharp_spread else None),
                     "edge_points": sharp_spread.edge_points if sharp_spread else 0.0,
                     "validator_status": "PASS" if sharp_spread and sharp_spread.validator_status.passed else "FAIL",
                     "errors": [e.value for e in sharp_spread.validator_status.errors] if sharp_spread else []
                 },
                 "total": {
-                    "sharp_market": sharp_total.sharp_market.value if sharp_total else None,
+                    "sharp_market": sharp_total.sharp_market.value if sharp_total and hasattr(sharp_total.sharp_market, 'value') else (sharp_total.sharp_market if sharp_total else None),
                     "sharp_selection": sharp_total.sharp_selection if sharp_total else None,
-                    "sharp_action": sharp_total.sharp_action.value if sharp_total else None,
+                    "sharp_action": sharp_total.sharp_action.value if sharp_total and hasattr(sharp_total.sharp_action, 'value') else (sharp_total.sharp_action if sharp_total else None),
                     "edge_points": sharp_total.edge_points if sharp_total else 0.0,
                     "validator_status": "PASS" if sharp_total and sharp_total.validator_status.passed else "FAIL",
                     "errors": [e.value for e in sharp_total.validator_status.errors] if sharp_total else []
                 },
                 "moneyline": {
-                    "sharp_market": sharp_ml.sharp_market.value if sharp_ml else None,
+                    "sharp_market": sharp_ml.sharp_market.value if sharp_ml and hasattr(sharp_ml.sharp_market, 'value') else (sharp_ml.sharp_market if sharp_ml else None),
                     "sharp_selection": sharp_ml.sharp_selection if sharp_ml else None,
-                    "sharp_action": sharp_ml.sharp_action.value if sharp_ml else None,
+                    "sharp_action": sharp_ml.sharp_action.value if sharp_ml and hasattr(sharp_ml.sharp_action, 'value') else (sharp_ml.sharp_action if sharp_ml else None),
                     "edge_points": sharp_ml.edge_points if sharp_ml else 0.0,
                     "validator_status": "PASS" if sharp_ml and sharp_ml.validator_status.passed else "FAIL",
                     "errors": [e.value for e in sharp_ml.validator_status.errors] if sharp_ml else []
