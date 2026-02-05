@@ -100,6 +100,31 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [activeTab, setActiveTab] = useState<'distribution' | 'injuries' | 'props' | 'movement' | 'pulse' | 'firsthalf'>('distribution');
   const [activeMarketTab, setActiveMarketTab] = useState<'spread' | 'moneyline' | 'total'>('spread');
   const [showDebugPayload, setShowDebugPayload] = useState(false);
+
+  // CANONICAL MARKETVIEW HELPERS
+  const getSelection = (marketView: any, selectionId: string) => {
+    return marketView?.selections?.find((s: any) => s.selection_id === selectionId);
+  };
+
+  const getPreferredSelection = (marketView: any) => {
+    const prefId = marketView?.model_preference_selection_id;
+    if (!prefId || prefId === 'NO_EDGE' || prefId === 'INVALID') return null;
+    return getSelection(marketView, prefId);
+  };
+
+  const renderSAFEMode = (marketType: string, errors: string[]) => {
+    return (
+      <div className="p-6 bg-red-900/20 border-2 border-red-500 rounded-lg">
+        <div className="text-red-400 font-bold text-lg mb-2">🚫 SAFE MODE — Data Integrity Issue</div>
+        <div className="text-red-300 text-sm mb-3">
+          {marketType} market analysis unavailable due to integrity violations. Recalculating...
+        </div>
+        <div className="text-xs text-red-300/70 space-y-1">
+          {errors.map((err, idx) => <div key={idx}>• {err}</div>)}
+        </div>
+      </div>
+    );
+  };
   const [propsSortBy, setPropsSortBy] = useState('ev');
   const [lineMovementData, setLineMovementData] = useState<Array<{ time: string; odds: number; fairValue: number }>>([]);
   const [shareSuccess, setShareSuccess] = useState(false);
@@ -1358,13 +1383,18 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="bg-navy/50 p-3 rounded">
                       <div className="text-xs text-gray-400 mb-1">Market Spread</div>
                       <div className="text-base font-bold text-white">
-                        {simulation.sharp_analysis.spread.market_favorite} {simulation.sharp_analysis.spread.market_spread_home < 0 ? simulation.sharp_analysis.spread.market_spread_home.toFixed(1) : '+' + simulation.sharp_analysis.spread.market_spread_home.toFixed(1)}
+                        {/* Market favorite with their negative line (or underdog with + line) */}
+                        {simulation.sharp_analysis.spread.market_spread_home < 0 
+                          ? `${event?.home_team || simulation.team_a} ${simulation.sharp_analysis.spread.market_spread_home.toFixed(1)}`
+                          : `${event?.away_team || simulation.team_b} ${simulation.sharp_analysis.spread.market_spread_home > 0 ? '+' : ''}${(-simulation.sharp_analysis.spread.market_spread_home).toFixed(1)}`
+                        }
                       </div>
                     </div>
                     <div className="bg-navy/50 p-3 rounded">
                       <div className="text-xs text-gray-400 mb-1">Fair Spread (Model)</div>
                       <div className="text-base font-bold text-purple-300">
-                        {simulation.sharp_analysis.spread.market_underdog} +{simulation.sharp_analysis.spread.fair_spread_home.toFixed(1)}
+                        {/* Model preferred team with their spread (from sharp_side_display) */}
+                        {sharpSideDisplay}
                       </div>
                     </div>
                     <div className="bg-purple-900/50 p-3 rounded border border-purple-500/30">
@@ -1493,18 +1523,26 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         <div className="bg-linear-to-br from-charcoal to-navy p-6 rounded-xl border border-purple-500/30">
           {/* SPREAD Tab */}
           {activeMarketTab === 'spread' && (() => {
-            const probabilities = simulation?.sharp_analysis?.probabilities;
-            const spreadData = simulation?.sharp_analysis?.spread;
-            const validatorStatus = probabilities?.validator_status;
-            const p_cover_home = probabilities?.p_cover_home || 0.5;
-            const p_cover_away = probabilities?.p_cover_away || 0.5;
-            const market_spread = spreadData?.market_spread_home || 0;
-            const sharp_market = spreadData?.sharp_market;
-            const sharp_selection = spreadData?.sharp_selection;
-            const has_edge = spreadData?.has_edge;
+            const marketView = simulation?.market_views?.spread;
+            if (!marketView) {
+              return <div className="text-gray-400 p-4">Spread market data unavailable</div>;
+            }
+
+            // SAFE MODE CHECK
+            if (marketView.ui_render_mode === 'SAFE' || !marketView.integrity_status?.is_valid) {
+              return renderSAFEMode('SPREAD', marketView.integrity_status?.errors || []);
+            }
+
+            const selections = marketView.selections || [];
+            const homeSelection = selections.find((s: any) => s.side === 'home');
+            const awaySelection = selections.find((s: any) => s.side === 'away');
+            const preferredSelection = getPreferredSelection(marketView);
+            const edgeClass = marketView.edge_class;
+            const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
-            // Market mismatch detection
-            const marketMismatch = sharp_market && sharp_market !== 'SPREAD';
+            const p_cover_home = homeSelection?.model_probability || 0.5;
+            const p_cover_away = awaySelection?.model_probability || 0.5;
+            const market_spread = homeSelection?.line || 0;
             
             return (
               <div>
@@ -1555,89 +1593,66 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {/* Model Preference (Probability-Based) */}
-                {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
-                  // Validate probability data integrity
-                  const probSum = p_cover_home + p_cover_away;
-                  const probDiff = Math.abs(p_cover_home - p_cover_away);
-                  const epsilon = 0.001; // 0.1% tie threshold
-                  
-                  // ONLY block if probabilities are invalid
-                  if (isNaN(p_cover_home) || isNaN(p_cover_away) || 
-                      p_cover_home == null || p_cover_away == null ||
-                      Math.abs(probSum - 1.0) > 0.01 || // Sum must be ~100%
-                      probDiff < epsilon) { // Must have clear winner
-                    return (
-                      <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
-                        <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
-                        <div className="text-sm text-red-200">Integrity safeguard triggered — invalid probability data</div>
-                      </div>
-                    );
-                  }
-                  
-                  // Valid probabilities - always show argmax
-                  const preferredTeam = p_cover_home > p_cover_away ? event.home_team : event.away_team;
-                  const preferredSpread = p_cover_home > p_cover_away ? market_spread : -market_spread;
-                  const preferredProb = Math.max(p_cover_home, p_cover_away);
-                  
-                  return (
-                    <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                {/* Model Preference & Direction (CANONICAL) */}
+                {preferredSelection && hasEdge ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
                       <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
                       <div className="text-xl font-bold text-purple-200">
-                        {preferredTeam} {preferredSpread >= 0 ? '+' : ''}{preferredSpread.toFixed(1)}
+                        {preferredSelection.team_name} {preferredSelection.line >= 0 ? '+' : ''}{preferredSelection.line?.toFixed(1)}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        {(preferredProb * 100).toFixed(1)}% cover probability{has_edge ? ` | Edge: ${spreadData?.edge_points?.toFixed(1)} pts` : ''}
+                        {(preferredSelection.model_probability * 100).toFixed(1)}% cover probability | Edge: {marketView.edge_points?.toFixed(1)} pts
                       </div>
                     </div>
-                  );
-                })()}
+                    <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
+                      <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
+                      <div className="text-xl font-bold text-blue-200">
+                        {preferredSelection.team_name} {preferredSelection.line >= 0 ? '+' : ''}{preferredSelection.line?.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Direction always matches preference — single canonical source
+                      </div>
+                    </div>
+                  </div>
+                ) : edgeClass === 'MARKET_ALIGNED' ? (
+                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
+                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                  </div>
+                ) : null}
               </div>
             );
           })()}
 
           {/* MONEYLINE Tab */}
           {activeMarketTab === 'moneyline' && (() => {
-            const probabilities = simulation?.sharp_analysis?.probabilities;
-            const mlData = simulation?.sharp_analysis?.moneyline;
-            const validatorStatus = probabilities?.validator_status;
-            const p_win_home = probabilities?.p_win_home || 0.5;
-            const p_win_away = probabilities?.p_win_away || 0.5;
-            const sharp_market = mlData?.sharp_market;
-            const sharp_selection = mlData?.sharp_selection;
-            const has_edge = mlData?.has_edge;
+            const marketView = simulation?.market_views?.moneyline;
+            if (!marketView) {
+              return <div className="text-gray-400 p-4">Moneyline market data unavailable</div>;
+            }
+
+            // SAFE MODE CHECK
+            if (marketView.ui_render_mode === 'SAFE' || !marketView.integrity_status?.is_valid) {
+              return renderSAFEMode('MONEYLINE', marketView.integrity_status?.errors || []);
+            }
+
+            const selections = marketView.selections || [];
+            const homeSelection = selections.find((s: any) => s.side === 'home');
+            const awaySelection = selections.find((s: any) => s.side === 'away');
+            const preferredSelection = getPreferredSelection(marketView);
+            const edgeClass = marketView.edge_class;
+            const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
-            const marketMismatch = sharp_market && sharp_market !== 'ML';
+            const p_win_home = homeSelection?.model_probability || 0.5;
+            const p_win_away = awaySelection?.model_probability || 0.5;
             
             return (
               <div>
                 <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
                   💰 MONEYLINE MARKET
-                  {validatorStatus === 'FAIL' && (
-                    <span className="text-xs px-2 py-1 bg-red-500/20 border border-red-500 text-red-400 rounded">⚠️ VALIDATION FAILED</span>
-                  )}
                 </h3>
                 
-                {validatorStatus === 'FAIL' && probabilities?.validator_errors && (
-                  <div className="mb-4 p-3 bg-red-500/10 border-2 border-red-500 rounded-lg">
-                    <div className="text-red-400 font-bold mb-2">⛔ Data Mismatch Detected — Recommendation Withheld</div>
-                    <div className="text-xs text-red-300 space-y-1">
-                      {probabilities.validator_errors.map((error: string, idx: number) => (
-                        <div key={idx}>• {error}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {marketMismatch && (
-                  <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
-                    <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
-                    <div className="text-xs text-yellow-300 mt-1">
-                      Model direction is on {sharp_market} market, not MONEYLINE. Recommendation hidden.
-                    </div>
-                  </div>
-                )}
-
                 {/* Win Probability Display (ML-SCOPED ONLY) */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="bg-navy/50 p-4 rounded-lg">
@@ -1656,86 +1671,63 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
-                  // Validate probability data integrity
-                  const probSum = p_win_home + p_win_away;
-                  const probDiff = Math.abs(p_win_home - p_win_away);
-                  const epsilon = 0.001; // 0.1% tie threshold
-                  
-                  // ONLY block if probabilities are invalid
-                  if (isNaN(p_win_home) || isNaN(p_win_away) || 
-                      p_win_home == null || p_win_away == null ||
-                      Math.abs(probSum - 1.0) > 0.01 || // Sum must be ~100%
-                      probDiff < epsilon) { // Must have clear winner
-                    return (
-                      <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
-                        <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
-                        <div className="text-sm text-red-200">Integrity safeguard triggered — invalid probability data</div>
-                      </div>
-                    );
-                  }
-                  
-                  // Valid probabilities - always show argmax
-                  const preferredTeam = p_win_home > p_win_away ? event.home_team : event.away_team;
-                  const preferredProb = Math.max(p_win_home, p_win_away);
-                  
-                  return (
-                    <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                {/* Model Preference & Direction (CANONICAL) */}
+                {preferredSelection && hasEdge ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
                       <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
-                      <div className="text-xl font-bold text-purple-200">{preferredTeam} ML</div>
+                      <div className="text-xl font-bold text-purple-200">{preferredSelection.team_name} ML</div>
                       <div className="text-xs text-gray-400 mt-2">
-                        {(preferredProb * 100).toFixed(1)}% win probability{has_edge ? ` | Edge: ${mlData?.edge_pct?.toFixed(1)}%` : ''}
+                        {(preferredSelection.model_probability * 100).toFixed(1)}% win probability | Edge: {marketView.edge_points?.toFixed(1)}%
                       </div>
                     </div>
-                  );
-                })()}
+                    <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
+                      <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
+                      <div className="text-xl font-bold text-blue-200">{preferredSelection.team_name} ML</div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Direction always matches preference — single canonical source
+                      </div>
+                    </div>
+                  </div>
+                ) : edgeClass === 'MARKET_ALIGNED' ? (
+                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
+                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                  </div>
+                ) : null}
               </div>
             );
           })()}
 
           {/* TOTAL Tab */}
           {activeMarketTab === 'total' && (() => {
-            const probabilities = simulation?.sharp_analysis?.probabilities;
-            const totalData = simulation?.sharp_analysis?.total;
-            const validatorStatus = probabilities?.validator_status;
-            const p_over = probabilities?.p_over || 0.5;
-            const p_under = probabilities?.p_under || 0.5;
-            const market_total = totalData?.market_total || 0;
-            const sharp_market = totalData?.sharp_market;
-            const sharp_selection = totalData?.sharp_selection;
-            const has_edge = totalData?.has_edge;
+            const marketView = simulation?.market_views?.total;
+            if (!marketView) {
+              return <div className="text-gray-400 p-4">Total market data unavailable</div>;
+            }
+
+            // SAFE MODE CHECK
+            if (marketView.ui_render_mode === 'SAFE' || !marketView.integrity_status?.is_valid) {
+              return renderSAFEMode('TOTAL', marketView.integrity_status?.errors || []);
+            }
+
+            const selections = marketView.selections || [];
+            const overSelection = selections.find((s: any) => s.side === 'over');
+            const underSelection = selections.find((s: any) => s.side === 'under');
+            const preferredSelection = getPreferredSelection(marketView);
+            const edgeClass = marketView.edge_class;
+            const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
-            const marketMismatch = sharp_market && sharp_market !== 'TOTAL';
+            const p_over = overSelection?.model_probability || 0.5;
+            const p_under = underSelection?.model_probability || 0.5;
+            const market_total = overSelection?.line || 0;
             
             return (
               <div>
                 <h3 className="text-2xl font-bold text-purple-300 mb-4 font-teko flex items-center gap-2">
                   🎯 TOTAL MARKET
-                  {validatorStatus === 'FAIL' && (
-                    <span className="text-xs px-2 py-1 bg-red-500/20 border border-red-500 text-red-400 rounded">⚠️ VALIDATION FAILED</span>
-                  )}
                 </h3>
                 
-                {validatorStatus === 'FAIL' && probabilities?.validator_errors && (
-                  <div className="mb-4 p-3 bg-red-500/10 border-2 border-red-500 rounded-lg">
-                    <div className="text-red-400 font-bold mb-2">⛔ Data Mismatch Detected — Recommendation Withheld</div>
-                    <div className="text-xs text-red-300 space-y-1">
-                      {probabilities.validator_errors.map((error: string, idx: number) => (
-                        <div key={idx}>• {error}</div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {marketMismatch && (
-                  <div className="mb-4 p-3 bg-yellow-500/10 border-2 border-yellow-500 rounded-lg">
-                    <div className="text-yellow-400 font-bold">⚠️ Market Mismatch</div>
-                    <div className="text-xs text-yellow-300 mt-1">
-                      Model direction is on {sharp_market} market, not TOTAL. Recommendation hidden.
-                    </div>
-                  </div>
-                )}
-
                 {/* Over/Under Probability Display (TOTAL-SCOPED ONLY) */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="bg-navy/50 p-4 rounded-lg">
@@ -1754,38 +1746,34 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {!marketMismatch && validatorStatus !== 'FAIL' && (() => {
-                  // SAFETY ASSERTION: Model preference must match probability dominance
-                  const preferredSide = p_over > p_under ? 'OVER' : 'UNDER';
-                  const preferredProb = Math.max(p_over, p_under);
-                  const preferredDisplay = p_over > p_under ? `Over ${market_total}` : `Under ${market_total}`;
-                  
-                  // Integrity check
-                  if (sharp_selection && !sharp_selection.toUpperCase().includes(preferredSide)) {
-                    console.error('🚨 INTEGRITY VIOLATION: Total sharp_selection does not match probability dominance', {
-                      sharp_selection,
-                      preferredSide,
-                      p_over,
-                      p_under
-                    });
-                    return (
-                      <div className="mt-4 p-4 bg-red-900/30 border border-red-500/50 rounded-lg">
-                        <div className="text-xs text-red-300 uppercase mb-1">⚠️ Direction Unavailable</div>
-                        <div className="text-sm text-red-200">Integrity safeguard triggered — probability mismatch detected</div>
-                      </div>
-                    );
-                  }
-                  
-                  return (
-                    <div className="mt-4 p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
+                {/* Model Preference & Direction (CANONICAL) */}
+                {preferredSelection && hasEdge ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
                       <div className="text-xs text-purple-300 uppercase mb-1">Model Preference (This Market)</div>
-                      <div className="text-xl font-bold text-purple-200">{preferredDisplay}</div>
+                      <div className="text-xl font-bold text-purple-200">
+                        {preferredSelection.team_name} {preferredSelection.line}
+                      </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        {(preferredProb * 100).toFixed(1)}% probability{has_edge ? ` | Edge: ${totalData?.edge_points?.toFixed(1)} pts` : ''}
+                        {(preferredSelection.model_probability * 100).toFixed(1)}% probability | Edge: {marketView.edge_points?.toFixed(1)} pts
                       </div>
                     </div>
-                  );
-                })()}
+                    <div className="p-4 bg-blue-900/30 border border-blue-500/50 rounded-lg">
+                      <div className="text-xs text-blue-300 uppercase mb-1">Model Direction (Informational)</div>
+                      <div className="text-xl font-bold text-blue-200">
+                        {preferredSelection.team_name} {preferredSelection.line}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        Direction always matches preference — single canonical source
+                      </div>
+                    </div>
+                  </div>
+                ) : edgeClass === 'MARKET_ALIGNED' ? (
+                  <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
+                    <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                  </div>
+                ) : null}
               </div>
             );
           })()}

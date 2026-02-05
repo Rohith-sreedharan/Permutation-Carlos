@@ -47,7 +47,7 @@ from core.sharp_side_selection import select_sharp_side_spread, SharpSideSelecti
 from core.sport_configs import VolatilityLevel
 from core.feedback_loop import store_prediction
 from core.reality_check_layer import get_public_total_projection
-from core.output_consistency import output_consistency_validator
+from core.output_consistency import output_consistency_validator, SharpAction
 from utils.calibration_logger import calibration_logger
 from utils.team_validator import team_identity_validator, extreme_edge_validator
 from core.sim_integrity import (
@@ -58,6 +58,12 @@ from core.sim_integrity import (
     generate_odds_snapshot_id
 )
 from core.simulation_context import SimulationStatus
+from core.selection_id_generator import (
+    generate_spread_selections,
+    generate_moneyline_selections,
+    generate_total_selections,
+    validate_selection_consistency
+)
 
 logger = logging.getLogger(__name__)
 
@@ -946,6 +952,101 @@ class MonteCarloEngine:
             f"  TOTAL: {total_sharp_result.sharp_action} → {total_sharp_result.sharp_selection or 'NO_SHARP_PLAY'}\n"
             f"  ML: {ml_sharp_result.sharp_action} → {ml_sharp_result.sharp_selection or 'NO_SHARP_PLAY'}"
         )
+
+        # ===== CANONICAL MARKET VIEWS (Deterministic selection IDs) =====
+        snapshot_hash = sim_metadata.odds_snapshot_id
+        schema_version = "2025-02-05-marketview-v1"
+        probability_tolerance = 0.001
+
+        # Spread selections (home/away, signed from home perspective)
+        spread_selections = generate_spread_selections(
+            event_id=event_id,
+            home_team=home_team_name,
+            away_team=away_team_name,
+            market_spread_home=vegas_spread_home_perspective,
+            book_key="consensus"
+        )
+        spread_selections["home"]["model_probability"] = p_cover_home
+        spread_selections["away"]["model_probability"] = p_cover_away
+        spread_selections["home"]["market_probability"] = p_cover_home
+        spread_selections["away"]["market_probability"] = p_cover_away
+
+        spread_prob_valid = abs((p_cover_home or 0) + (p_cover_away or 0) - 1.0) <= probability_tolerance
+        spread_preference_id = "NO_EDGE"
+        if spread_sharp_result and spread_sharp_result.has_edge:
+            spread_preference_id = spread_selections["home"]["selection_id"] if spread_sharp_result.sharp_team == home_team_name else spread_selections["away"]["selection_id"]
+        spread_direction_id = spread_preference_id
+        spread_valid, spread_errors = validate_selection_consistency(
+            selections=spread_selections,
+            model_preference_selection_id=spread_preference_id,
+            model_direction_selection_id=spread_direction_id
+        )
+        spread_integrity_errors = []
+        if not spread_prob_valid:
+            spread_integrity_errors.append("SPREAD_PROB_SUM_INVALID")
+        if not spread_valid:
+            spread_integrity_errors.extend(spread_errors)
+        spread_edge_class = "INVALID" if spread_integrity_errors else ("EDGE" if spread_sharp_result and spread_sharp_result.has_edge else "MARKET_ALIGNED")
+        spread_ui_mode = "SAFE" if spread_integrity_errors else "FULL"
+
+        # Moneyline selections (lines are null but IDs deterministic)
+        ml_selections = generate_moneyline_selections(
+            event_id=event_id,
+            home_team=home_team_name,
+            away_team=away_team_name,
+            book_key="consensus"
+        )
+        ml_selections["home"]["model_probability"] = p_win_home
+        ml_selections["away"]["model_probability"] = p_win_away
+        ml_selections["home"]["market_probability"] = p_win_home
+        ml_selections["away"]["market_probability"] = p_win_away
+        ml_prob_valid = abs((p_win_home or 0) + (p_win_away or 0) - 1.0) <= probability_tolerance
+        ml_preference_id = "NO_EDGE"
+        if ml_sharp_result and ml_sharp_result.has_edge and ml_sharp_result.sharp_team:
+            ml_preference_id = ml_selections["home"]["selection_id"] if ml_sharp_result.sharp_team == home_team_name else ml_selections["away"]["selection_id"]
+        ml_direction_id = ml_preference_id
+        ml_valid, ml_errors = validate_selection_consistency(
+            selections=ml_selections,
+            model_preference_selection_id=ml_preference_id,
+            model_direction_selection_id=ml_direction_id
+        )
+        ml_integrity_errors = []
+        if not ml_prob_valid:
+            ml_integrity_errors.append("ML_PROB_SUM_INVALID")
+        if not ml_valid:
+            ml_integrity_errors.extend(ml_errors)
+        ml_edge_class = "INVALID" if ml_integrity_errors else ("EDGE" if ml_sharp_result and ml_sharp_result.has_edge else "MARKET_ALIGNED")
+        ml_ui_mode = "SAFE" if ml_integrity_errors else "FULL"
+
+        # Total selections (over/under)
+        total_selections = generate_total_selections(
+            event_id=event_id,
+            total_line=bookmaker_total_line,
+            book_key="consensus"
+        )
+        total_selections["over"]["model_probability"] = over_probability
+        total_selections["under"]["model_probability"] = under_probability
+        total_selections["over"]["market_probability"] = over_probability
+        total_selections["under"]["market_probability"] = under_probability
+        total_prob_valid = abs((over_probability or 0) + (under_probability or 0) - 1.0) <= probability_tolerance
+        total_preference_id = "NO_EDGE"
+        if total_sharp_result and total_sharp_result.has_edge:
+            total_preference_id = total_selections["over"]["selection_id"] if total_sharp_result.sharp_action == SharpAction.OVER else total_selections["under"]["selection_id"]
+        total_direction_id = total_preference_id
+        total_valid, total_errors = validate_selection_consistency(
+            selections=total_selections,
+            model_preference_selection_id=total_preference_id,
+            model_direction_selection_id=total_direction_id
+        )
+        total_integrity_errors = []
+        if not total_prob_valid:
+            total_integrity_errors.append("TOTAL_PROB_SUM_INVALID")
+        if not total_valid:
+            total_integrity_errors.extend(total_errors)
+        total_edge_class = "INVALID" if total_integrity_errors else ("EDGE" if total_sharp_result and total_sharp_result.has_edge else "MARKET_ALIGNED")
+        total_ui_mode = "SAFE" if total_integrity_errors else "FULL"
+
+        overall_integrity_errors = spread_integrity_errors + ml_integrity_errors + total_integrity_errors
         
         # Calculate total edge
         total_analysis = calculate_total_edge(
@@ -1415,6 +1516,65 @@ class MonteCarloEngine:
                 
                 "disclaimer": STANDARD_DISCLAIMER
             },
+
+            # ===== CANONICAL MARKET VIEWS (Single source of truth) =====
+            "market_views": {
+                "spread": {
+                    "schema_version": schema_version,
+                    "event_id": event_id,
+                    "market_type": "SPREAD",
+                    "snapshot_hash": snapshot_hash,
+                    "selections": [spread_selections["home"], spread_selections["away"]],
+                    "model_preference_selection_id": spread_preference_id,
+                    "model_direction_selection_id": spread_direction_id,
+                    "edge_class": spread_edge_class,
+                    "edge_points": spread_analysis.edge_points,
+                    "ui_render_mode": spread_ui_mode,
+                    "integrity_status": {
+                        "status": "ok" if not spread_integrity_errors else "invalid",
+                        "is_valid": len(spread_integrity_errors) == 0,
+                        "errors": spread_integrity_errors
+                    }
+                },
+                "moneyline": {
+                    "schema_version": schema_version,
+                    "event_id": event_id,
+                    "market_type": "ML",
+                    "snapshot_hash": snapshot_hash,
+                    "selections": [ml_selections["home"], ml_selections["away"]],
+                    "model_preference_selection_id": ml_preference_id,
+                    "model_direction_selection_id": ml_direction_id,
+                    "edge_class": ml_edge_class,
+                    "edge_points": ml_sharp_result.edge_points if ml_sharp_result else 0.0,
+                    "ui_render_mode": ml_ui_mode,
+                    "integrity_status": {
+                        "status": "ok" if not ml_integrity_errors else "invalid",
+                        "is_valid": len(ml_integrity_errors) == 0,
+                        "errors": ml_integrity_errors
+                    }
+                },
+                "total": {
+                    "schema_version": schema_version,
+                    "event_id": event_id,
+                    "market_type": "TOTAL",
+                    "snapshot_hash": snapshot_hash,
+                    "selections": [total_selections["over"], total_selections["under"]],
+                    "model_preference_selection_id": total_preference_id,
+                    "model_direction_selection_id": total_direction_id,
+                    "edge_class": total_edge_class,
+                    "edge_points": total_analysis.edge_points,
+                    "ui_render_mode": total_ui_mode,
+                    "integrity_status": {
+                        "status": "ok" if not total_integrity_errors else "invalid",
+                        "is_valid": len(total_integrity_errors) == 0,
+                        "errors": total_integrity_errors
+                    }
+                }
+            },
+
+            # Global render mode (fail-safe)
+            "ui_render_mode": "SAFE" if overall_integrity_errors else "FULL",
+            "integrity_violations": overall_integrity_errors,
             
             # Props and additional data
             "injury_impact": injury_impact,

@@ -42,44 +42,39 @@ export const SimulationDebugPanel: React.FC<SimulationDebugPanelProps> = ({ simu
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<'spread' | 'moneyline' | 'total'>('spread');
 
-  // Extract debug data for each market
+  // Extract canonical MarketView data
   const extractMarketData = (marketType: 'spread' | 'moneyline' | 'total'): MarketDebugData => {
-    const marketData = simulation?.sharp_analysis?.[marketType] || {};
+    const marketView = simulation?.market_views?.[marketType] || {};
+    const selections = marketView.selections || [];
+    const homeSelection = selections.find((s: any) => s.side === 'home' || s.side === 'over');
+    const awaySelection = selections.find((s: any) => s.side === 'away' || s.side === 'under');
     
     return {
-      event_id: simulation?.event_id || event?.id || 'UNKNOWN',
-      snapshot_hash: simulation?.snapshot_hash || marketData.snapshot_hash || 'MISSING',
+      event_id: marketView.event_id || event?.id || 'UNKNOWN',
+      snapshot_hash: marketView.snapshot_hash || 'MISSING',
       server_timestamp: simulation?.created_at || 'MISSING',
       home_selection: {
-        selection_id: marketData.home_selection_id || 'MISSING',
+        selection_id: homeSelection?.selection_id || 'MISSING',
         team_id: event?.home_team_id || 'MISSING',
-        team_name: event?.home_team || 'MISSING',
-        line: marketData.market_spread_home || marketData.home_line || null,
-        probability: marketType === 'spread' 
-          ? simulation?.sharp_analysis?.probabilities?.p_cover_home
-          : marketType === 'moneyline'
-          ? simulation?.sharp_analysis?.probabilities?.p_win_home
-          : simulation?.sharp_analysis?.probabilities?.p_over,
+        team_name: homeSelection?.team_name || event?.home_team || 'MISSING',
+        line: homeSelection?.line,
+        probability: homeSelection?.model_probability,
         market_type: marketType.toUpperCase(),
-        market_settlement: marketData.market_settlement || 'MISSING'
+        market_settlement: 'PENDING'
       },
       away_selection: {
-        selection_id: marketData.away_selection_id || 'MISSING',
+        selection_id: awaySelection?.selection_id || 'MISSING',
         team_id: event?.away_team_id || 'MISSING',
-        team_name: event?.away_team || 'MISSING',
-        line: marketData.market_spread_away || marketData.away_line || null,
-        probability: marketType === 'spread'
-          ? simulation?.sharp_analysis?.probabilities?.p_cover_away
-          : marketType === 'moneyline'
-          ? simulation?.sharp_analysis?.probabilities?.p_win_away
-          : simulation?.sharp_analysis?.probabilities?.p_under,
+        team_name: awaySelection?.team_name || event?.away_team || 'MISSING',
+        line: awaySelection?.line,
+        probability: awaySelection?.model_probability,
         market_type: marketType.toUpperCase(),
-        market_settlement: marketData.market_settlement || 'MISSING'
+        market_settlement: 'PENDING'
       },
       model_preference: {
-        selection_id: marketData.model_preference_selection_id || 'MISSING',
-        side: marketData.edge_direction || marketData.sharp_side || 'MISSING',
-        probability: marketData.model_preference_probability || 0
+        selection_id: marketView.model_preference_selection_id || 'MISSING',
+        side: marketView.edge_class || 'MISSING',
+        probability: 0
       }
     };
   };
@@ -92,47 +87,57 @@ export const SimulationDebugPanel: React.FC<SimulationDebugPanelProps> = ({ simu
     : selectedMarket === 'moneyline' ? moneylineData 
     : totalData;
 
-  // Integrity checks
+  // Integrity checks using canonical MarketView
   const checkIntegrity = (data: MarketDebugData): { passed: boolean; issues: string[] } => {
+    const marketView = simulation?.market_views?.[selectedMarket];
     const issues: string[] = [];
 
-    // Check 1: Model preference selection_id must match one of the selections
-    const prefSelectionId = data.model_preference?.selection_id;
-    const homeSelectionId = data.home_selection?.selection_id;
-    const awaySelectionId = data.away_selection?.selection_id;
-
-    if (prefSelectionId !== 'MISSING' && homeSelectionId !== 'MISSING' && awaySelectionId !== 'MISSING') {
-      if (prefSelectionId !== homeSelectionId && prefSelectionId !== awaySelectionId) {
-        issues.push(`❌ Model preference selection_id (${prefSelectionId}) doesn't match home (${homeSelectionId}) or away (${awaySelectionId})`);
-      }
+    if (!marketView) {
+      issues.push(`❌ MarketView for ${selectedMarket} is missing`);
+      return { passed: false, issues };
     }
 
-    // Check 2: snapshot_hash present
+    // Check 1: Integrity status from backend
+    if (marketView.integrity_status && !marketView.integrity_status.is_valid) {
+      marketView.integrity_status.errors?.forEach((err: string) => {
+        issues.push(`❌ Backend: ${err}`);
+      });
+    }
+
+    // Check 2: ui_render_mode
+    if (marketView.ui_render_mode === 'SAFE') {
+      issues.push('🔒 SAFE MODE ACTIVE — UI rendering blocked');
+    }
+
+    // Check 3: snapshot_hash
     if (!data.snapshot_hash || data.snapshot_hash === 'MISSING') {
       issues.push('❌ snapshot_hash is missing');
     }
 
-    // Check 3: selection_ids present
-    if (homeSelectionId === 'MISSING') {
-      issues.push('❌ home_selection_id is missing');
-    }
-    if (awaySelectionId === 'MISSING') {
-      issues.push('❌ away_selection_id is missing');
-    }
-    if (prefSelectionId === 'MISSING') {
-      issues.push('❌ model_preference_selection_id is missing');
+    // Check 4: selection_ids
+    const homeSelectionId = data.home_selection?.selection_id;
+    const awaySelectionId = data.away_selection?.selection_id;
+    const prefSelectionId = data.model_preference?.selection_id;
+
+    if (homeSelectionId === 'MISSING') issues.push('❌ home_selection_id is missing');
+    if (awaySelectionId === 'MISSING') issues.push('❌ away_selection_id is missing');
+    if (prefSelectionId === 'MISSING' || prefSelectionId === 'INVALID') {
+      if (marketView.edge_class !== 'MARKET_ALIGNED') {
+        issues.push('❌ model_preference_selection_id is missing/invalid but edge_class != MARKET_ALIGNED');
+      }
     }
 
-    // Check 4: Probabilities align with preference
+    // Check 5: Preference/Direction match
+    if (marketView.model_preference_selection_id !== marketView.model_direction_selection_id) {
+      issues.push(`❌ CRITICAL: Preference (${marketView.model_preference_selection_id}) != Direction (${marketView.model_direction_selection_id})`);
+    }
+
+    // Check 6: Probabilities sum to 1
     const homeProb = data.home_selection?.probability || 0;
     const awayProb = data.away_selection?.probability || 0;
-    const prefProb = data.model_preference?.probability || 0;
-
-    if (prefSelectionId === homeSelectionId && Math.abs(homeProb - prefProb) > 0.01) {
-      issues.push(`⚠️ Home probability mismatch: tile=${homeProb.toFixed(4)}, preference=${prefProb.toFixed(4)}`);
-    }
-    if (prefSelectionId === awaySelectionId && Math.abs(awayProb - prefProb) > 0.01) {
-      issues.push(`⚠️ Away probability mismatch: tile=${awayProb.toFixed(4)}, preference=${prefProb.toFixed(4)}`);
+    const probSum = homeProb + awayProb;
+    if (Math.abs(probSum - 1.0) > 0.01) {
+      issues.push(`⚠️ Probability sum = ${probSum.toFixed(4)}, expected 1.0`);
     }
 
     return {
