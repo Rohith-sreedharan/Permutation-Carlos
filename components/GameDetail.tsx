@@ -1645,7 +1645,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             // ALL VALUES FROM SINGLE SELECTION (when edge exists)
             const displayLine = preferredSelection?.market_line_for_selection || 0;
             const displayFairLine = preferredSelection?.model_fair_line_for_selection || 0;
-            const displayTeam = preferredSelection?.side === 'HOME' ? event.home_team : event.away_team;
+            const displayTeam = preferredSelection?.side?.toUpperCase() === 'HOME' ? event.home_team : event.away_team;
             const displayProb = preferredSelection?.model_probability || 0.5;
             
             // For display only (not used in edge logic): show both teams' probabilities
@@ -1764,7 +1764,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             }
             
             // ALL VALUES FROM SINGLE SELECTION
-            const displayTeam = preferredSelection?.side === 'HOME' ? event.home_team : event.away_team;
+            const displayTeam = preferredSelection?.side?.toUpperCase() === 'HOME' ? event.home_team : event.away_team;
             const displayProb = preferredSelection?.model_probability || 0.5;
             const displayMarketProb = preferredSelection?.market_probability || 0.5;
             
@@ -1869,7 +1869,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             }
             
             // ALL VALUES FROM SINGLE SELECTION
-            const displaySide = preferredSelection?.side === 'OVER' ? 'OVER' : 'UNDER';
+            const displaySide = preferredSelection?.side?.toUpperCase() === 'OVER' ? 'OVER' : 'UNDER';
             const displayLine = preferredSelection?.market_line_for_selection || 0;
             const displayFairLine = preferredSelection?.model_fair_line_for_selection || 0;
             const displayProb = preferredSelection?.model_probability || 0.5;
