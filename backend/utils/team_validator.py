@@ -43,6 +43,10 @@ class TeamIdentityValidator:
             "heat": "MIA",
             "portland trail blazers": "POR",
             "trail blazers": "POR",
+            # NHL
+            "vegas golden knights": "VGK",
+            "golden knights": "VGK",
+            "vegas": "VGK",
             # NCAAB
             "western carolina catamounts": "WCU",
             "western carolina": "WCU",

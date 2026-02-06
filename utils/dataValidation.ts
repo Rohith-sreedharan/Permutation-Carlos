@@ -57,26 +57,37 @@ export function validateCanonicalTeamData(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Rule 1: Vegas favorite spread must be negative
-  if (canonical.vegas_favorite.spread >= 0) {
+  // Skip validation if spread is 0 (missing/invalid data - backend issue)
+  const hasValidSpread = Math.abs(canonical.vegas_favorite.spread) > 0.01 || 
+                         Math.abs(canonical.vegas_underdog.spread) > 0.01;
+  
+  if (!hasValidSpread) {
+    warnings.push('Spread data unavailable (0.0) - likely missing bookmaker line or team mapping issue');
+    // Don't block rendering, let other validations proceed
+  }
+
+  // Rule 1: Vegas favorite spread must be negative (only if spread exists)
+  if (hasValidSpread && canonical.vegas_favorite.spread >= 0) {
     errors.push(`Vegas favorite spread must be negative, got ${canonical.vegas_favorite.spread}`);
   }
 
-  // Rule 2: Vegas underdog spread must be positive
-  if (canonical.vegas_underdog.spread <= 0) {
+  // Rule 2: Vegas underdog spread must be positive (only if spread exists)
+  if (hasValidSpread && canonical.vegas_underdog.spread <= 0) {
     errors.push(`Vegas underdog spread must be positive, got ${canonical.vegas_underdog.spread}`);
   }
 
-  // Rule 3: Spread magnitudes must match
-  const favSpreadAbs = Math.abs(canonical.vegas_favorite.spread);
-  const dogSpreadAbs = Math.abs(canonical.vegas_underdog.spread);
-  if (Math.abs(favSpreadAbs - dogSpreadAbs) > 0.1) {
-    errors.push(`Spread magnitudes don't match: favorite ${favSpreadAbs} vs underdog ${dogSpreadAbs}`);
+  // Rule 3: Spread magnitudes must match (only if spread exists)
+  if (hasValidSpread) {
+    const favSpreadAbs = Math.abs(canonical.vegas_favorite.spread);
+    const dogSpreadAbs = Math.abs(canonical.vegas_underdog.spread);
+    if (Math.abs(favSpreadAbs - dogSpreadAbs) > 0.1) {
+      errors.push(`Spread magnitudes don't match: favorite ${favSpreadAbs} vs underdog ${dogSpreadAbs}`);
+    }
   }
 
   // Rule 4: Win probabilities must sum to ~1.0
   const totalProb = canonical.home_team.win_probability + canonical.away_team.win_probability;
-  if (Math.abs(totalProb - 1.0) > 0.01) {
+  if (totalProb > 0 && Math.abs(totalProb - 1.0) > 0.01) {
     errors.push(`Win probabilities don't sum to 1.0: ${totalProb.toFixed(4)}`);
   }
 
@@ -88,18 +99,22 @@ export function validateCanonicalTeamData(
     );
   }
 
-  // Rule 6: Home spread sign must match role
-  if (canonical.home_team.role === 'favorite' && canonical.home_team.vegas_spread >= 0) {
-    errors.push(`Home team is favorite but has positive spread: ${canonical.home_team.vegas_spread}`);
-  }
-  if (canonical.home_team.role === 'underdog' && canonical.home_team.vegas_spread <= 0) {
-    errors.push(`Home team is underdog but has negative spread: ${canonical.home_team.vegas_spread}`);
+  // Rule 6: Home spread sign must match role (only if spread exists)
+  if (hasValidSpread) {
+    if (canonical.home_team.role === 'favorite' && canonical.home_team.vegas_spread >= 0) {
+      errors.push(`Home team is favorite but has positive spread: ${canonical.home_team.vegas_spread}`);
+    }
+    if (canonical.home_team.role === 'underdog' && canonical.home_team.vegas_spread <= 0) {
+      errors.push(`Home team is underdog but has negative spread: ${canonical.home_team.vegas_spread}`);
+    }
   }
 
-  // Rule 7: Away spread must be opposite of home spread
-  const spreadSum = canonical.home_team.vegas_spread + canonical.away_team.vegas_spread;
-  if (Math.abs(spreadSum) > 0.1) {
-    errors.push(`Home and away spreads don't sum to zero: ${spreadSum.toFixed(2)}`);
+  // Rule 7: Away spread must be opposite of home spread (only if spread exists)
+  if (hasValidSpread) {
+    const spreadSum = canonical.home_team.vegas_spread + canonical.away_team.vegas_spread;
+    if (Math.abs(spreadSum) > 0.1) {
+      errors.push(`Home and away spreads don't sum to zero: ${spreadSum.toFixed(2)}`);
+    }
   }
 
   return {
