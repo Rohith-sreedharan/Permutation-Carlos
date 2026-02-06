@@ -962,7 +962,7 @@ class MonteCarloEngine:
 
         # ===== CANONICAL MARKET VIEWS (Deterministic selection IDs) =====
         snapshot_hash = sim_metadata.odds_snapshot_id
-        schema_version = "2025-02-05-marketview-v1"
+        schema_version = "mv.v1"
         probability_tolerance = 0.001
 
         # Spread selections (home/away, signed from home perspective)
@@ -977,6 +977,11 @@ class MonteCarloEngine:
         spread_selections["away"]["model_probability"] = p_cover_away
         spread_selections["home"]["market_probability"] = p_cover_home
         spread_selections["away"]["market_probability"] = p_cover_away
+        # Add frontend-expected fields
+        spread_selections["home"]["market_line_for_selection"] = spread_selections["home"]["line"]
+        spread_selections["away"]["market_line_for_selection"] = spread_selections["away"]["line"]
+        spread_selections["home"]["model_fair_line_for_selection"] = model_spread_home_perspective
+        spread_selections["away"]["model_fair_line_for_selection"] = -model_spread_home_perspective
 
         spread_prob_valid = abs((p_cover_home or 0) + (p_cover_away or 0) - 1.0) <= probability_tolerance
         spread_preference_id = "NO_EDGE"
@@ -1007,6 +1012,11 @@ class MonteCarloEngine:
         ml_selections["away"]["model_probability"] = p_win_away
         ml_selections["home"]["market_probability"] = p_win_home
         ml_selections["away"]["market_probability"] = p_win_away
+        # Add frontend-expected fields (null for moneyline)
+        ml_selections["home"]["market_line_for_selection"] = None
+        ml_selections["away"]["market_line_for_selection"] = None
+        ml_selections["home"]["model_fair_line_for_selection"] = None
+        ml_selections["away"]["model_fair_line_for_selection"] = None
         ml_prob_valid = abs((p_win_home or 0) + (p_win_away or 0) - 1.0) <= probability_tolerance
         ml_preference_id = "NO_EDGE"
         if ml_sharp_result and ml_sharp_result.has_edge and ml_sharp_result.sharp_team:
@@ -1035,6 +1045,11 @@ class MonteCarloEngine:
         total_selections["under"]["model_probability"] = under_probability
         total_selections["over"]["market_probability"] = over_probability
         total_selections["under"]["market_probability"] = under_probability
+        # Add frontend-expected fields
+        total_selections["over"]["market_line_for_selection"] = total_selections["over"]["line"]
+        total_selections["under"]["market_line_for_selection"] = total_selections["under"]["line"]
+        total_selections["over"]["model_fair_line_for_selection"] = rcl_total
+        total_selections["under"]["model_fair_line_for_selection"] = rcl_total
         total_prob_valid = abs((over_probability or 0) + (under_probability or 0) - 1.0) <= probability_tolerance
         total_preference_id = "NO_EDGE"
         if total_sharp_result and total_sharp_result.has_edge:
