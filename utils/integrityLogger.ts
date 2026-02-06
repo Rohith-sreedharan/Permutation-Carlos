@@ -15,6 +15,9 @@ interface LogViolation {
     home_selection?: string;
     away_selection?: string;
     model_preference?: string;
+    spread_mv?: string;
+    moneyline_mv?: string;
+    total_mv?: string;
   };
   full_payload: any;
   timestamp: string;

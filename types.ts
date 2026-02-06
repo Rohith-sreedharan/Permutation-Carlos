@@ -515,7 +515,7 @@ export interface MonteCarloSimulation {
   // ... existing fields ...
   simulation_id: string;
   event_id: string;
-  status?: string;
+  status?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'CACHED' | 'PRICE_MOVED' | 'INVALIDATED' | 'FAILED';
   message?: string;
   
   // CANONICAL MARKET VIEWS (REQUIRED)

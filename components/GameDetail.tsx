@@ -294,9 +294,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           received_selection_id: 'N/A',
           snapshot_hash_values: {
             main: simData.snapshot_hash || 'MISSING',
-            home_selection: simData.sharp_analysis?.spread?.snapshot_hash,
-            away_selection: simData.sharp_analysis?.moneyline?.snapshot_hash,
-            model_preference: simData.sharp_analysis?.total?.snapshot_hash
+            spread_mv: simData.market_views?.spread?.snapshot_hash,
+            moneyline_mv: simData.market_views?.moneyline?.snapshot_hash,
+            total_mv: simData.market_views?.total?.snapshot_hash
           },
           full_payload: simData
         });
@@ -1143,11 +1143,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="text-lg font-bold text-white font-teko">
                       {(() => {
                         const marketSpread = simulation?.sharp_analysis?.spread?.market_spread_home;
-                        const marketFavorite = simulation?.sharp_analysis?.spread?.market_favorite;
                         
-                        if (marketSpread !== undefined && marketFavorite) {
+                        if (marketSpread !== undefined) {
                           const spreadValue = marketSpread < 0 ? marketSpread.toFixed(1) : '+' + marketSpread.toFixed(1);
-                          return `${marketFavorite} ${spreadValue}`;
+                          const team = marketSpread < 0 ? event?.home_team : event?.away_team;
+                          return `${team || 'N/A'} ${spreadValue}`;
                         }
                         return 'N/A';
                       })()}
@@ -1160,11 +1160,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="text-[10px] text-gray-500 -mt-1 mb-1">Fair line estimate (pricing), not a score prediction</div>
                     <div className="text-lg font-bold text-electric-blue font-teko">
                       {(() => {
-                        const fairSpread = simulation?.sharp_analysis?.spread?.fair_spread_home;
-                        const marketUnderdog = simulation?.sharp_analysis?.spread?.market_underdog;
+                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
                         
-                        if (fairSpread !== undefined && marketUnderdog) {
-                          return `${marketUnderdog} +${fairSpread.toFixed(1)}`;
+                        if (modelSpread !== undefined) {
+                          return `Model Spread: ${modelSpread.toFixed(1)}`;
                         }
                         return 'N/A';
                       })()}
