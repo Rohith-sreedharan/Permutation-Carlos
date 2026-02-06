@@ -1637,16 +1637,20 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
+            // CRITICAL: For MARKET_ALIGNED, force preferredSelection to null
+            // This prevents showing model preference when there's no edge
+            const displayPreference = hasEdge ? preferredSelection : null;
+            
             // SAFE MODE: If no preferred selection, cannot render
-            if (!preferredSelection && hasEdge) {
+            if (!displayPreference && hasEdge) {
               return renderSAFEMode('SPREAD', ['Model preference selection not found in selections array']);
             }
             
             // ALL VALUES FROM SINGLE SELECTION (when edge exists)
-            const displayLine = preferredSelection?.market_line_for_selection || 0;
-            const displayFairLine = preferredSelection?.model_fair_line_for_selection || 0;
-            const displayTeam = preferredSelection?.side?.toUpperCase() === 'HOME' ? event.home_team : event.away_team;
-            const displayProb = preferredSelection?.model_probability || 0.5;
+            const displayLine = displayPreference?.market_line_for_selection || 0;
+            const displayFairLine = displayPreference?.model_fair_line_for_selection || 0;
+            const displayTeam = displayPreference?.side?.toUpperCase() === 'HOME' ? event.home_team : event.away_team;
+            const displayProb = displayPreference?.model_probability || 0.5;
             
             // For display only (not used in edge logic): show both teams' probabilities
             const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
@@ -1686,7 +1690,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 </div>
 
                 {/* Model Preference & Direction (CANONICAL - SINGLE SELECTION BINDING) */}
-                {preferredSelection && hasEdge ? (
+                {/* ONLY SHOW IF HAS EDGE - MARKET_ALIGNED shows nothing */}
+                {displayPreference && hasEdge ? (
                   <div className="mt-4 space-y-3">
                     {/* MARKET SPREAD - From preferred selection ONLY */}
                     <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
@@ -1695,7 +1700,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         {displayTeam} {displayLine >= 0 ? '+' : ''}{displayLine?.toFixed(1)}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        Market probability: {(preferredSelection.market_probability * 100).toFixed(1)}%
+                        Market probability: {(displayPreference.market_probability * 100).toFixed(1)}%
                       </div>
                     </div>
                     
@@ -1717,7 +1722,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         {displayTeam} {displayLine >= 0 ? '+' : ''}{displayLine?.toFixed(1)}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        All values derived from single selection_id: {preferredSelection.selection_id}
+                        All values derived from single selection_id: {displayPreference.selection_id}
                       </div>
                     </div>
                   </div>
@@ -1725,6 +1730,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
                     <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Model and market consensus detected. No directional preference.
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1763,10 +1771,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               return renderSAFEMode('MONEYLINE', ['Model preference selection not found']);
             }
             
+            // Force display preference to null when no edge
+            const displayPreference = hasEdge ? preferredSelection : null;
+            
             // ALL VALUES FROM SINGLE SELECTION
-            const displayTeam = preferredSelection?.side?.toUpperCase() === 'HOME' ? event.home_team : event.away_team;
-            const displayProb = preferredSelection?.model_probability || 0.5;
-            const displayMarketProb = preferredSelection?.market_probability || 0.5;
+            const displayTeam = displayPreference?.side?.toUpperCase() === 'HOME' ? event.home_team : event.away_team;
+            const displayProb = displayPreference?.model_probability || 0.5;
+            const displayMarketProb = displayPreference?.market_probability || 0.5;
             
             // For display only: show both teams
             const homeSelection = selections.find((s: any) => s.side === 'HOME' || s.side === 'home');
@@ -1802,7 +1813,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 </div>
 
                 {/* Model Preference (CANONICAL - SINGLE SELECTION) */}
-                {preferredSelection && hasEdge ? (
+                {displayPreference && hasEdge ? (
                   <div className="mt-4 space-y-3">
                     <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
                       <div className="text-xs text-purple-300 uppercase mb-1">Market Win Probability</div>
@@ -1822,7 +1833,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       <div className="text-xs text-gold uppercase mb-1">Model Preference (Informational)</div>
                       <div className="text-xl font-bold text-gold">{displayTeam} ML</div>
                       <div className="text-xs text-gray-400 mt-2">
-                        Single selection: {preferredSelection.selection_id}
+                        Single selection: {displayPreference.selection_id}
                       </div>
                     </div>
                   </div>
@@ -1830,6 +1841,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
                     <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Model and market consensus detected. No directional preference.
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -1863,17 +1877,15 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             const edgeClass = marketView.edge_class;
             const hasEdge = edgeClass === 'EDGE' || edgeClass === 'LEAN';
             
-            // SAFE MODE check
-            if (!preferredSelection && hasEdge) {
-              return renderSAFEMode('TOTAL', ['Model preference selection not found']);
-            }
+            // SAFE MODE check: Force display preference to null when no edge
+            const displayPreference = hasEdge ? preferredSelection : null;
             
             // ALL VALUES FROM SINGLE SELECTION
-            const displaySide = preferredSelection?.side?.toUpperCase() === 'OVER' ? 'OVER' : 'UNDER';
-            const displayLine = preferredSelection?.market_line_for_selection || 0;
-            const displayFairLine = preferredSelection?.model_fair_line_for_selection || 0;
-            const displayProb = preferredSelection?.model_probability || 0.5;
-            const displayMarketProb = preferredSelection?.market_probability || 0.5;
+            const displaySide = displayPreference?.side?.toUpperCase() === 'OVER' ? 'OVER' : 'UNDER';
+            const displayLine = displayPreference?.market_line_for_selection || 0;
+            const displayFairLine = displayPreference?.model_fair_line_for_selection || 0;
+            const displayProb = displayPreference?.model_probability || 0.5;
+            const displayMarketProb = displayPreference?.market_probability || 0.5;
             
             // For display only: show both sides
             const overSelection = selections.find((s: any) => s.side === 'OVER' || s.side === 'over');
@@ -1906,8 +1918,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   </div>
                 </div>
 
-                {/* Model Preference (CANONICAL - SINGLE SELECTION) */}
-                {preferredSelection && hasEdge ? (
+                {/* Model Preference & Direction (CANONICAL - SINGLE SELECTION BINDING) */}
+                {displayPreference && hasEdge ? (
                   <div className="mt-4 space-y-3">
                     <div className="p-4 bg-purple-900/30 border border-purple-500/50 rounded-lg">
                       <div className="text-xs text-purple-300 uppercase mb-1">Market Total</div>
@@ -1933,7 +1945,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         {displaySide} {displayLine?.toFixed(1)}
                       </div>
                       <div className="text-xs text-gray-400 mt-2">
-                        Single selection: {preferredSelection.selection_id}
+                        Single selection: {displayPreference.selection_id}
                       </div>
                     </div>
                   </div>
@@ -1941,6 +1953,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
                     <div className="text-base text-gray-300">MARKET ALIGNED — NO EDGE</div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Model and market consensus detected. No directional preference.
+                    </div>
                   </div>
                 ) : null}
               </div>
