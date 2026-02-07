@@ -10,7 +10,7 @@ NO UI-SIDE RECOMPUTATION ALLOWED.
 
 import hashlib
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Literal
 from backend.core.market_decision import (
     MarketDecision, MarketType, Classification, ReleaseStatus,
     PickSpread, PickTotal, MarketSpread, MarketTotal, MarketMoneyline,
@@ -266,7 +266,7 @@ class MarketDecisionComputer:
         
         return ReleaseStatus.OFFICIAL if classification == Classification.EDGE else ReleaseStatus.INFO_ONLY
     
-    def _grade_edge(self, edge_points: float) -> Optional[str]:
+    def _grade_edge(self, edge_points: float) -> Optional[Literal["S", "A", "B", "C", "D"]]:
         """Assign grade to edge"""
         if edge_points >= 5:
             return "S"
