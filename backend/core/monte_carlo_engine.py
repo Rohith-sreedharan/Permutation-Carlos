@@ -35,14 +35,7 @@ from core.numerical_accuracy import (
     validate_simulation_output,
     get_debug_label
 )
-from core.sharp_analysis import (
-    calculate_total_edge,
-    format_for_api,
-    explain_edge_reasoning,
-    STANDARD_DISCLAIMER,
-    TotalAnalysis,
-    SpreadAnalysis
-)
+# DELETED: sharp_analysis module removed - use market_decision.py instead
 from core.sharp_side_selection import select_sharp_side_spread, SharpSideSelection
 from core.sport_configs import VolatilityLevel
 from core.feedback_loop import store_prediction
