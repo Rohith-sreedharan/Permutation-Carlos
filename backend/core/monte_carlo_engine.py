@@ -57,6 +57,150 @@ from core.selection_id_generator import (
     generate_total_selections,
     validate_selection_consistency
 )
+from dataclasses import dataclass
+
+# TEMPORARY: SpreadAnalysis and TotalAnalysis removed from deleted sharp_analysis.py
+# These are placeholder dataclasses until MarketDecision fully wired (see market_decision.py)
+@dataclass
+class SpreadAnalysis:
+    """Temporary spread analysis - REPLACE with MarketDecision"""
+    vegas_spread: str
+    model_spread: str
+    edge_points: float
+    edge_direction: str  # "DOG", "FAVORITE", "NO_EDGE"
+    sharp_side: Optional[str]
+    sharp_side_reason: str
+    edge_grade: str  # "S", "A", "B", "C", "D", "F"
+    edge_strength: str  # "HIGH", "MEDIUM", "LOW", "NEUTRAL"
+    
+    @property
+    def has_edge(self) -> bool:
+        return self.edge_direction in ["DOG", "FAVORITE"]
+
+@dataclass
+class TotalAnalysis:
+    """Temporary total analysis - REPLACE with MarketDecision"""
+    vegas_total: float
+    model_total: float
+    edge_points: float
+    edge_direction: str  # "OVER", "UNDER", "NEUTRAL"
+    sharp_side: Optional[str]
+    sharp_side_reason: str
+    edge_grade: str  # "S", "A", "B", "C", "D", "F"
+    edge_strength: str  # "HIGH", "MEDIUM", "LOW", "NEUTRAL"
+    
+    @property
+    def has_edge(self) -> bool:
+        return self.edge_direction in ["OVER", "UNDER"]
+
+# TEMPORARY: Placeholder function until MarketDecisionComputer fully wired
+def calculate_total_edge(
+    vegas_total: float,
+    model_total: float,
+    threshold: float = 3.0,
+    confidence_score: float = 0.0,
+    variance: float = 0.0
+) -> TotalAnalysis:
+    """
+    Temporary total edge calculator - REPLACE with MarketDecisionComputer.compute_total()
+    See backend/core/compute_market_decision.py for canonical implementation
+    """
+    edge_points = abs(model_total - vegas_total)
+    
+    # Determine direction
+    if edge_points >= threshold:
+        if model_total > vegas_total:
+            edge_direction = "OVER"
+            sharp_side = "OVER"
+        else:
+            edge_direction = "UNDER"
+            sharp_side = "UNDER"
+    else:
+        edge_direction = "NEUTRAL"
+        sharp_side = None
+    
+    # Grade edge
+    if edge_points >= 6.0:
+        edge_grade = "S"
+        edge_strength = "HIGH"
+    elif edge_points >= 4.0:
+        edge_grade = "A"
+        edge_strength = "HIGH"
+    elif edge_points >= 3.0:
+        edge_grade = "B"
+        edge_strength = "MEDIUM"
+    elif edge_points >= 2.0:
+        edge_grade = "C"
+        edge_strength = "MEDIUM"
+    elif edge_points >= 1.0:
+        edge_grade = "D"
+        edge_strength = "LOW"
+    else:
+        edge_grade = "F"
+        edge_strength = "NEUTRAL"
+    
+    reason = f"Model total: {model_total:.1f}, Vegas: {vegas_total:.1f}, Edge: {edge_points:.1f}pts"
+    
+    return TotalAnalysis(
+        vegas_total=vegas_total,
+        model_total=model_total,
+        edge_points=edge_points if edge_direction != "NEUTRAL" else 0.0,
+        edge_direction=edge_direction,
+        sharp_side=sharp_side,
+        sharp_side_reason=reason,
+        edge_grade=edge_grade,
+        edge_strength=edge_strength
+    )
+
+def format_for_api(analysis) -> Dict[str, Any]:
+    """
+    Temporary formatter - REPLACE with MarketDecision serialization
+    Converts SpreadAnalysis or TotalAnalysis to API-compatible dict
+    """
+    if isinstance(analysis, SpreadAnalysis):
+        return {
+            "vegas_spread": analysis.vegas_spread,
+            "model_spread": analysis.model_spread,
+            "edge_points": analysis.edge_points,
+            "edge_direction": analysis.edge_direction,
+            "sharp_side": analysis.sharp_side,
+            "sharp_side_reason": analysis.sharp_side_reason,
+            "edge_grade": analysis.edge_grade,
+            "edge_strength": analysis.edge_strength,
+            "has_edge": analysis.has_edge
+        }
+    elif isinstance(analysis, TotalAnalysis):
+        return {
+            "vegas_total": analysis.vegas_total,
+            "model_total": analysis.model_total,
+            "edge_points": analysis.edge_points,
+            "edge_direction": analysis.edge_direction,
+            "sharp_side": analysis.sharp_side,
+            "sharp_side_reason": analysis.sharp_side_reason,
+            "edge_grade": analysis.edge_grade,
+            "edge_strength": analysis.edge_strength,
+            "has_edge": analysis.has_edge
+        }
+    else:
+        return {}
+
+def explain_edge_reasoning(
+    market_type: str,
+    model_value: float,
+    vegas_value: float,
+    edge_points: float,
+    simulation_context: Dict[str, Any]
+) -> str:
+    """
+    Temporary edge explanation generator - REPLACE with MarketDecision.reasons
+    """
+    if market_type == 'total':
+        direction = "OVER" if model_value > vegas_value else "UNDER"
+        return f"Model projects {model_value:.1f} total, market at {vegas_value:.1f}. {direction} edge: {edge_points:.1f}pts"
+    elif market_type == 'spread':
+        return f"Model spread {model_value:+.1f}, market {vegas_value:+.1f}. Edge: {edge_points:.1f}pts"
+    else:
+        return f"Edge: {edge_points:.1f}"
 
 logger = logging.getLogger(__name__)
 
