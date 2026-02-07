@@ -28,7 +28,9 @@ def test_validator_pass_example():
     decision = MarketDecision(
         league="NBA",
         game_id="test-game-001",
+        odds_event_id="odds-evt-001",
         market_type=MarketType.SPREAD,
+        selection_id="LAL_HOME_SPREAD",
         pick=PickSpread(team_id="LAL", team_name="Lakers", side="HOME"),
         market=MarketSpread(line=-5.5, odds=-110),
         model=ModelSpread(fair_line=-7.0),
@@ -37,14 +39,15 @@ def test_validator_pass_example():
         classification=Classification.EDGE,
         release_status=ReleaseStatus.OFFICIAL,
         reasons=["Spread misprice detected: 1.5 point edge", "High cover probability: 65.0%"],
-        risk=Risk(volatility_flag="MEDIUM", injury_exposure="LOW"),
+        risk=Risk(volatility_flag="MEDIUM", injury_impact=0.5, clv_forecast=0.3, blocked_reason=None),
         debug=Debug(
             inputs_hash="abc123",
             odds_timestamp="2026-02-07T12:00:00Z",
             sim_run_id="sim-001",
+            config_profile="balanced",
             decision_version=1
         ),
-        validator_failures=None
+        validator_failures=[]
     )
     
     # Validate
@@ -73,7 +76,9 @@ def test_validator_fail_example_spread_sign_bug():
     decision = MarketDecision(
         league="NBA",
         game_id="test-game-002",
+        odds_event_id="odds-evt-002",
         market_type=MarketType.SPREAD,
+        selection_id="BOS_AWAY_SPREAD",
         pick=PickSpread(team_id="BOS", team_name="Celtics", side="AWAY"),
         market=MarketSpread(line=6.5, odds=-110),  # BUG: Should be -6.5 for favorite
         model=ModelSpread(fair_line=8.0),  # BUG: Should be -8.0 for favorite
@@ -82,14 +87,15 @@ def test_validator_fail_example_spread_sign_bug():
         classification=Classification.EDGE,  # Will be overridden to NO_ACTION
         release_status=ReleaseStatus.OFFICIAL,  # Will be overridden to BLOCKED_BY_INTEGRITY
         reasons=["Spread misprice detected"],
-        risk=Risk(volatility_flag="MEDIUM", injury_exposure="LOW"),
+        risk=Risk(volatility_flag="MEDIUM", injury_impact=0.0, clv_forecast=0.0, blocked_reason=None),
         debug=Debug(
             inputs_hash="abc456",
             odds_timestamp="2026-02-07T12:00:00Z",
             sim_run_id="sim-002",
+            config_profile="balanced",
             decision_version=1
         ),
-        validator_failures=None
+        validator_failures=[]
     )
     
     # Validate
@@ -121,7 +127,9 @@ def test_validator_fail_example_classification_coherence():
     decision = MarketDecision(
         league="NFL",
         game_id="test-game-003",
+        odds_event_id="odds-evt-003",
         market_type=MarketType.SPREAD,
+        selection_id="KC_HOME_SPREAD",
         pick=PickSpread(team_id="KC", team_name="Chiefs", side="HOME"),
         market=MarketSpread(line=-3.0, odds=-110),
         model=ModelSpread(fair_line=-3.0),
@@ -130,14 +138,15 @@ def test_validator_fail_example_classification_coherence():
         classification=Classification.MARKET_ALIGNED,  # No edge
         release_status=ReleaseStatus.INFO_ONLY,
         reasons=["Spread misprice detected: 2.5 point edge"],  # BUG: Contradicts MARKET_ALIGNED
-        risk=Risk(volatility_flag="LOW", injury_exposure="LOW"),
+        risk=Risk(volatility_flag="LOW", injury_impact=0.0, clv_forecast=0.0, blocked_reason=None),
         debug=Debug(
             inputs_hash="abc789",
             odds_timestamp="2026-02-07T12:00:00Z",
             sim_run_id="sim-003",
+            config_profile="balanced",
             decision_version=1
         ),
-        validator_failures=None
+        validator_failures=[]
     )
     
     # Validate
@@ -162,7 +171,9 @@ def test_ui_cannot_show_official_when_blocked():
     decision = MarketDecision(
         league="NBA",
         game_id="test-game-004",
+        odds_event_id="odds-evt-004",
         market_type=MarketType.SPREAD,
+        selection_id="LAL_HOME_SPREAD",
         pick=PickSpread(team_id="LAL", team_name="Lakers", side="HOME"),
         market=MarketSpread(line=-5.5, odds=-110),
         model=ModelSpread(fair_line=-7.0),
@@ -171,11 +182,12 @@ def test_ui_cannot_show_official_when_blocked():
         classification=Classification.NO_ACTION,  # Blocked classification
         release_status=ReleaseStatus.BLOCKED_BY_INTEGRITY,  # GATE: Cannot be OFFICIAL
         reasons=["Blocked by validator"],
-        risk=Risk(volatility_flag="HIGH", injury_exposure="HIGH"),
+        risk=Risk(volatility_flag="HIGH", injury_impact=2.5, clv_forecast=-0.5, blocked_reason="High volatility + injury exposure"),
         debug=Debug(
             inputs_hash="abc999",
             odds_timestamp="2026-02-07T12:00:00Z",
             sim_run_id="sim-004",
+            config_profile="balanced",
             decision_version=1
         ),
         validator_failures=["Competitor integrity check failed"]  # Populated by validator
