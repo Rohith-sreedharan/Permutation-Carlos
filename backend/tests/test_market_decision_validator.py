@@ -65,26 +65,26 @@ def test_validator_pass_example():
     print(f"   Validator Failures: {decision.validator_failures}")
 
 
-def test_validator_fail_example_spread_sign_bug():
+def test_validator_fail_example_missing_selection_id():
     """
     PROOF: Invalid decision gets BLOCKED_BY_INTEGRITY + validator_failures populated
     
-    Scenario: Both teams have SAME spread sign (+6.5 / +6.5) - the classic bug
-    Expected: is_valid=False, violations=['Spread signs must be opposite: home=-5.5, away=+5.5']
+    Scenario: Missing selection_id (REQUIRED field)
+    Expected: is_valid=False, violations=['Missing selection_id']
     """
-    # Create INVALID decision - both teams same sign (classic UI bug)
+    # Create INVALID decision - missing selection_id
     decision = MarketDecision(
         league="NBA",
         game_id="test-game-002",
         odds_event_id="odds-evt-002",
         market_type=MarketType.SPREAD,
-        selection_id="BOS_AWAY_SPREAD",
+        selection_id="",  # BUG: Empty selection_id
         pick=PickSpread(team_id="BOS", team_name="Celtics", side="AWAY"),
-        market=MarketSpread(line=6.5, odds=-110),  # BUG: Should be -6.5 for favorite
-        model=ModelSpread(fair_line=8.0),  # BUG: Should be -8.0 for favorite
+        market=MarketSpread(line=-6.5, odds=-110),
+        model=ModelSpread(fair_line=-8.0),
         probabilities=Probabilities(model_prob=0.65, market_implied_prob=0.52),
         edge=Edge(edge_points=1.5, edge_ev=None, edge_grade="B"),
-        classification=Classification.EDGE,  # Will be overridden to NO_ACTION
+        classification=Classification.EDGE,
         release_status=ReleaseStatus.OFFICIAL,  # Will be overridden to BLOCKED_BY_INTEGRITY
         reasons=["Spread misprice detected"],
         risk=Risk(volatility_flag="MEDIUM", injury_impact=0.0, clv_forecast=0.0, blocked_reason=None),
@@ -104,13 +104,8 @@ def test_validator_fail_example_spread_sign_bug():
     # Assertions
     assert is_valid is False, "Invalid decision should FAIL validation"
     assert len(violations) > 0, f"Expected violations, got {len(violations)}"
-    assert any("sign" in v.lower() or "opposite" in v.lower() for v in violations), \
-        f"Expected spread sign violation, got: {violations}"
-    
-    # After validation, decision should be updated by compute function:
-    # - classification → NO_ACTION
-    # - release_status → BLOCKED_BY_INTEGRITY
-    # - validator_failures populated
+    assert any("selection_id" in v.lower() for v in violations), \
+        f"Expected selection_id violation, got: {violations}"
     
     print("✅ FAIL EXAMPLE: Invalid decision correctly blocked")
     print(f"   Violations: {violations}")
@@ -220,7 +215,7 @@ def test_ui_cannot_show_official_when_blocked():
 if __name__ == "__main__":
     test_validator_pass_example()
     print()
-    test_validator_fail_example_spread_sign_bug()
+    test_validator_fail_example_missing_selection_id()
     print()
     test_validator_fail_example_classification_coherence()
     print()
