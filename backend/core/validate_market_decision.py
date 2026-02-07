@@ -7,7 +7,7 @@ No patching. No baseline. No silent failures.
 """
 
 from typing import Dict, List, Tuple
-from backend.core.market_decision import MarketDecision, Classification, ReleaseStatus
+from core.market_decision import MarketDecision, Classification, ReleaseStatus
 
 
 def validate_market_decision(

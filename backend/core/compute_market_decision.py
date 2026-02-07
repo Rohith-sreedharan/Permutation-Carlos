@@ -11,12 +11,12 @@ NO UI-SIDE RECOMPUTATION ALLOWED.
 import hashlib
 from datetime import datetime
 from typing import Dict, Optional, List, Literal
-from backend.core.market_decision import (
+from core.market_decision import (
     MarketDecision, MarketType, Classification, ReleaseStatus,
     PickSpread, PickTotal, MarketSpread, MarketTotal, MarketMoneyline,
     ModelSpread, ModelTotal, ModelMoneyline, Probabilities, Edge, Risk, Debug
 )
-from backend.core.validate_market_decision import validate_market_decision
+from core.validate_market_decision import validate_market_decision
 
 
 class MarketDecisionComputer:
