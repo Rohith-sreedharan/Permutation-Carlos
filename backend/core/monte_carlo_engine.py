@@ -190,17 +190,38 @@ def explain_edge_reasoning(
     vegas_value: float,
     edge_points: float,
     simulation_context: Dict[str, Any]
-) -> str:
+) -> Dict[str, Any]:
     """
     Temporary edge explanation generator - REPLACE with MarketDecision.reasons
+    Returns dict with primary_factor and contributing_factors for compatibility
     """
+    factors = []
+    
     if market_type == 'total':
         direction = "OVER" if model_value > vegas_value else "UNDER"
-        return f"Model projects {model_value:.1f} total, market at {vegas_value:.1f}. {direction} edge: {edge_points:.1f}pts"
+        primary = f"Model projects {model_value:.1f} total, market at {vegas_value:.1f}"
+        
+        # Add context factors
+        if simulation_context.get('injury_impact', 0) > 1.0:
+            factors.append(f"Injury impact: {simulation_context['injury_impact']:.1f}pts")
+        if simulation_context.get('pace_factor', 1.0) != 1.0:
+            factors.append(f"Pace adjustment: {simulation_context['pace_factor']:.2f}x")
+        if simulation_context.get('confidence_score', 0) > 0.7:
+            factors.append(f"High confidence: {simulation_context['confidence_score']:.0%}")
     elif market_type == 'spread':
-        return f"Model spread {model_value:+.1f}, market {vegas_value:+.1f}. Edge: {edge_points:.1f}pts"
+        primary = f"Model spread {model_value:+.1f}, market {vegas_value:+.1f}"
+        factors.append(f"Edge: {edge_points:.1f}pts")
     else:
-        return f"Edge: {edge_points:.1f}"
+        primary = f"Edge detected: {edge_points:.1f}"
+    
+    return {
+        "primary_factor": primary,
+        "contributing_factors": factors,
+        "edge_magnitude": edge_points
+    }
+
+# TEMPORARY: Disclaimer constant removed from deleted sharp_analysis.py
+STANDARD_DISCLAIMER = "This analysis is for informational purposes only. Not financial advice. Past performance does not guarantee future results."
 
 logger = logging.getLogger(__name__)
 
