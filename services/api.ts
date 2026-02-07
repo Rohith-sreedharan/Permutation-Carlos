@@ -176,7 +176,7 @@ export const verifyToken = async (): Promise<User> => {
 export const fetchEventsFromDB = async (
     sportKey?: string,
     date?: string,
-    upcomingOnly: boolean = true,
+    upcomingOnly: boolean = false,
     limit: number = 100
 ): Promise<Event[]> => {
     // Default to today's EST date if not provided
