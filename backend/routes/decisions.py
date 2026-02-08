@@ -10,8 +10,8 @@ Prevents stale mixing across tabs.
 
 from fastapi import APIRouter, HTTPException
 from typing import Optional
-from backend.core.market_decision import GameDecisions
-from backend.core.compute_market_decision import MarketDecisionComputer
+from core.market_decision import GameDecisions
+from core.compute_market_decision import MarketDecisionComputer
 from datetime import datetime
 
 router = APIRouter()
