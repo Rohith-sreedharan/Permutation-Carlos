@@ -53,20 +53,37 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       setLoading(true);
       setError(null);
 
-      // Fetch from SINGLE unified endpoint
+      // First fetch event to get sport_key (league)
+      const eventsData = await fetchEventsFromDB(undefined, undefined, false, 500);
+      const eventData = eventsData.find((e: Event) => e.id === gameId);
+      
+      if (!eventData) {
+        throw new Error('Game not found');
+      }
+
+      setEvent(eventData);
+
+      // Map sport_key to league (basketball_nba → NBA, etc)
+      const leagueMap: Record<string, string> = {
+        'basketball_nba': 'NBA',
+        'americanfootball_nfl': 'NFL',
+        'americanfootball_ncaaf': 'NCAAF',
+        'icehockey_nhl': 'NHL',
+        'baseball_mlb': 'MLB',
+        'basketball_ncaab': 'NCAAB'
+      };
+      const league = leagueMap[eventData.sport_key] || 'NBA';
+
+      // Fetch from SINGLE unified endpoint with league parameter
       const token = localStorage.getItem('authToken');
-      const [decisionsData, eventsData] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/games/${gameId}/decisions`, {
-          headers: { 'Authorization': token ? `Bearer ${token}` : '' }
-        }).then(res => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-          return res.json();
-        }),
-        fetchEventsFromDB(undefined, undefined, false, 500)
-      ]);
+      const decisionsData = await fetch(`${API_BASE_URL}/api/games/${league}/${gameId}/decisions`, {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+      }).then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        return res.json();
+      });
 
       setDecisions(decisionsData);
-      setEvent(eventsData.find((e: Event) => e.id === gameId) || null);
     } catch (err: any) {
       console.error('Failed to load game decisions:', err);
       setError(err.message || 'Failed to load game data');
