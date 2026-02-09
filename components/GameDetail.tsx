@@ -16,13 +16,17 @@
  * - Any Math.abs on spread values
  * - Any UI logic that derives team/sign/edge from probabilities
  * 
+ * STALE RESPONSE PREVENTION:
+ * - requestIdRef tracks fetch ordering
+ * - decision_version comparison rejects older responses
+ * 
  * If classification = MARKET_ALIGNED:
  *   → NO edge language anywhere
  *   → Model Direction HIDDEN
  *   → "Why This Edge Exists" shows "No valid edge detected"
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MarketDecision, GameDecisions, MarketType, Classification } from '../types/MarketDecision';
 import { fetchEventsFromDB } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
@@ -41,6 +45,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeMarketTab, setActiveMarketTab] = useState<MarketType>('spread');
+  const requestIdRef = useRef(0);  // Track request ordering for stale prevention
   
   useEffect(() => {
     loadGameDecisions();
@@ -48,6 +53,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
   const loadGameDecisions = async () => {
     if (!gameId) return;
+
+    // Increment request ID to track this specific fetch
+    const currentRequestId = ++requestIdRef.current;
 
     try {
       setLoading(true);
@@ -82,6 +90,27 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         return res.json();
       });
+
+      // STALE RESPONSE REJECTION: Ignore if newer request already completed
+      if (currentRequestId !== requestIdRef.current) {
+        console.warn('[STALE REJECTED] Outdated response ignored:', {
+          requestId: currentRequestId,
+          currentRequestId: requestIdRef.current,
+          game_id: gameId
+        });
+        return;
+      }
+
+      // ATOMIC VERSION CHECK: Reject if older than current data
+      if (decisions && decisionsData.decision_version <= decisions.decision_version) {
+        console.warn('[STALE REJECTED] Older decision_version:', {
+          incoming: decisionsData.decision_version,
+          current: decisions.decision_version,
+          computed_at_incoming: decisionsData.computed_at,
+          computed_at_current: decisions.computed_at
+        });
+        return;
+      }
 
       setDecisions(decisionsData);
     } catch (err: any) {
