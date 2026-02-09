@@ -47,6 +47,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [activeMarketTab, setActiveMarketTab] = useState<MarketType>('spread');
   const requestIdRef = useRef(0);  // Track request ordering for stale prevention
   
+  // Debug overlay enabled via ?debug=1 query parameter
+  const [debugMode, setDebugMode] = useState(false);
+  
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDebugMode(params.get('debug') === '1');
+  }, []);
+  
   useEffect(() => {
     loadGameDecisions();
   }, [gameId]);
@@ -173,6 +181,56 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
     return (
       <div className="space-y-6">
+        {/* Debug Overlay - Renders when ?debug=1 */}
+        {debugMode && (
+          <div 
+            className="bg-purple-900/30 border border-purple-500/50 rounded-lg p-4"
+            data-testid={`debug-overlay-${marketType}`}
+          >
+            <div className="text-purple-300 font-semibold mb-3 text-sm">
+              🔍 DEBUG OVERLAY ({marketType.toUpperCase()})
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+              <div>
+                <span className="text-gray-400">decision_id:</span>
+                <div className="text-purple-200 break-all" data-testid={`debug-decision-id-${marketType}`}>
+                  {decision.decision_id}
+                </div>
+              </div>
+              <div>
+                <span className="text-gray-400">preferred_selection_id:</span>
+                <div className="text-purple-200 break-all" data-testid={`debug-preferred-selection-id-${marketType}`}>
+                  {decision.preferred_selection_id}
+                </div>
+              </div>
+              <div>
+                <span className="text-gray-400">inputs_hash:</span>
+                <div className="text-purple-200 break-all" data-testid={`debug-inputs-hash-${marketType}`}>
+                  {decision.debug.inputs_hash}
+                </div>
+              </div>
+              <div>
+                <span className="text-gray-400">decision_version:</span>
+                <div className="text-purple-200" data-testid={`debug-decision-version-${marketType}`}>
+                  {decision.debug.decision_version}
+                </div>
+              </div>
+              <div>
+                <span className="text-gray-400">trace_id:</span>
+                <div className="text-purple-200 break-all" data-testid={`debug-trace-id-${marketType}`}>
+                  {decision.debug.trace_id}
+                </div>
+              </div>
+              <div>
+                <span className="text-gray-400">computed_at:</span>
+                <div className="text-purple-200" data-testid={`debug-computed-at-${marketType}`}>
+                  {decision.debug.computed_at}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Classification Badge */}
         <div className={`inline-block px-4 py-2 rounded-lg border-2 font-bold ${badge.color}`}>
           {badge.text}
