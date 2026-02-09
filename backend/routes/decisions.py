@@ -132,6 +132,8 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         spread=spread_decision,
         moneyline=None,  # TODO: implement ML compute
         total=total_decision,
+        home_team_name=home_team,
+        away_team_name=away_team,
         inputs_hash=spread_decision.debug.inputs_hash,
         decision_version=spread_decision.debug.decision_version,
         computed_at=datetime.utcnow().isoformat()

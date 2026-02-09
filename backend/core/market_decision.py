@@ -198,6 +198,10 @@ class GameDecisions(BaseModel):
     moneyline: Optional[MarketDecision] = None
     total: Optional[MarketDecision] = None
     
+    # Game context
+    home_team_name: str = Field(..., description="Home team display name")
+    away_team_name: str = Field(..., description="Away team display name")
+    
     # Meta
     inputs_hash: str = Field(..., description="Global inputs hash for this snapshot")
     decision_version: int = Field(..., description="Monotonic version number")
