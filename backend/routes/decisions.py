@@ -60,27 +60,41 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     spread_outcomes = spread_market.get("outcomes", [])
     total_outcomes = total_market.get("outcomes", [])
     
+    # Helper function to convert European odds to American odds
+    def european_to_american(euro_odds: float) -> int:
+        if euro_odds >= 2.0:
+            return int((euro_odds - 1) * 100)
+        else:
+            return int(-100 / (euro_odds - 1))
+    
     # Parse spread lines
     spread_lines = {}
     for outcome in spread_outcomes:
         team_name = outcome.get("name", "")
         is_home = team_name == home_team
         team_id = home_id if is_home else away_id
+        price = outcome.get("price", 1.91)
+        # Convert European odds to American
+        american_odds = european_to_american(price) if isinstance(price, float) and price < 10 else int(price)
         spread_lines[team_id] = {
             "line": outcome.get("point", 0),
-            "odds": outcome.get("price", -110)
+            "odds": american_odds
         }
     
     # Parse total lines
     over_outcome = next((o for o in total_outcomes if o.get("name") == "Over"), None)
     under_outcome = next((o for o in total_outcomes if o.get("name") == "Under"), None)
     
+    # Convert total odds to American
+    over_price = over_outcome.get("price", 1.91) if over_outcome else 1.91
+    over_odds = european_to_american(over_price) if isinstance(over_price, float) and over_price < 10 else int(over_price)
+    
     odds_snapshot = {
         'timestamp': event.get("updated_at", datetime.utcnow().isoformat()),
         'spread_lines': spread_lines,
         'total_lines': {
             'line': over_outcome.get("point", 220) if over_outcome else 220,
-            'odds': over_outcome.get("price", -110) if over_outcome else -110
+            'odds': over_odds
         }
     }
     
