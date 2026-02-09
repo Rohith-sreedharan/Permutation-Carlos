@@ -29,13 +29,13 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     NO separate endpoints for individual markets.
     """
     
-    # Fetch event from MongoDB
-    event = db["events"].find_one({"id": game_id})
+    # Fetch event from MongoDB (try both 'id' and 'event_id' fields)
+    event = db["events"].find_one({"$or": [{"id": game_id}, {"event_id": game_id}]})
     if not event:
         raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
     
-    # Fetch simulation result
-    sim_doc = db["simulation_results"].find_one({"game_id": game_id})
+    # Fetch simulation result (try both game_id and event_id)
+    sim_doc = db["simulation_results"].find_one({"$or": [{"game_id": game_id}, {"event_id": game_id}]})
     if not sim_doc:
         raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
     
