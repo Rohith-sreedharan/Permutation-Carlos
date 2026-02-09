@@ -9,6 +9,7 @@ NO UI-SIDE RECOMPUTATION ALLOWED.
 """
 
 import hashlib
+import uuid
 from datetime import datetime
 from typing import Dict, Optional, List, Literal
 from core.market_decision import (
@@ -35,7 +36,10 @@ class MarketDecisionComputer:
         self.league = league
         self.game_id = game_id
         self.odds_event_id = odds_event_id
-        self.decision_version_counter = 0
+        # ATOMIC: One version per compute cycle (shared across all markets)
+        self.bundle_version = 1
+        self.bundle_computed_at = datetime.utcnow().isoformat()
+        self.bundle_trace_id = str(uuid.uuid4())
     
     def compute_spread(
         self,
@@ -103,18 +107,44 @@ class MarketDecisionComputer:
         # 8. Release status (default OFFICIAL if classification is EDGE)
         release_status = self._determine_release_status(classification, risk)
         
-        # 9. Build decision
+        # 9. Build decision with canonical fields
         inputs_hash = self._compute_inputs_hash(odds_snapshot, sim_result, config)
+        selection_id = f"{self.game_id}_spread_{pick_team_id}"
+        
+        # Build market_selections (both sides of the spread)
+        market_selections = [
+            {
+                "selection_id": f"{self.game_id}_spread_{home_team_id}",
+                "team_id": home_team_id,
+                "team_name": game_competitors[home_team_id],
+                "line": spread_lines.get(home_team_id, {}).get('line', 0),
+                "odds": spread_lines.get(home_team_id, {}).get('odds', -110)
+            },
+            {
+                "selection_id": f"{self.game_id}_spread_{away_team_id}",
+                "team_id": away_team_id,
+                "team_name": game_competitors[away_team_id],
+                "line": spread_lines.get(away_team_id, {}).get('line', 0),
+                "odds": spread_lines.get(away_team_id, {}).get('odds', -110)
+            }
+        ]
         
         decision = MarketDecision(
             league=self.league,
             game_id=self.game_id,
             odds_event_id=self.odds_event_id,
             market_type=MarketType.SPREAD,
-            selection_id=f"{self.game_id}_spread_{pick_team_id}",
+            decision_id=str(uuid.uuid4()),  # ← CANONICAL: Unique ID per decision
+            selection_id=selection_id,
+            preferred_selection_id=selection_id,  # ← CANONICAL: Bettable anchor
+            market_selections=market_selections,  # ← CANONICAL: Both sides available
             pick=PickSpread(team_id=pick_team_id, team_name=pick_team_name, side=None),
             market=MarketSpread(line=market_line, odds=spread_lines.get(pick_team_id, {}).get('odds')),
             model=ModelSpread(fair_line=model_fair_line),
+            fair_selection={  # ← CANONICAL: Fair line for preferred selection
+                "line": model_fair_line,
+                "team_id": pick_team_id
+            },
             probabilities=Probabilities(
                 model_prob=model_prob,
                 market_implied_prob=self._get_implied_prob(spread_lines.get(pick_team_id, {}).get('odds', -110))
@@ -128,8 +158,10 @@ class MarketDecisionComputer:
                 inputs_hash=inputs_hash,
                 odds_timestamp=odds_snapshot.get('timestamp', datetime.utcnow().isoformat()),
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
+                trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
-                decision_version=self._next_version()
+                decision_version=self.bundle_version,  # ← ATOMIC: Same version for all markets
+                computed_at=self.bundle_computed_at  # ← CANONICAL: Consistent timestamp
             ),
             validator_failures=[]
         )
@@ -179,16 +211,40 @@ class MarketDecisionComputer:
         
         release_status = self._determine_release_status(classification, risk)
         inputs_hash = self._compute_inputs_hash(odds_snapshot, sim_result, config)
+        selection_id = f"{self.game_id}_total_{pick_side.lower()}"
+        
+        # Build market_selections (over/under)
+        market_selections = [
+            {
+                "selection_id": f"{self.game_id}_total_over",
+                "side": "OVER",
+                "line": market_total,
+                "odds": total_lines.get('odds', -110)
+            },
+            {
+                "selection_id": f"{self.game_id}_total_under",
+                "side": "UNDER",
+                "line": market_total,
+                "odds": total_lines.get('odds', -110)
+            }
+        ]
         
         decision = MarketDecision(
             league=self.league,
             game_id=self.game_id,
             odds_event_id=self.odds_event_id,
             market_type=MarketType.TOTAL,
-            selection_id=f"{self.game_id}_total_{pick_side.lower()}",
+            decision_id=str(uuid.uuid4()),  # ← CANONICAL: Unique ID per decision
+            selection_id=selection_id,
+            preferred_selection_id=selection_id,  # ← CANONICAL: Bettable anchor
+            market_selections=market_selections,  # ← CANONICAL: Both sides available
             pick=PickTotal(side=pick_side),
             market=MarketTotal(line=market_total, odds=total_lines.get('odds')),
             model=ModelTotal(fair_total=model_fair_total),
+            fair_selection={  # ← CANONICAL: Fair total for preferred side
+                "total": model_fair_total,
+                "side": pick_side
+            },
             probabilities=Probabilities(
                 model_prob=model_prob,
                 market_implied_prob=self._get_implied_prob(total_lines.get('odds', -110))
@@ -202,8 +258,10 @@ class MarketDecisionComputer:
                 inputs_hash=inputs_hash,
                 odds_timestamp=odds_snapshot.get('timestamp', datetime.utcnow().isoformat()),
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
+                trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
-                decision_version=self._next_version()
+                decision_version=self.bundle_version,  # ← ATOMIC: Same version for all markets
+                computed_at=self.bundle_computed_at  # ← CANONICAL: Consistent timestamp
             ),
             validator_failures=[]
         )
@@ -292,8 +350,3 @@ class MarketDecisionComputer:
         """Compute deterministic hash of inputs"""
         hash_input = f"{odds_snapshot.get('timestamp')}{sim_result.get('simulation_id')}{config.get('profile')}"
         return hashlib.md5(hash_input.encode()).hexdigest()
-    
-    def _next_version(self) -> int:
-        """Monotonic version counter"""
-        self.decision_version_counter += 1
-        return self.decision_version_counter

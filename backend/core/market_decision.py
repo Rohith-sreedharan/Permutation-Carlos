@@ -109,8 +109,10 @@ class Debug(BaseModel):
     inputs_hash: str = Field(..., description="Hash of odds snapshot + sim run + config")
     odds_timestamp: str = Field(..., description="ISO timestamp of odds snapshot")
     sim_run_id: str = Field(..., description="Simulation run identifier")
+    trace_id: str = Field(..., description="Trace ID for audit/debugging (UUID)")
     config_profile: Optional[str] = Field(None, description="Config used (balanced/high-vol/etc)")
-    decision_version: int = Field(..., description="Monotonic version for freshness checking")
+    decision_version: int = Field(..., description="Monotonic version for freshness checking (ATOMIC across all markets)")
+    computed_at: str = Field(..., description="ISO timestamp when decision was computed")
 
 
 class MarketDecision(BaseModel):
@@ -132,6 +134,11 @@ class MarketDecision(BaseModel):
     - Classification coherence: MARKET_ALIGNED cannot claim misprice in reasons
     - Selection binding: selection_id maps to same team/side across entire payload
     - Competitor integrity: pick.team_id must be in game competitors
+    
+    ATOMIC CONSISTENCY:
+    - decision_version MUST be identical across all markets in same response
+    - trace_id MUST be identical across all markets in same response
+    - inputs_hash MUST be identical across all markets in same response
     """
     
     # Identifiers
@@ -139,7 +146,12 @@ class MarketDecision(BaseModel):
     game_id: str = Field(..., description="Internal game identifier")
     odds_event_id: str = Field(..., description="Provider event ID (prevents cross-game bleed)")
     market_type: MarketType = Field(..., description="Market type")
+    
+    # CANONICAL FIELDS (required for audit + display)
+    decision_id: str = Field(..., description="Unique UUID for this specific decision")
     selection_id: str = Field(..., description="Canonical selection identifier")
+    preferred_selection_id: str = Field(..., description="The bettable leg anchor (selection_id for preferred side)")
+    market_selections: list[dict] = Field(..., description="All available selections (both sides of market)")
     
     # Pick (team or side)
     pick: Union[PickSpread, PickTotal] = Field(..., description="Pick team or side")
@@ -149,6 +161,9 @@ class MarketDecision(BaseModel):
     
     # Model data
     model: Union[ModelSpread, ModelMoneyline, ModelTotal] = Field(..., description="Model fair value")
+    
+    # Fair selection (fair line for preferred selection)
+    fair_selection: dict = Field(..., description="Fair line/total expressed for preferred selection")
     
     # Probabilities
     probabilities: Probabilities = Field(..., description="Model vs market probabilities")
