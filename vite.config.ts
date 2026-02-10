@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        allowedHosts: ['beta.beatvegas.app'],
         // Disable caching in dev to avoid stale bundles on refresh
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
