@@ -22,7 +22,7 @@ test.describe('Atomic Decision Integrity', () => {
   
   test.beforeEach(async ({ page }) => {
     // Navigate to game detail with debug overlay enabled
-    await page.goto(`${BASE_URL}/games/NBA/${TEST_GAME_ID}?debug=1`);
+    await page.goto(`${BASE_URL}/games/${process.env.TEST_LEAGUE || 'NCAAB'}/${TEST_GAME_ID}?debug=1`);
     
     // Wait for decisions to load
     await page.waitForSelector('[data-testid="debug-overlay-spread"]', { timeout: 15000 });

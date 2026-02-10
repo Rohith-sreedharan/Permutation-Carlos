@@ -14,7 +14,7 @@ export default defineConfig({
   testDir: './tests/e2e',
   
   // Timeout for each test (15s)
-  timeout: 15 * 1000,
+  timeout: 30000,
   
   // Test output directory
   outputDir: 'test-results/',

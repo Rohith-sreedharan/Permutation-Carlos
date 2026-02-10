@@ -17,6 +17,20 @@ from db.mongo import db
 
 router = APIRouter()
 
+# League-aware default totals to prevent cross-league data corruption
+LEAGUE_DEFAULT_TOTALS = {
+    "NBA": 220.0,
+    "NCAAB": 145.0,
+    "NFL": 45.0,
+    "NCAAF": 50.0,
+    "NHL": 5.5,
+    "MLB": 8.5,
+}
+
+def get_default_total(league: str) -> float:
+    """Return a sensible default total for the given league."""
+    return LEAGUE_DEFAULT_TOTALS.get(league.upper(), 100.0)
+
 
 @router.get("/games/{league}/{game_id}/decisions")
 async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
@@ -89,11 +103,14 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     over_price = over_outcome.get("price", 1.91) if over_outcome else 1.91
     over_odds = european_to_american(over_price) if isinstance(over_price, float) and over_price < 10 else int(over_price)
     
+    # Get league-appropriate default total
+    default_total = get_default_total(league)
+    
     odds_snapshot = {
         'timestamp': event.get("updated_at", datetime.utcnow().isoformat()),
         'spread_lines': spread_lines,
         'total_lines': {
-            'line': over_outcome.get("point", 220) if over_outcome else 220,
+            'line': over_outcome.get("point", default_total) if over_outcome else default_total,
             'odds': over_odds
         }
     }
@@ -103,7 +120,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         'simulation_id': sim_doc.get("simulation_id", f"sim_{game_id}"),
         'model_spread_home_perspective': sim_doc.get("spread", {}).get("home_spread", 0),
         'home_cover_probability': sim_doc.get("spread", {}).get("home_cover_prob", 0.5),
-        'rcl_total': sim_doc.get("total", {}).get("projected_total", 220),
+        'rcl_total': sim_doc.get("total", {}).get("projected_total", default_total),
         'over_probability': sim_doc.get("total", {}).get("over_prob", 0.5),
         'volatility': sim_doc.get("volatility", "MODERATE"),
         'total_injury_impact': sim_doc.get("injury_impact", 0)
