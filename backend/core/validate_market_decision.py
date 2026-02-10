@@ -36,11 +36,19 @@ def validate_market_decision(
     
     # 3. Classification coherence
     if decision.classification == Classification.MARKET_ALIGNED:
-        # MARKET_ALIGNED cannot claim misprice
-        misprice_keywords = ['misprice', 'edge', 'value', 'inefficiency']
+        # MARKET_ALIGNED cannot claim misprice - but can say "no edge" which is correct
+        misprice_keywords = ['misprice', 'inefficiency', 'value bet', 'mispriced']
+        # Phrases that indicate HAVING edge (not allowed for MARKET_ALIGNED)
+        edge_claim_patterns = ['point edge', 'detected', 'edge of', 'found edge']
         for reason in decision.reasons:
-            if any(kw in reason.lower() for kw in misprice_keywords):
+            reason_lower = reason.lower()
+            # Check for misprice keywords
+            if any(kw in reason_lower for kw in misprice_keywords):
                 violations.append(f"MARKET_ALIGNED cannot claim misprice in reasons: '{reason}'")
+            # Check for edge claims (but NOT "no edge" type phrases)
+            if any(p in reason_lower for p in edge_claim_patterns):
+                if 'no ' not in reason_lower and 'not ' not in reason_lower:
+                    violations.append(f"MARKET_ALIGNED cannot claim edge in reasons: '{reason}'")
     
     if decision.classification in [Classification.EDGE, Classification.LEAN]:
         # Must have meaningful edge_points or edge_ev
