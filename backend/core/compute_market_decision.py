@@ -184,9 +184,18 @@ class MarketDecisionComputer:
         """Compute TOTAL market decision"""
         
         total_lines = odds_snapshot.get('total_lines', {})
-        market_total = total_lines.get('line', 220)
+        market_total = total_lines.get('line', 0)
         
-        model_fair_total = sim_result.get('rcl_total', market_total)
+        # BUG: rcl_total is on a different scale for NCAAF.
+        # This is a temporary fix until the simulation model is corrected.
+        # The simulation for NCAAF returns a total that is ~5x the market total.
+        # We will scale it down to align with the market.
+        raw_model_total = sim_result.get('rcl_total', market_total)
+        if self.league == 'NCAAF' and raw_model_total > 100: # Plausibility check
+            model_fair_total = raw_model_total / 5.0
+        else:
+            model_fair_total = raw_model_total
+
         over_prob = sim_result.get('over_probability', 0.5)
         under_prob = 1 - over_prob
         
