@@ -49,24 +49,30 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
     
     # Fetch simulation from monte_carlo_simulations (the actual simulation engine output)
-    sim_doc = db["monte_carlo_simulations"].find_one({"$or": [{"game_id": game_id}, {"event_id": game_id}]})
+    # DETERMINISTIC: Select latest by created_at to handle multiple sims per game
+    sim_doc = db["monte_carlo_simulations"].find_one(
+        {"$or": [{"game_id": game_id}, {"event_id": game_id}]},
+        sort=[("created_at", -1)]  # Latest first
+    )
     if not sim_doc:
         raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
     
-    # FAIL-CLOSED: Require real simulation data (not empty documents)
-    # Real sim must have sharp_analysis with model outputs
+    # Extract sharp_analysis structure
     sharp_analysis = sim_doc.get("sharp_analysis", {})
     spread_data = sharp_analysis.get("spread", {})
     total_data = sharp_analysis.get("total", {})
     
+    # FAIL-CLOSED: Check for real spread data
     has_real_spread = spread_data.get("model_spread") is not None
-    has_real_total = total_data.get("fair_total") is not None or total_data.get("model_total") is not None
-    has_real_prob = sim_doc.get("home_win_probability") is not None
     
-    if not (has_real_spread or has_real_total):
+    # FAIL-CLOSED: Check for real total data (rcl_total or model_total)
+    rcl_total_value = sim_doc.get("rcl_total") or total_data.get("model_total")
+    has_real_total = rcl_total_value is not None
+    
+    if not has_real_spread:
         raise HTTPException(
             status_code=503,
-            detail=f"FAIL-CLOSED: No real simulation data for {game_id}. Missing sharp_analysis.spread.model_spread or sharp_analysis.total.fair_total"
+            detail=f"FAIL-CLOSED: No model_spread for {game_id}. Cannot classify spread."
         )
     
     # Extract odds from event (OddsAPI format)
@@ -132,19 +138,24 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     }
     
     # Build sim_result from MongoDB (using actual monte_carlo_simulations structure)
-    # The simulation engine stores data in sharp_analysis.spread and sharp_analysis.total
+    # Field mappings based on actual document structure:
+    # - sharp_analysis.spread.model_spread -> model spread
+    # - rcl_total (top-level) or sharp_analysis.total.model_total -> fair total
+    # - team_a_win_probability (top-level) -> home win prob (team_a = home)
+    # - over_probability (top-level) -> over prob
     sim_result = {
         'simulation_id': sim_doc.get("simulation_id", f"sim_{game_id}"),
         # Spread: model_spread is from sharp_analysis.spread.model_spread
         'model_spread_home_perspective': spread_data.get("model_spread", 0),
-        # Cover probability from top-level p_cover_home
-        'home_cover_probability': sim_doc.get("p_cover_home", 0.5),
-        # Total: fair_total or model_total from sharp_analysis.total
-        'rcl_total': total_data.get("fair_total") or total_data.get("model_total") or default_total,
+        # Cover probability: team_a_win_probability (team_a = home team)
+        # This is a critical field for classifications
+        'home_cover_probability': sim_doc.get("team_a_win_probability") or sim_doc.get("win_probability") or 0.5,
+        # Total: use rcl_total_value computed earlier (fail-closed if None)
+        'rcl_total': rcl_total_value if rcl_total_value is not None else default_total,
         # Over probability from top-level
-        'over_probability': sim_doc.get("over_probability", 0.5),
-        'volatility': sim_doc.get("volatility_label", "MODERATE"),
-        'total_injury_impact': sim_doc.get("injury_impact", 0)
+        'over_probability': sim_doc.get("over_probability") or 0.5,
+        'volatility': sim_doc.get("volatility_label") or sim_doc.get("mode") or "MODERATE",
+        'total_injury_impact': sim_doc.get("injury_impact") or 0
     }
     
     config = {
@@ -163,7 +174,12 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     computer = MarketDecisionComputer(league, game_id, f'odds_event_{game_id}')
     
     spread_decision = computer.compute_spread(odds_snapshot, sim_result, config, game_competitors)
-    total_decision = computer.compute_total(odds_snapshot, sim_result, config, game_competitors)
+    
+    # FAIL-CLOSED for totals: only compute if we have real fair_total data
+    total_decision = None
+    if has_real_total:
+        total_decision = computer.compute_total(odds_snapshot, sim_result, config, game_competitors)
+    # If no real total data, total_decision stays None (blocked)
     
     # Build unified response
     decisions = GameDecisions(
