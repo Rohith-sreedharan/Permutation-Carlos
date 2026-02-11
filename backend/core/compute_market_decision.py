@@ -296,7 +296,7 @@ class MarketDecisionComputer:
     def _generate_reasons_spread(self, classification: Classification, edge_points: float, model_prob: float) -> List[str]:
         """Generate pre-computed reasons for spread"""
         if classification == Classification.MARKET_ALIGNED:
-            return ["Model and market consensus detected", "No quantitative edge identified"]
+            return ["Model and market consensus detected", "No significant value detected"]
         
         reasons = []
         if edge_points >= 2:
@@ -309,7 +309,7 @@ class MarketDecisionComputer:
     def _generate_reasons_total(self, classification: Classification, edge_points: float, side: str) -> List[str]:
         """Generate pre-computed reasons for total"""
         if classification == Classification.MARKET_ALIGNED:
-            return ["Model and market consensus on total", "No directional edge"]
+            return ["Model and market consensus on total", "No significant value detected"]
         
         reasons = []
         if edge_points >= 2:
