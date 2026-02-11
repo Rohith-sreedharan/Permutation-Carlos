@@ -143,6 +143,16 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     # - rcl_total (top-level) or sharp_analysis.total.model_total -> fair total
     # - team_a_win_probability (top-level) -> home win prob (team_a = home)
     # - over_probability (top-level) -> over prob
+    
+    # Extract injury_impact - handle both numeric and list format
+    injury_impact_raw = sim_doc.get("injury_impact")
+    if isinstance(injury_impact_raw, (int, float)):
+        injury_impact = float(injury_impact_raw)
+    elif isinstance(injury_impact_raw, list):
+        injury_impact = 0.0  # If it's a list, use the injury_impact_weighted field instead
+    else:
+        injury_impact = sim_doc.get("injury_impact_weighted") or 0.0
+    
     sim_result = {
         'simulation_id': sim_doc.get("simulation_id", f"sim_{game_id}"),
         # Spread: model_spread is from sharp_analysis.spread.model_spread
@@ -155,7 +165,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         # Over probability from top-level
         'over_probability': sim_doc.get("over_probability") or 0.5,
         'volatility': sim_doc.get("volatility_label") or sim_doc.get("mode") or "MODERATE",
-        'total_injury_impact': sim_doc.get("injury_impact") or 0
+        'total_injury_impact': injury_impact
     }
     
     config = {
