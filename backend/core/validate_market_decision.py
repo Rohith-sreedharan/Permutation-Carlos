@@ -39,7 +39,7 @@ def validate_market_decision(
         # MARKET_ALIGNED cannot claim misprice - but can say "no edge" which is correct
         misprice_keywords = ['misprice', 'inefficiency', 'value bet', 'mispriced']
         # Phrases that indicate HAVING edge (not allowed for MARKET_ALIGNED)
-        edge_claim_patterns = ['point edge', 'detected', 'edge of', 'found edge']
+        edge_claim_patterns = ['point edge', 'edge detected', 'detected edge', 'edge of', 'found edge']
         for reason in decision.reasons:
             reason_lower = reason.lower()
             # Check for misprice keywords
