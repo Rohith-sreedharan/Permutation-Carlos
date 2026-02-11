@@ -53,6 +53,18 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     if not sim_doc:
         raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
     
+    # FAIL-CLOSED: Require real simulation data (not defaults)
+    # Real sim_results must have spread.home_spread or total.projected_total populated
+    has_real_spread = sim_doc.get("spread", {}).get("home_spread") is not None
+    has_real_total = sim_doc.get("total", {}).get("projected_total") is not None
+    has_real_prob = sim_doc.get("spread", {}).get("home_cover_prob") not in [None, 0.5]
+    
+    if not (has_real_spread or has_real_total):
+        raise HTTPException(
+            status_code=503,
+            detail=f"FAIL-CLOSED: No real simulation data for {game_id}. sim_doc has defaults only."
+        )
+    
     # Extract odds from event (OddsAPI format)
     bookmakers = event.get("bookmakers", [])
     if not bookmakers:
