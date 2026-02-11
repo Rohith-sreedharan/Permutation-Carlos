@@ -48,21 +48,25 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     if not event:
         raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
     
-    # Fetch simulation result (try both game_id and event_id)
-    sim_doc = db["simulation_results"].find_one({"$or": [{"game_id": game_id}, {"event_id": game_id}]})
+    # Fetch simulation from monte_carlo_simulations (the actual simulation engine output)
+    sim_doc = db["monte_carlo_simulations"].find_one({"$or": [{"game_id": game_id}, {"event_id": game_id}]})
     if not sim_doc:
         raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
     
-    # FAIL-CLOSED: Require real simulation data (not defaults)
-    # Real sim_results must have spread.home_spread or total.projected_total populated
-    has_real_spread = sim_doc.get("spread", {}).get("home_spread") is not None
-    has_real_total = sim_doc.get("total", {}).get("projected_total") is not None
-    has_real_prob = sim_doc.get("spread", {}).get("home_cover_prob") not in [None, 0.5]
+    # FAIL-CLOSED: Require real simulation data (not empty documents)
+    # Real sim must have sharp_analysis with model outputs
+    sharp_analysis = sim_doc.get("sharp_analysis", {})
+    spread_data = sharp_analysis.get("spread", {})
+    total_data = sharp_analysis.get("total", {})
+    
+    has_real_spread = spread_data.get("model_spread") is not None
+    has_real_total = total_data.get("fair_total") is not None or total_data.get("model_total") is not None
+    has_real_prob = sim_doc.get("home_win_probability") is not None
     
     if not (has_real_spread or has_real_total):
         raise HTTPException(
             status_code=503,
-            detail=f"FAIL-CLOSED: No real simulation data for {game_id}. sim_doc has defaults only."
+            detail=f"FAIL-CLOSED: No real simulation data for {game_id}. Missing sharp_analysis.spread.model_spread or sharp_analysis.total.fair_total"
         )
     
     # Extract odds from event (OddsAPI format)
@@ -127,14 +131,19 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         }
     }
     
-    # Build sim_result from MongoDB
+    # Build sim_result from MongoDB (using actual monte_carlo_simulations structure)
+    # The simulation engine stores data in sharp_analysis.spread and sharp_analysis.total
     sim_result = {
         'simulation_id': sim_doc.get("simulation_id", f"sim_{game_id}"),
-        'model_spread_home_perspective': sim_doc.get("spread", {}).get("home_spread", 0),
-        'home_cover_probability': sim_doc.get("spread", {}).get("home_cover_prob", 0.5),
-        'rcl_total': sim_doc.get("total", {}).get("projected_total", default_total),
-        'over_probability': sim_doc.get("total", {}).get("over_prob", 0.5),
-        'volatility': sim_doc.get("volatility", "MODERATE"),
+        # Spread: model_spread is from sharp_analysis.spread.model_spread
+        'model_spread_home_perspective': spread_data.get("model_spread", 0),
+        # Cover probability from top-level p_cover_home
+        'home_cover_probability': sim_doc.get("p_cover_home", 0.5),
+        # Total: fair_total or model_total from sharp_analysis.total
+        'rcl_total': total_data.get("fair_total") or total_data.get("model_total") or default_total,
+        # Over probability from top-level
+        'over_probability': sim_doc.get("over_probability", 0.5),
+        'volatility': sim_doc.get("volatility_label", "MODERATE"),
         'total_injury_impact': sim_doc.get("injury_impact", 0)
     }
     
