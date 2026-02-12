@@ -4,14 +4,15 @@ COMPLETE AUDIT PROOF - Query Production MongoDB
 Run this on production server to get real proof artifacts
 """
 import os
-from pymongo import MongoClient
+import sys
 from datetime import datetime
 import json
 
-# Connect to production MongoDB
-MONGO_URI = "mongodb://localhost:27017/"
-client = MongoClient(MONGO_URI)
-db = client["permu"]
+# Add backend to path to import db module
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+# Import MongoDB connection from backend
+from db.mongo import db
 
 print("=" * 80)
 print("AUDIT PROOF ARTIFACT GENERATION")
