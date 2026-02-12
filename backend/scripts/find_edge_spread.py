@@ -39,10 +39,10 @@ for sim in sims:
     
     checked += 1
     
-    # Get event
+    # Get event with odds data
     event = db["events"].find_one(
         {"event_id": event_id},
-        {"event_id": 1, "sport_key": 1, "home_team": 1, "away_team": 1, "_id": 0}
+        {"event_id": 1, "sport_key": 1, "home_team": 1, "away_team": 1, "odds": 1, "_id": 0}
     )
     
     if not event:
@@ -56,10 +56,29 @@ for sim in sims:
     if model_spread is None or market_spread is None or home_win_prob is None:
         continue
     
+    # CRITICAL: Skip if market data is invalid (would get blocked)
+    if market_spread == 0:
+        continue
+    
     edge = abs(model_spread - market_spread)
     
     # Check EDGE criteria: abs(edge) >= 2.0 AND (prob >= 0.55 OR <= 0.45)
     meets_prob_threshold = (home_win_prob >= 0.55 or home_win_prob <= 0.45)
+    
+    if edge >= 2.0 and meets_prob_threshold:
+        # Verify event has valid odds before adding
+        # Check if event has spread odds with non-zero points
+        has_valid_odds = False
+        if event.get('odds'):
+            odds_list = event['odds']
+            for odd in odds_list:
+                if odd.get('market_key') == 'h2h_spread' or 'spread' in odd.get('market_key', ''):
+                    if odd.get('point') and odd.get('point') != 0 and odd.get('price'):
+                        has_valid_odds = True
+                        break
+        
+        if not has_valid_odds:
+            continue
     
     if edge >= 2.0 and meets_prob_threshold:
         edge_spreads.append({
