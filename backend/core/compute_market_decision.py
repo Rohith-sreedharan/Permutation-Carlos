@@ -306,27 +306,39 @@ class MarketDecisionComputer:
     
     def _generate_reasons_spread(self, classification: Classification, edge_points: float, model_prob: float) -> List[str]:
         """Generate pre-computed reasons for spread"""
+        edge_mag = abs(edge_points)
+        
         if classification == Classification.MARKET_ALIGNED:
             return ["Model and market consensus detected", "No significant value detected"]
         
-        reasons = []
-        if edge_points >= 2:
-            reasons.append(f"Spread misprice detected: {edge_points:.1f} point edge")
-        if model_prob >= 0.6:
-            reasons.append(f"High cover probability: {model_prob*100:.1f}%")
+        elif classification == Classification.LEAN:
+            return [f"Moderate edge: {edge_mag:.1f} point spread differential"]
         
-        return reasons or ["Moderate edge identified"]
+        elif classification == Classification.EDGE:
+            reasons = []
+            reasons.append(f"Spread misprice detected: {edge_mag:.1f} point edge")
+            if model_prob >= 0.6:
+                reasons.append(f"High cover probability: {model_prob*100:.1f}%")
+            elif model_prob <= 0.4:
+                reasons.append(f"High cover probability: {(1-model_prob)*100:.1f}%")
+            return reasons
+        
+        return ["Edge detected"]
     
     def _generate_reasons_total(self, classification: Classification, edge_points: float, side: str) -> List[str]:
         """Generate pre-computed reasons for total"""
+        edge_mag = abs(edge_points)
+        
         if classification == Classification.MARKET_ALIGNED:
             return ["Model and market consensus on total", "No significant value detected"]
         
-        reasons = []
-        if edge_points >= 2:
-            reasons.append(f"Total misprice: {edge_points:.1f} points favoring {side}")
+        elif classification == Classification.LEAN:
+            return [f"Moderate edge: {edge_mag:.1f} point total differential favoring {side}"]
         
-        return reasons or [f"{side} shows value"]
+        elif classification == Classification.EDGE:
+            return [f"Total misprice: {edge_mag:.1f} points favoring {side}"]
+        
+        return [f"{side} shows value"]
     
     def _determine_release_status(self, classification: Classification, risk: Risk) -> ReleaseStatus:
         """Determine if pick is official or info-only"""
