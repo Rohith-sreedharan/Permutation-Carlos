@@ -45,41 +45,53 @@ else:
 
 print("\n=== SIMULATIONS COLLECTION ===")
 
-# Sample sim
+# Sample sim from monte_carlo_simulations
 sample_sim = db["monte_carlo_simulations"].find_one()
 if sample_sim:
-    print(f"\nSample simulation structure:")
+    print(f"\nSample monte_carlo_simulations:")
     print(f"  ALL KEYS: {list(sample_sim.keys())}")
-    print(f"  _id: {sample_sim.get('_id')}")
-    print(f"  id: {sample_sim.get('id')}")
     print(f"  event_id: {sample_sim.get('event_id')}")
-    print(f"  game_id: {sample_sim.get('game_id')}")
+    print(f"  sport_key: {sample_sim.get('sport_key')}")
     print(f"  has sharp_analysis: {bool(sample_sim.get('sharp_analysis'))}")
-    if sample_sim.get('sharp_analysis'):
-        sa = sample_sim['sharp_analysis']
+
+# Sample from simulation_results
+sample_result = db["simulation_results"].find_one()
+if sample_result:
+    print(f"\nSample simulation_results:")
+    print(f"  ALL KEYS: {list(sample_result.keys())}")
+    print(f"  event_id: {sample_result.get('event_id')}")
+    print(f"  game_id: {sample_result.get('game_id')}")
+    print(f"  sport_key: {sample_result.get('sport_key')}")
+    print(f"  has sharp_analysis: {bool(sample_result.get('sharp_analysis'))}")
+    if sample_result.get('sharp_analysis'):
+        sa = sample_result['sharp_analysis']
         print(f"  sharp_analysis keys: {list(sa.keys())}")
         if 'spread' in sa:
-            spread = sa['spread']
-            print(f"  spread.model_spread: {spread.get('model_spread')}")
-    print(f"  team_a_win_probability: {sample_sim.get('team_a_win_probability')}")
+            print(f"    spread.model_spread: {sa['spread'].get('model_spread')}")
+    print(f"  team_a_win_probability: {sample_result.get('team_a_win_probability')}")
 else:
     print("  NO simulations found")
 
 print("\n=== CHECKING FOR MATCHES ===")
 
-# Find sims with events
-sims_with_events = 0
-total_checked = 0
+# Try matching event_id between simulation_results and events
+matches = 0
+checked = 0
 
-for sim in db["monte_carlo_simulations"].find().limit(10):
-    total_checked += 1
-    game_id = sim.get('game_id')
-    if not game_id:
+for sim in db["simulation_results"].find().limit(10):
+    checked += 1
+    event_id = sim.get('event_id') or sim.get('game_id')
+    if not event_id:
         continue
     
-    event = db["events"].find_one({"game_id": game_id})
+    event = db["events"].find_one({"event_id": event_id})
     if event:
-        sims_with_events += 1
-        print(f"  ✅ Match found: {game_id[:20]}... (league: {event.get('league')})")
+        matches += 1
+        print(f"  ✅ Match found: {event_id[:30]}... (sport: {event.get('sport_key')})")
+        
+        # Show if this sim has spread data
+        if sim.get('sharp_analysis', {}).get('spread'):
+            spread = sim['sharp_analysis']['spread']
+            print(f"     model_spread: {spread.get('model_spread')}, team_a_prob: {sim.get('team_a_win_probability')}")
 
-print(f"\nChecked {total_checked} sims, {sims_with_events} have matching events")
+print(f"\nChecked {checked} simulation_results, {matches} have matching events")
