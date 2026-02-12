@@ -312,7 +312,13 @@ class MarketDecisionComputer:
             return ["Model and market consensus detected", "No significant value detected"]
         
         elif classification == Classification.LEAN:
-            return [f"Moderate edge: {edge_mag:.1f} point spread differential"]
+            # LEAN: edge exists but probability gate not met
+            if edge_mag >= 10:
+                return [f"Large spread disagreement ({edge_mag:.1f} pts) but cover probability insufficient for EDGE classification"]
+            elif edge_mag >= 5:
+                return [f"Significant spread disagreement ({edge_mag:.1f} pts) but probability gate not met"]
+            else:
+                return [f"Moderate edge: {edge_mag:.1f} point spread differential"]
         
         elif classification == Classification.EDGE:
             reasons = []
