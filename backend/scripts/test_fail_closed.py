@@ -10,19 +10,15 @@ from db.mongo import db
 
 print("Finding game with odds but NO simulation to test fail-closed...\n")
 
-# Get events with odds
+# Get events with odds (simpler query - just check if odds object exists)
 events_with_odds = list(db["events"].find(
-    {
-        "$or": [
-            {"odds.spreads": {"$exists": True, "$ne": []}},
-            {"odds.totals": {"$exists": True, "$ne": []}}
-        ]
-    },
+    {"odds": {"$exists": True}},
     {
         "game_id": 1,
         "league": 1,
         "home_team": 1,
         "away_team": 1,
+        "odds": 1,
         "_id": 0
     }
 ).limit(100))

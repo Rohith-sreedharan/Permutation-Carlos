@@ -73,19 +73,19 @@ for sim in sims:
 
 print(f"Checked {checked} games with both sim and event data")
 
-if market_aligne\n    Curl command:")
+if market_aligned_spreads:
+    print(f"\n✅ FOUND {len(market_aligned_spreads)} MARKET_ALIGNED SPREAD(S):\n")
+    for idx, game in enumerate(market_aligned_spreads, 1):
+        print(f"[{idx}] {game['league']}: {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}")
+        print(f"    game_id: {game['game_id']}")
+        print(f"    model_spread: {game['model_spread']:.2f}")
+        print(f"    market_spread: {game['market_spread']}")
+        print(f"    edge: {game['edge']:.3f} pts (< 0.5 threshold) ✅")
+        print(f"\n    Curl command:")
         print(f"    curl -s 'https://beta.beatvegas.app/api/games/{game['league']}/{game['game_id']}/decisions' | jq '.spread'")
         print()
 else:
     print(f"\n❌ NO MARKET_ALIGNED spreads found with abs(edge) < 0.5 in {checked} games")
     print("    Current market is too efficient - all edges >= 0.5 pts")
     print("\n💡 RECOMMENDATION: Accept that MARKET_ALIGNED threshold may need adjustment,")
-    print("    or wait for odds updates to create tighter spread markets.read']}")
-        print(f"    edge: {game['edge']:.3f} pts (< 0.5 threshold) ✅")
-        print(f"    home_win_prob: {game['home_win_prob']:.2%}")
-        print(f"\n    Curl command:")
-        print(f"    curl -s 'https://beta.beatvegas.app/api/games/{game['league']}/{game['game_id']}/decisions' | jq '.spread'")
-        print()
-else:
-    print("\n❌ NO MARKET_ALIGNED spreads found with abs(edge) < 0.5")
-    print("    All checked spreads have edge >= 0.5")
+    print("    or wait for odds updates to create tighter spread markets.")
