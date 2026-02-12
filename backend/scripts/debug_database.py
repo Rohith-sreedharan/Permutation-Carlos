@@ -23,17 +23,23 @@ print("\n=== EVENTS COLLECTION ===")
 sample_event = db["events"].find_one()
 if sample_event:
     print(f"\nSample event structure:")
+    print(f"  ALL KEYS: {list(sample_event.keys())}")
+    print(f"  _id: {sample_event.get('_id')}")
+    print(f"  id: {sample_event.get('id')}")
+    print(f"  event_id: {sample_event.get('event_id')}")
     print(f"  game_id: {sample_event.get('game_id')}")
     print(f"  league: {sample_event.get('league')}")  
     print(f"  home_team: {sample_event.get('home_team')}")
+    print(f"  away_team: {sample_event.get('away_team')}")
     print(f"  has odds: {bool(sample_event.get('odds'))}")
     if sample_event.get('odds'):
         odds = sample_event['odds']
-        print(f"  odds keys: {list(odds.keys())}")
-        if 'spreads' in odds:
-            print(f"  spreads count: {len(odds.get('spreads', []))}")
-        if 'totals' in odds:
-            print(f"  totals count: {len(odds.get('totals', []))}")
+        if isinstance(odds, list):
+            print(f"  odds is LIST with {len(odds)} items")
+            if len(odds) > 0:
+                print(f"  odds[0] keys: {list(odds[0].keys()) if isinstance(odds[0], dict) else 'not a dict'}")
+        else:
+            print(f"  odds is DICT with keys: {list(odds.keys())}")
 else:
     print("  NO events found")
 
@@ -43,6 +49,10 @@ print("\n=== SIMULATIONS COLLECTION ===")
 sample_sim = db["monte_carlo_simulations"].find_one()
 if sample_sim:
     print(f"\nSample simulation structure:")
+    print(f"  ALL KEYS: {list(sample_sim.keys())}")
+    print(f"  _id: {sample_sim.get('_id')}")
+    print(f"  id: {sample_sim.get('id')}")
+    print(f"  event_id: {sample_sim.get('event_id')}")
     print(f"  game_id: {sample_sim.get('game_id')}")
     print(f"  has sharp_analysis: {bool(sample_sim.get('sharp_analysis'))}")
     if sample_sim.get('sharp_analysis'):
