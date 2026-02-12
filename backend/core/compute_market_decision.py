@@ -277,17 +277,28 @@ class MarketDecisionComputer:
         return decision
     
     def _classify_spread(self, edge_points: float, model_prob: float, config: Dict) -> Classification:
-        """Classify spread decision"""
+        """Classify spread decision using magnitude-based thresholds"""
         edge_threshold = config.get('edge_threshold', 2.0)
-        lean_threshold = config.get('lean_threshold', 1.0)
+        lean_threshold = config.get('lean_threshold', 0.5)
         prob_threshold = config.get('prob_threshold', 0.55)
         
-        if edge_points >= edge_threshold and model_prob >= prob_threshold:
-            return Classification.EDGE
-        elif edge_points >= lean_threshold:
-            return Classification.LEAN
-        else:
+        # Use absolute value for magnitude-based classification (direction agnostic)
+        edge_magnitude = abs(edge_points)
+        
+        # MARKET_ALIGNED: edge < 0.5 (model and market very close)
+        if edge_magnitude < lean_threshold:
             return Classification.MARKET_ALIGNED
+        
+        # EDGE: edge >= 2.0 AND strong directional conviction (prob >= 55% or <= 45%)
+        elif edge_magnitude >= edge_threshold:
+            if model_prob >= prob_threshold or model_prob <= (1 - prob_threshold):
+                return Classification.EDGE
+            else:
+                return Classification.LEAN
+        
+        # LEAN: 0.5 <= edge < 2.0
+        else:
+            return Classification.LEAN
     
     def _classify_total(self, edge_points: float, model_prob: float, config: Dict) -> Classification:
         """Classify total decision"""

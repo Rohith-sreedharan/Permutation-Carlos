@@ -171,7 +171,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     config = {
         'profile': 'balanced',
         'edge_threshold': 2.0,
-        'lean_threshold': 1.0,
+        'lean_threshold': 0.5,
         'prob_threshold': 0.55
     }
     
