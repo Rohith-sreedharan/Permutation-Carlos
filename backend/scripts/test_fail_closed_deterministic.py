@@ -32,19 +32,19 @@ from db.mongo import db
 
 print("=== DETERMINISTIC FAIL-CLOSED TEST ===\n")
 
-# Find a complete simulation
-sim = db["simulation_results"].find_one({
-    "median_margin": {"$exists": True, "$ne": None},
-    "market_spread": {"$exists": True, "$ne": None},
-    "event_id": {"$exists": True}
+# Find a complete simulation in monte_carlo_simulations (what the API actually uses)
+sim = db["monte_carlo_simulations"].find_one({
+    "sharp_analysis.spread.model_spread": {"$exists": True, "$ne": None},
+    "$or": [{"event_id": {"$exists": True}}, {"game_id": {"$exists": True}}]
 })
 
 if not sim:
-    print("❌ No simulation found")
+    print("❌ No simulation found in monte_carlo_simulations")
     sys.exit(1)
 
-event_id = sim.get('event_id')
+event_id = sim.get('event_id') or sim.get('game_id')
 sim_id = sim.get('_id')
+model_spread = sim.get('sharp_analysis', {}).get('spread', {}).get('model_spread')
 
 # Get event
 event = db["events"].find_one({"event_id": event_id})
@@ -72,18 +72,17 @@ print(f"curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisi
 print()
 
 print("STEP 2: HIDE simulation data (THIS SCRIPT WILL DO IT):")
-print(f"  Will unset median_margin to trigger missing data condition")
+print(f"  Will rename sharp_analysis.spread.model_spread to trigger missing data")
 print()
 
 print("STEP 3: Verify simulation INCOMPLETE (curl should fail-closed)")
 print(f"  curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions' | jq '.spread.release_status, .spread.risk.blocked_reason'")
 print()
-print("  Expected: release_status = 'BLOCKED_BY_INTEGRITY' OR HTTP 503")
-print("  Expected: risk.blocked_reason should explain missing simulation data")
+print("  Expected: HTTP 503 with 'FAIL-CLOSED: No model_spread'")
 print()
 
 print("STEP 4: RESTORE simulation data (THIS SCRIPT WILL DO IT)")
-print(f"  Will restore median_margin = {sim.get('median_margin')}")
+print(f"  Will restore sharp_analysis.spread.model_spread = {model_spread}")
 print()
 
 print("=" * 70)
@@ -95,24 +94,24 @@ input()
 
 # Execute the test
 print("\n>>> Hiding simulation data...")
-result = db["simulation_results"].update_one(
+result = db["simulation_results"].u (renaming sharp_analysis.spread.model_spread)...")
+result = db["monte_carlo_simulations"].update_one(
     {"_id": sim_id},
-    {"$rename": {"median_margin": "median_margin_backup"}}
+    {"$rename": {"sharp_analysis.spread.model_spread": "sharp_analysis.spread.model_spread_backup"}}
 )
 print(f"    Modified {result.modified_count} document(s)")
 
-print(f"\n>>> Test this curl (should fail-closed):")
-print(f"    curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions' | jq '.spread.release_status, .spread.risk.blocked_reason'")
+print(f"\n>>> Test this curl (should return HTTP 503):")
+print(f"    curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions'")
 print()
 print("Press ENTER after running curl to restore data...")
 input()
 
 # Restore
 print("\n>>> Restoring simulation data...")
-result = db["simulation_results"].update_one(
+result = db["monte_carlo_simulations"].update_one(
     {"_id": sim_id},
-    {"$rename": {"median_margin_backup": "median_margin"}}
-)
+    {"$rename": {"sharp_analysis.spread.model_spread_backup": "sharp_analysis.spread.model_spread
 print(f"    Restored {result.modified_count} document(s)")
 
 print("\n✅ Test complete - data restored")
