@@ -123,68 +123,62 @@ print("\n" + "=" * 80)
 print("REQUIREMENT 4: EDGE SPREAD (edge >= 2.0 AND prob >= 0.55)")
 print("=" * 80)
 
-# Search for EDGE spread candidates
-edge_pipeline = [
+# Simplified approach: Get all sims with game_id, then check events separately
+sims_with_spread = list(db["monte_carlo_simulations"].find(
     {
-        "$match": {
-            "sharp_analysis.spread.model_spread": {"$exists": True, "$ne": None},
-            "team_a_win_probability": {"$exists": True, "$ne": None}
-        }
+        "game_id": {"$exists": True, "$ne": None},
+        "sharp_analysis.spread.model_spread": {"$exists": True, "$ne": None},
+        "team_a_win_probability": {"$exists": True, "$ne": None}
     },
     {
-        "$lookup": {
-            "from": "events",
-            "localField": "game_id",
-            "foreignField": "game_id",
-            "as": "event"
-        }
-    },
-    {"$unwind": "$event"},
-    {
-        "$match": {
-            "event.odds.spreads": {"$exists": True, "$ne": []}
-        }
-    },
-    {
-        "$addFields": {
-            "model_spread": "$sharp_analysis.spread.model_spread",
-            "market_spread": {"$arrayElemAt": ["$event.odds.spreads.points", 0]},
-            "home_win_prob": "$team_a_win_probability",
-            "home_team": "$event.home_team",
-            "away_team": "$event.away_team",
-            "league": "$event.league"
-        }
-    },
-    {
-        "$addFields": {
-            "edge": {"$abs": {"$subtract": ["$model_spread", "$market_spread"]}}
-        }
-    },
-    {
-        "$match": {
-            "edge": {"$gte": 2.0},
-            "$or": [
-                {"home_win_prob": {"$gte": 0.55}},
-                {"home_win_prob": {"$lte": 0.45}}  # Away team covering
-            ]
-        }
-    },
-    {"$limit": 5},
-    {
-        "$project": {
-            "game_id": 1,
-            "league": 1,
-            "home_team": 1,
-            "away_team": 1,
-            "model_spread": 1,
-            "market_spread": 1,
-            "edge": 1,
-            "home_win_prob": 1
-        }
+        "game_id": 1,
+        "sharp_analysis.spread.model_spread": 1,
+        "team_a_win_probability": 1,
+        "_id": 0
     }
-]
+).limit(100))  # Check first 100 sims
 
-edge_spreads = list(db["monte_carlo_simulations"].aggregate(edge_pipeline))
+print(f"Checking {len(sims_with_spread)} simulations for EDGE spreads...")
+
+edge_spreads = []
+for sim in sims_with_spread:
+    game_id = sim.get('game_id')
+    if not game_id:
+        continue
+    
+    # Get event for this game_id
+    event = db["events"].find_one(
+        {"game_id": game_id, "odds.spreads": {"$exists": True, "$ne": []}},
+        {"game_id": 1, "league": 1, "home_team": 1, "away_team": 1, "odds.spreads": 1}
+    )
+    
+    if not event or not event.get('odds', {}).get('spreads'):
+        continue
+    
+    model_spread = sim.get('sharp_analysis', {}).get('spread', {}).get('model_spread')
+    market_spread = event['odds']['spreads'][0].get('points')
+    home_win_prob = sim.get('team_a_win_probability')
+    
+    if model_spread is None or market_spread is None or home_win_prob is None:
+        continue
+    
+    edge = abs(model_spread - market_spread)
+    
+    # Check EDGE criteria: edge >= 2.0 AND (prob >= 0.55 OR prob <= 0.45)
+    if edge >= 2.0 and (home_win_prob >= 0.55 or home_win_prob <= 0.45):
+        edge_spreads.append({
+            'game_id': game_id,
+            'league': event.get('league'),
+            'home_team': event.get('home_team'),
+            'away_team': event.get('away_team'),
+            'model_spread': model_spread,
+            'market_spread': market_spread,
+            'edge': edge,
+            'home_win_prob': home_win_prob
+        })
+        
+        if len(edge_spreads) >= 3:  # Stop after finding 3
+            break
 
 if edge_spreads:
     print(f"✅ FOUND {len(edge_spreads)} EDGE SPREAD(S):")
@@ -199,27 +193,15 @@ if edge_spreads:
         print(f"\n       📋 Curl command:")
         print(f"       curl -s 'https://beta.beatvegas.app/api/games/{sim['league']}/{sim['game_id']}/decisions' | jq '.spread'")
 else:
-    print("❌ NO EDGE SPREADS FOUND in current database")
+    print("❌ NO EDGE SPREADS FOUND in checked simulations")
     print("   Criteria: edge >= 2.0 AND (prob >= 0.55 OR prob <= 0.45)")
-    print("\n   Searching for best available spreads (top 5 by edge)...")
-    
-    # Show best available
-    best_pipeline = edge_pipeline.copy()
-    best_pipeline[-2] = {"$match": {"edge": {"$exists": True}}}  # Remove edge threshold
-    best_pipeline.insert(-1, {"$sort": {"edge": -1}})  # Sort by edge descending
-    
-    best_spreads = list(db["monte_carlo_simulations"].aggregate(best_pipeline))
-    
-    if best_spreads:
-        print(f"\n   Top {len(best_spreads)} spreads by edge:")
-        for idx, sim in enumerate(best_spreads, 1):
-            prob = sim['home_win_prob']
-            meets_prob = "✅" if prob >= 0.55 or prob <= 0.45 else "❌"
-            meets_edge = "✅" if sim['edge'] >= 2.0 else "❌"
-            print(f"\n   [{idx}] {meets_edge} edge: {sim['edge']:.2f} | {meets_prob} prob: {prob:.2%}")
-            print(f"       game_id: {sim['game_id']}")
-            print(f"       {sim.get('away_team', 'Away')} @ {sim.get('home_team', 'Home')}")
+    print("   Checked: First 100 simulations with game matches")
+    print("\n   Note: EDGE spreads require both:")
+    print("   - Significant model vs market disagreement (>= 2 pts)")
+    print("   - Strong directional probability (>= 55% or <= 45%)")
+    print("\n   Current market conditions may not meet these criteria.")
 
 print("\n" + "=" * 80)
 print("END OF AUDIT PROOF GENERATION")
 print("=" * 80)
+
