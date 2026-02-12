@@ -10,16 +10,18 @@ from db.mongo import db
 
 print("Searching for EDGE spread (abs(edge) >= 2.0 AND prob threshold)...\n")
 
-# Get ALL simulations with spread data
-sims = list(db["monte_carlo_simulations"].find(
+# Get simulation_results with spread data
+sims = list(db["simulation_results"].find(
     {
-        "sharp_analysis.spread.model_spread": {"$exists": True, "$ne": None},
-        "team_a_win_probability": {"$exists": True, "$ne": None}
+        "median_margin": {"$exists": True, "$ne": None},
+        "market_spread": {"$exists": True, "$ne": None},
+        "home_win_prob": {"$exists": True, "$ne": None}
     },
     {
-        "game_id": 1,
-        "sharp_analysis.spread.model_spread": 1,
-        "team_a_win_probability": 1,
+        "event_id": 1,
+        "median_margin": 1,
+        "market_spread": 1,
+        "home_win_prob": 1,
         "_id": 0
     }
 ).limit(500))
@@ -31,28 +33,25 @@ edge_spreads = []
 checked = 0
 
 for sim in sims:
-    game_id = sim.get('game_id')
-    if not game_id:
+    event_id = sim.get('event_id')
+    if not event_id:
         continue
     
     checked += 1
     
     # Get event
     event = db["events"].find_one(
-        {"game_id": game_id},
-        {"game_id": 1, "league": 1, "home_team": 1, "away_team": 1, "odds.spreads": 1}
+        {"event_id": event_id},
+        {"event_id": 1, "sport_key": 1, "home_team": 1, "away_team": 1, "_id": 0}
     )
     
     if not event:
         continue
-        
-    spreads = event.get('odds', {}).get('spreads')
-    if not spreads or len(spreads) == 0:
-        continue
     
-    model_spread = sim.get('sharp_analysis', {}).get('spread', {}).get('model_spread')
-    market_spread = spreads[0].get('points')
-    home_win_prob = sim.get('team_a_win_probability')
+    # Calculate edge from median_margin (model spread) vs market_spread
+    model_spread = sim.get('median_margin')
+    market_spread = sim.get('market_spread')
+    home_win_prob = sim.get('home_win_prob')
     
     if model_spread is None or market_spread is None or home_win_prob is None:
         continue
@@ -64,8 +63,8 @@ for sim in sims:
     
     if edge >= 2.0 and meets_prob_threshold:
         edge_spreads.append({
-            'game_id': game_id,
-            'league': event.get('league'),
+            'event_id': event_id,
+            'sport_key': event.get('sport_key'),
             'home_team': event.get('home_team'),
             'away_team': event.get('away_team'),
             'model_spread': model_spread,
@@ -82,14 +81,18 @@ print(f"Checked {checked} games with both sim and event data")
 if edge_spreads:
     print(f"\n✅ FOUND {len(edge_spreads)} EDGE SPREAD(S):\n")
     for idx, game in enumerate(edge_spreads, 1):
-        print(f"[{idx}] {game['league']}: {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}")
-        print(f"    game_id: {game['game_id']}")
+        # Convert sport_key to API league format
+        league_map = {'basketball_nba': 'NBA', 'basketball_ncaab': 'NCAAB', 'americanfootball_nfl': 'NFL', 'americanfootball_ncaaf': 'NCAAF'}
+        league = league_map.get(game['sport_key'], game['sport_key'].upper())
+        
+        print(f"[{idx}] {league}: {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}")
+        print(f"    event_id: {game['event_id']}")
         print(f"    model_spread: {game['model_spread']:.2f}")
         print(f"    market_spread: {game['market_spread']}")
         print(f"    edge: {game['edge']:.3f} pts (>= 2.0 threshold) ✅")
         print(f"    home_win_prob: {game['home_win_prob']:.2%} (>= 0.55 OR <= 0.45) ✅")
         print(f"\n    Curl command:")
-        print(f"    curl -s 'https://beta.beatvegas.app/api/games/{game['league']}/{game['game_id']}/decisions' | jq '.spread'")
+        print(f"    curl -s 'https://beta.beatvegas.app/api/games/{league}/{game['event_id']}/decisions' | jq '.spread'")
         print()
 else:
     print(f"\n❌ NO EDGE spreads found with abs(edge) >= 2.0 AND prob threshold in {checked} games")

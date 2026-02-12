@@ -10,14 +10,16 @@ from db.mongo import db
 
 print("Searching for MARKET_ALIGNED spread (abs(edge) < 0.5)...\n")
 
-# Get ALL simulations with spread data (no extra filters)
-sims = list(db["monte_carlo_simulations"].find(
+# Get simulation_results with spread data
+sims = list(db["simulation_results"].find(
     {
-        "sharp_analysis.spread.model_spread": {"$exists": True, "$ne": None}
+        "median_margin": {"$exists": True, "$ne": None},
+        "market_spread": {"$exists": True, "$ne": None}
     },
     {
-        "game_id": 1,
-        "sharp_analysis.spread.model_spread": 1,
+        "event_id": 1,
+        "median_margin": 1,
+        "market_spread": 1,
         "_id": 0
     }
 ).limit(500))
@@ -29,27 +31,23 @@ market_aligned_spreads = []
 checked = 0
 
 for sim in sims:
-    game_id = sim.get('game_id')
-    if not game_id:
+    event_id = sim.get('event_id')
+    if not event_id:
         continue
     
     checked += 1
     
     # Get event
     event = db["events"].find_one(
-        {"game_id": game_id},
-        {"game_id": 1, "league": 1, "home_team": 1, "away_team": 1, "odds.spreads": 1}
+        {"event_id": event_id},
+        {"event_id": 1, "sport_key": 1, "home_team": 1, "away_team": 1, "_id": 0}
     )
     
     if not event:
         continue
-        
-    spreads = event.get('odds', {}).get('spreads')
-    if not spreads or len(spreads) == 0:
-        continue
     
-    model_spread = sim.get('sharp_analysis', {}).get('spread', {}).get('model_spread')
-    market_spread = spreads[0].get('points')
+    model_spread = sim.get('median_margin')
+    market_spread = sim.get('market_spread')
     
     if model_spread is None or market_spread is None:
         continue
@@ -59,8 +57,8 @@ for sim in sims:
     # Check MARKET_ALIGNED criteria: abs(edge) < 0.5
     if edge < 0.5:
         market_aligned_spreads.append({
-            'game_id': game_id,
-            'league': event.get('league'),
+            'event_id': event_id,
+            'sport_key': event.get('sport_key'),
             'home_team': event.get('home_team'),
             'away_team': event.get('away_team'),
             'model_spread': model_spread,
@@ -76,13 +74,17 @@ print(f"Checked {checked} games with both sim and event data")
 if market_aligned_spreads:
     print(f"\n✅ FOUND {len(market_aligned_spreads)} MARKET_ALIGNED SPREAD(S):\n")
     for idx, game in enumerate(market_aligned_spreads, 1):
-        print(f"[{idx}] {game['league']}: {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}")
-        print(f"    game_id: {game['game_id']}")
+        # Convert sport_key to API league format
+        league_map = {'basketball_nba': 'NBA', 'basketball_ncaab': 'NCAAB', 'americanfootball_nfl': 'NFL', 'americanfootball_ncaaf': 'NCAAF'}
+        league = league_map.get(game['sport_key'], game['sport_key'].upper())
+        
+        print(f"[{idx}] {league}: {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}")
+        print(f"    event_id: {game['event_id']}")
         print(f"    model_spread: {game['model_spread']:.2f}")
         print(f"    market_spread: {game['market_spread']}")
         print(f"    edge: {game['edge']:.3f} pts (< 0.5 threshold) ✅")
         print(f"\n    Curl command:")
-        print(f"    curl -s 'https://beta.beatvegas.app/api/games/{game['league']}/{game['game_id']}/decisions' | jq '.spread'")
+        print(f"    curl -s 'https://beta.beatvegas.app/api/games/{league}/{game['event_id']}/decisions' | jq '.spread'")
         print()
 else:
     print(f"\n❌ NO MARKET_ALIGNED spreads found with abs(edge) < 0.5 in {checked} games")
