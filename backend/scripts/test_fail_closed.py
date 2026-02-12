@@ -27,20 +27,26 @@ print(f"Found {len(events_with_odds)} events with odds")
 
 # Find one WITHOUT simulation
 for event in events_with_odds:
-    game_id = event.get('game_id')
-    if not game_id:
+    event_id = event.get('event_id')
+    if not event_id:
         continue
     
-    # Check if simulation exists
-    sim = db["monte_carlo_simulations"].find_one({"game_id": game_id})
+    # Check if simulation exists (check both collections)
+    sim1 = db["monte_carlo_simulations"].find_one({"event_id": event_id})
+    sim2 = db["simulation_results"].find_one({"event_id": event_id})
     
-    if not sim:
+    if not sim1 and not sim2:
         print(f"✅ FOUND game WITHOUT simulation:\n")
-        print(f"League: {event.get('league')}")
+        print(f"Sport: {event.get('sport_key')}")
         print(f"Game: {event.get('away_team', 'Away')} @ {event.get('home_team', 'Home')}")
-        print(f"game_id: {game_id}")
+        print(f"event_id: {event_id}")
+        
+        # Convert sport_key to API league format
+        league_map = {'basketball_nba': 'NBA', 'basketball_ncaab': 'NCAAB', 'americanfootball_nfl': 'NFL', 'americanfootball_ncaaf': 'NCAAF'}
+        league = league_map.get(event.get('sport_key'), event.get('sport_key', 'NCAAB').upper())
+        
         print(f"\nFAIL-CLOSED CURL:")
-        print(f"curl -s 'https://beta.beatvegas.app/api/games/{event.get('league')}/{game_id}/decisions'")
+        print(f"curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions'")
         print(f"\nExpected: HTTP 503 OR 'BLOCKED_BY_INTEGRITY' with risk.blocked_reason")
         sys.exit(0)
 
