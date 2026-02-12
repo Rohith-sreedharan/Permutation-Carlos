@@ -2,20 +2,30 @@
 """
 DETERMINISTIC FAIL-CLOSED TEST
 
+SAFETY: This script ONLY runs if TEST_MODE=1 environment variable is set.
+It will temporarily modify database state to prove fail-closed behavior.
+
 Creates a controlled test condition by finding an event with a simulation
 and temporarily hiding required fields to trigger fail-closed behavior.
 
 Steps:
 1. Find an event with complete simulation data
 2. Show curl command WITH simulation (should work)
-3. Instruct to rename the simulation doc's _id to hide it
-4. Show curl command WITHOUT simulation (should fail-closed)
-5. Instruct to restore the _id
+3. Temporarily remove median_margin field to simulate missing data
+4. Show curl command WITHOUT complete simulation (should fail-closed)
+5. Restore the field
 
 This proves deterministic fail-closed when simulation is missing.
 """
 import os
 import sys
+
+# SAFETY GATE: Require explicit TEST_MODE=1 to run
+if os.environ.get('TEST_MODE') != '1':
+    print("❌ ERROR: This script modifies database state for testing.")
+    print("   Set TEST_MODE=1 to run:")
+    print("   TEST_MODE=1 python3 test_fail_closed_deterministic.py")
+    sys.exit(1)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from db.mongo import db
@@ -61,19 +71,51 @@ print("STEP 1: Verify simulation EXISTS (should return OFFICIAL or INFO_ONLY)")
 print(f"curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions' | jq '.spread.release_status, .spread.risk.blocked_reason'")
 print()
 
-print("STEP 2: HIDE the simulation (run this in MongoDB shell):")
-print(f"db.simulation_results.updateOne({{_id: ObjectId('{sim_id}')}}, {{$set: {{hidden_for_test: true}}, $unset: {{median_margin: '', market_spread: ''}}}});")
+print("STEP 2: HIDE simulation data (THIS SCRIPT WILL DO IT):")
+print(f"  Will unset median_margin to trigger missing data condition")
 print()
 
-print("STEP 3: Verify simulation MISSING (should return BLOCKED_BY_INTEGRITY)")
-print(f"curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions' | jq '.spread'")
+print("STEP 3: Verify simulation INCOMPLETE (curl should fail-closed)")
+print(f"  curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions' | jq '.spread.release_status, .spread.risk.blocked_reason'")
 print()
-print("Expected: release_status = 'BLOCKED_BY_INTEGRITY' OR HTTP 503")
-print("Expected: risk.blocked_reason should explain missing simulation data")
+print("  Expected: release_status = 'BLOCKED_BY_INTEGRITY' OR HTTP 503")
+print("  Expected: risk.blocked_reason should explain missing simulation data")
 print()
 
-print("STEP 4: RESTORE the simulation (run this in MongoDB shell):")
-print(f"db.simulation_results.updateOne({{_id: ObjectId('{sim_id}')}}, {{$set: {{median_margin: {sim.get('median_margin')}, market_spread: {sim.get('market_spread')}}}, $unset: {{hidden_for_test: ''}}}});")
+print("STEP 4: RESTORE simulation data (THIS SCRIPT WILL DO IT)")
+print(f"  Will restore median_margin = {sim.get('median_margin')}")
+print()
+
+print("=" * 70)
+print("READY TO RUN TEST")
+print("=" * 70)
+print()
+print("Press ENTER to continue (or Ctrl+C to abort)...")
+input()
+
+# Execute the test
+print("\n>>> Hiding simulation data...")
+result = db["simulation_results"].update_one(
+    {"_id": sim_id},
+    {"$rename": {"median_margin": "median_margin_backup"}}
+)
+print(f"    Modified {result.modified_count} document(s)")
+
+print(f"\n>>> Test this curl (should fail-closed):")
+print(f"    curl -s 'https://beta.beatvegas.app/api/games/{league}/{event_id}/decisions' | jq '.spread.release_status, .spread.risk.blocked_reason'")
+print()
+print("Press ENTER after running curl to restore data...")
+input()
+
+# Restore
+print("\n>>> Restoring simulation data...")
+result = db["simulation_results"].update_one(
+    {"_id": sim_id},
+    {"$rename": {"median_margin_backup": "median_margin"}}
+)
+print(f"    Restored {result.modified_count} document(s)")
+
+print("\n✅ Test complete - data restored")
 print()
 
 print("=" * 70)
