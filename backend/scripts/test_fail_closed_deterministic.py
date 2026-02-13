@@ -93,8 +93,7 @@ print("Press ENTER to continue (or Ctrl+C to abort)...")
 input()
 
 # Execute the test
-print("\n>>> Hiding simulation data...")
-result = db["simulation_results"].u (renaming sharp_analysis.spread.model_spread)...")
+print("\n>>> Hiding simulation data (renaming sharp_analysis.spread.model_spread)...")
 result = db["monte_carlo_simulations"].update_one(
     {"_id": sim_id},
     {"$rename": {"sharp_analysis.spread.model_spread": "sharp_analysis.spread.model_spread_backup"}}
