@@ -110,7 +110,8 @@ input()
 print("\n>>> Restoring simulation data...")
 result = db["monte_carlo_simulations"].update_one(
     {"_id": sim_id},
-    {"$rename": {"sharp_analysis.spread.model_spread_backup": "sharp_analysis.spread.model_spread
+    {"$rename": {"sharp_analysis.spread.model_spread_backup": "sharp_analysis.spread.model_spread"}}
+)
 print(f"    Restored {result.modified_count} document(s)")
 
 print("\n✅ Test complete - data restored")
