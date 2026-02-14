@@ -10,12 +10,76 @@ Prevents stale mixing across tabs.
 
 from fastapi import APIRouter, HTTPException
 from typing import Optional
-from core.market_decision import GameDecisions
+from core.market_decision import (
+    GameDecisions, MarketDecision, MarketType, Classification, ReleaseStatus,
+    MarketSpread, MarketTotal, Risk, Debug, Edge, Probabilities
+)
 from core.compute_market_decision import MarketDecisionComputer
 from datetime import datetime
 from db.mongo import db
+import uuid
 
 router = APIRouter()
+
+
+def create_blocked_decision(
+    league: str,
+    game_id: str,
+    odds_event_id: str,
+    market_type: MarketType,
+    blocked_reason: str,
+    release_status: ReleaseStatus,
+    market_line: float,
+    market_odds: Optional[int] = None
+) -> MarketDecision:
+    """
+    Create a BLOCKED decision per spec Section 1.4.
+    
+    When BLOCKED:
+    - classification = null
+    - reasons = []
+    - pick = null
+    - edge = null
+    - probabilities = null
+    - model = null
+    - fair_selection = null
+    - risk.blocked_reason = explicit reason
+    """
+    return MarketDecision(
+        league=league,
+        game_id=game_id,
+        odds_event_id=odds_event_id,
+        market_type=market_type,
+        decision_id=str(uuid.uuid4()),
+        selection_id=f"{game_id}_{market_type.value}_blocked",
+        preferred_selection_id=f"{game_id}_{market_type.value}_blocked",
+        market_selections=[],
+        pick=None,
+        market=MarketSpread(line=market_line, odds=market_odds) if market_type == MarketType.SPREAD else MarketTotal(line=market_line, odds=market_odds),
+        model=None,
+        fair_selection=None,
+        probabilities=None,
+        edge=None,
+        classification=None,
+        release_status=release_status,
+        reasons=[],
+        risk=Risk(
+            volatility_flag=None,
+            injury_impact=None,
+            clv_forecast=None,
+            blocked_reason=blocked_reason
+        ),
+        debug=Debug(
+            inputs_hash="blocked",
+            odds_timestamp=datetime.utcnow().isoformat(),
+            sim_run_id="blocked",
+            trace_id=str(uuid.uuid4()),
+            config_profile=None,
+            decision_version=1,
+            computed_at=datetime.utcnow().isoformat()
+        ),
+        validator_failures=[]
+    )
 
 # League-aware default totals to prevent cross-league data corruption
 LEAGUE_DEFAULT_TOTALS = {
@@ -48,34 +112,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     if not event:
         raise HTTPException(status_code=404, detail=f"Game {game_id} not found")
     
-    # Fetch simulation from monte_carlo_simulations (the actual simulation engine output)
-    # DETERMINISTIC: Select latest by created_at to handle multiple sims per game
-    sim_doc = db["monte_carlo_simulations"].find_one(
-        {"$or": [{"game_id": game_id}, {"event_id": game_id}]},
-        sort=[("created_at", -1)]  # Latest first
-    )
-    if not sim_doc:
-        raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
-    
-    # Extract sharp_analysis structure
-    sharp_analysis = sim_doc.get("sharp_analysis", {})
-    spread_data = sharp_analysis.get("spread", {})
-    total_data = sharp_analysis.get("total", {})
-    
-    # FAIL-CLOSED: Check for real spread data
-    has_real_spread = spread_data.get("model_spread") is not None
-    
-    # FAIL-CLOSED: Check for real total data (rcl_total or model_total)
-    rcl_total_value = sim_doc.get("rcl_total") or total_data.get("model_total")
-    has_real_total = rcl_total_value is not None
-    
-    if not has_real_spread:
-        raise HTTPException(
-            status_code=503,
-            detail=f"FAIL-CLOSED: No model_spread for {game_id}. Cannot classify spread."
-        )
-    
-    # Extract odds from event (OddsAPI format)
+    # Extract odds from event FIRST (needed for BLOCKED decisions)
     bookmakers = event.get("bookmakers", [])
     if not bookmakers:
         raise HTTPException(status_code=404, detail=f"No odds available for {game_id}")
@@ -136,6 +173,56 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             'odds': over_odds
         }
     }
+    
+    # NOW fetch simulation data (after we have market lines for BLOCKED responses)
+    sim_doc = db["monte_carlo_simulations"].find_one(
+        {"$or": [{"game_id": game_id}, {"event_id": game_id}]},
+        sort=[("created_at", -1)]  # Latest first
+    )
+    if not sim_doc:
+        raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
+    
+    # Extract sharp_analysis structure
+    sharp_analysis = sim_doc.get("sharp_analysis", {})
+    spread_data = sharp_analysis.get("spread", {})
+    total_data = sharp_analysis.get("total", {})
+    
+    # FAIL-CLOSED: Check for real spread data (per spec Section 1.4)
+    has_real_spread = spread_data.get("model_spread") is not None
+    
+    # FAIL-CLOSED: Check for real total data
+    rcl_total_value = sim_doc.get("rcl_total") or total_data.get("model_total")
+    has_real_total = rcl_total_value is not None
+    
+    # If missing spread data, return HTTP 200 with BLOCKED decision (NOT HTTP 503)
+    if not has_real_spread:
+        # Get market spread line for BLOCKED response
+        market_spread_line = spread_lines.get(home_id, {}).get('line', 0)
+        market_spread_odds = spread_lines.get(home_id, {}).get('odds', -110)
+        
+        spread_decision = create_blocked_decision(
+            league=league,
+            game_id=game_id,
+            odds_event_id=f'odds_event_{game_id}',
+            market_type=MarketType.SPREAD,
+            blocked_reason="sharp_analysis.spread.model_spread",
+            release_status=ReleaseStatus.BLOCKED_BY_MISSING_DATA,
+            market_line=market_spread_line,
+            market_odds=market_spread_odds
+        )
+        
+        # Build minimal response with BLOCKED spread
+        decisions = GameDecisions(
+            spread=spread_decision,
+            moneyline=None,
+            total=None,
+            home_team_name=home_team,
+            away_team_name=away_team,
+            inputs_hash="blocked",
+            decision_version=1,
+            computed_at=datetime.utcnow().isoformat()
+        )
+        return decisions
     
     # Build sim_result from MongoDB (using actual monte_carlo_simulations structure)
     # Field mappings based on actual document structure:

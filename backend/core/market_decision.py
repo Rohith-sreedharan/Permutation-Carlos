@@ -32,11 +32,13 @@ class Classification(str, Enum):
 
 
 class ReleaseStatus(str, Enum):
-    """Release eligibility per market"""
-    OFFICIAL = "OFFICIAL"  # Eligible for release + telegram
-    INFO_ONLY = "INFO_ONLY"  # Visible but not a pick
-    BLOCKED_BY_RISK = "BLOCKED_BY_RISK"  # Risk threshold exceeded
+    """Release eligibility per market - LOCKED per Section 9"""
+    APPROVED = "APPROVED"  # Eligible for release
     BLOCKED_BY_INTEGRITY = "BLOCKED_BY_INTEGRITY"  # Data integrity violation
+    BLOCKED_BY_ODDS_MISMATCH = "BLOCKED_BY_ODDS_MISMATCH"  # Odds alignment failed
+    BLOCKED_BY_STALE_DATA = "BLOCKED_BY_STALE_DATA"  # Simulation too old
+    BLOCKED_BY_MISSING_DATA = "BLOCKED_BY_MISSING_DATA"  # Required fields missing
+    PENDING_REVIEW = "PENDING_REVIEW"  # Manual review needed
 
 
 class PickSpread(BaseModel):
@@ -153,26 +155,26 @@ class MarketDecision(BaseModel):
     preferred_selection_id: str = Field(..., description="The bettable leg anchor (selection_id for preferred side)")
     market_selections: list[dict] = Field(..., description="All available selections (both sides of market)")
     
-    # Pick (team or side)
-    pick: Union[PickSpread, PickTotal] = Field(..., description="Pick team or side")
+    # Pick (team or side) - null if BLOCKED
+    pick: Optional[Union[PickSpread, PickTotal]] = Field(None, description="Pick team or side")
     
     # Market data
     market: Union[MarketSpread, MarketMoneyline, MarketTotal] = Field(..., description="Market line/odds")
     
-    # Model data
-    model: Union[ModelSpread, ModelMoneyline, ModelTotal] = Field(..., description="Model fair value")
+    # Model data - null if BLOCKED
+    model: Optional[Union[ModelSpread, ModelMoneyline, ModelTotal]] = Field(None, description="Model fair value")
     
-    # Fair selection (fair line for preferred selection)
-    fair_selection: dict = Field(..., description="Fair line/total expressed for preferred selection")
+    # Fair selection (fair line for preferred selection) - null if BLOCKED
+    fair_selection: Optional[dict] = Field(None, description="Fair line/total expressed for preferred selection")
     
-    # Probabilities
-    probabilities: Probabilities = Field(..., description="Model vs market probabilities")
+    # Probabilities - null if BLOCKED
+    probabilities: Optional[Probabilities] = Field(None, description="Model vs market probabilities")
     
-    # Edge assessment
-    edge: Edge = Field(..., description="Edge quantification")
+    # Edge assessment - null if BLOCKED
+    edge: Optional[Edge] = Field(None, description="Edge quantification")
     
     # Classification & status
-    classification: Classification = Field(..., description="Edge classification")
+    classification: Optional[Classification] = Field(None, description="Edge classification")
     release_status: ReleaseStatus = Field(..., description="Release eligibility")
     
     # Pre-computed UI text

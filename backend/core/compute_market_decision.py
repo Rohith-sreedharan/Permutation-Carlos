@@ -84,10 +84,36 @@ class MarketDecisionComputer:
             market_line = spread_lines.get(away_team_id, {}).get('line', 0)
             model_fair_line = -sim_spread_home  # Flip sign for away perspective
         
-        # 4. Calculate edge
+        # 4. VALIDATION GATES (per spec Section 2.2 - run BEFORE classification)
+        
+        # 4a. Directional Integrity Gate (per spec Section 3)
+        if not self._validate_directional_integrity_spread(sim_spread_home, home_cover_prob):
+            # Return BLOCKED decision
+            return self._create_blocked_spread_decision(
+                pick_team_id, pick_team_name, market_line,
+                spread_lines, game_competitors, home_team_id, inputs_hash,
+                blocked_reason="Directional integrity violation: spread direction conflicts with probability",
+                release_status=ReleaseStatus.BLOCKED_BY_INTEGRITY
+            )
+        
+        # 4b. Odds Alignment Gate (per spec Section 4)
+        # Check if there's a simulation line available in odds for comparison
+        # For now, skip this check - would need sim_line vs market_line comparison
+        
+        # 4c. Freshness Gate (per spec Section 5)
+        computed_at_str = sim_result.get('computed_at')
+        if computed_at_str and not self._validate_freshness(computed_at_str):
+            return self._create_blocked_spread_decision(
+                pick_team_id, pick_team_name, market_line,
+                spread_lines, game_competitors, home_team_id, inputs_hash,
+                blocked_reason="Simulation data stale (> 120 minutes old)",
+                release_status=ReleaseStatus.BLOCKED_BY_STALE_DATA
+            )
+        
+        # 5. Calculate edge
         edge_points = abs(market_line - model_fair_line)
         
-        # 5. Classify
+        # 6. Classify
         classification = self._classify_spread(edge_points, model_prob, config)
         
         # 6. Generate reasons
@@ -347,14 +373,14 @@ class MarketDecisionComputer:
         return [f"{side} shows value"]
     
     def _determine_release_status(self, classification: Classification, risk: Risk) -> ReleaseStatus:
-        """Determine if pick is official or info-only"""
-        if classification == Classification.MARKET_ALIGNED or classification == Classification.NO_ACTION:
-            return ReleaseStatus.INFO_ONLY
+        """
+        Determine release status - per spec Section 9
         
-        if risk.volatility_flag == "HIGH":
-            return ReleaseStatus.BLOCKED_BY_RISK
-        
-        return ReleaseStatus.OFFICIAL if classification == Classification.EDGE else ReleaseStatus.INFO_ONLY
+        APPROVED if all validations pass (regardless of classification).
+        BLOCKED_BY_* set by validation gates or fail-closed.
+        """
+        # Default to APPROVED - validation gates will override if needed
+        return ReleaseStatus.APPROVED
     
     def _grade_edge(self, edge_points: float) -> Optional[Literal["S", "A", "B", "C", "D"]]:
         """Assign grade to edge"""
@@ -382,3 +408,117 @@ class MarketDecisionComputer:
         """Compute deterministic hash of inputs"""
         hash_input = f"{odds_snapshot.get('timestamp')}{sim_result.get('simulation_id')}{config.get('profile')}"
         return hashlib.md5(hash_input.encode()).hexdigest()
+    
+    def _validate_directional_integrity_spread(self, sim_spread_home: float, home_cover_prob: float) -> bool:
+        """
+        Validate directional integrity per spec Section 3.
+        
+        If median_margin > 0 → home_win_prob > 0.5
+        If median_margin < 0 → home_win_prob < 0.5
+        If median_margin = 0 → home_win_prob ≈ 0.5 ±0.02
+        """
+        if sim_spread_home > 0:
+            return home_cover_prob > 0.5
+        elif sim_spread_home < 0:
+            return home_cover_prob < 0.5
+        else:  # sim_spread_home == 0
+            return abs(home_cover_prob - 0.5) <= 0.02
+    
+    def _validate_freshness(self, computed_at_str: str, max_age_minutes: int = 120) -> bool:
+        """
+        Validate freshness per spec Section 5.
+        
+        Max age = 120 minutes
+        """
+        try:
+            from dateutil import parser
+            computed_at = parser.isoparse(computed_at_str)
+            now = datetime.utcnow()
+            # Make computed_at timezone-naive if it has timezone info
+            if computed_at.tzinfo:
+                computed_at = computed_at.replace(tzinfo=None)
+            age_minutes = (now - computed_at).total_seconds() / 60
+            return age_minutes <= max_age_minutes
+        except:
+            # If we can't parse the timestamp, fail safe and block
+            return False
+    
+    def _create_blocked_spread_decision(
+        self,
+        pick_team_id: str,
+        pick_team_name: str,
+        market_line: float,
+        spread_lines: Dict,
+        game_competitors: Dict[str, str],
+        home_team_id: str,
+        inputs_hash: str,
+        blocked_reason: str,
+        release_status: ReleaseStatus
+    ) -> MarketDecision:
+        """
+        Create a BLOCKED spread decision per spec Section 1.4.
+        
+        When BLOCKED:
+        - classification = null
+        - reasons = []
+        - pick = null (but we set it for context)
+        - edge = null
+        - probabilities = null
+        - model = null
+        - fair_selection = null
+        - risk.blocked_reason = explicit reason
+        """
+        market_odds = spread_lines.get(pick_team_id, {}).get('odds', -110)
+        
+        market_selections = [
+            {
+                "selection_id": f"{self.game_id}_spread_{home_team_id}",
+                "team_id": home_team_id,
+                "team_name": game_competitors[home_team_id],
+                "line": spread_lines.get(home_team_id, {}).get('line', 0),
+                "odds": spread_lines.get(home_team_id, {}).get('odds', -110)
+            },
+            {
+                "selection_id": f"{self.game_id}_spread_{list(game_competitors.keys())[1]}",
+                "team_id": list(game_competitors.keys())[1],
+                "team_name": game_competitors[list(game_competitors.keys())[1]],
+                "line": spread_lines.get(list(game_competitors.keys())[1], {}).get('line', 0),
+                "odds": spread_lines.get(list(game_competitors.keys())[1], {}).get('odds', -110)
+            }
+        ]
+        
+        return MarketDecision(
+            league=self.league,
+            game_id=self.game_id,
+            odds_event_id=self.odds_event_id,
+            market_type=MarketType.SPREAD,
+            decision_id=str(uuid.uuid4()),
+            selection_id=f"{self.game_id}_spread_{pick_team_id}",
+            preferred_selection_id=f"{self.game_id}_spread_{pick_team_id}",
+            market_selections=market_selections,
+            pick=None,  # null per spec
+            market=MarketSpread(line=market_line, odds=market_odds),
+            model=None,  # null per spec
+            fair_selection=None,  # null per spec
+            probabilities=None,  # null per spec
+            edge=None,  # null per spec
+            classification=None,  # null per spec
+            release_status=release_status,
+            reasons=[],  # empty per spec
+            risk=Risk(
+                volatility_flag=None,
+                injury_impact=None,
+                clv_forecast=None,
+                blocked_reason=blocked_reason
+            ),
+            debug=Debug(
+                inputs_hash=inputs_hash,
+                odds_timestamp=datetime.utcnow().isoformat(),
+                sim_run_id="blocked",
+                trace_id=self.bundle_trace_id,
+                config_profile=None,
+                decision_version=self.bundle_version,
+                computed_at=self.bundle_computed_at
+            ),
+            validator_failures=[]
+        )
