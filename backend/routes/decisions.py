@@ -244,15 +244,21 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         'simulation_id': sim_doc.get("simulation_id", f"sim_{game_id}"),
         # Spread: model_spread is from sharp_analysis.spread.model_spread
         'model_spread_home_perspective': spread_data.get("model_spread", 0),
+        # Market spread at simulation time (for odds alignment gate)
+        'simulation_market_spread_home': spread_data.get("market_spread") or sim_doc.get("market_spread"),
         # Cover probability: team_a_win_probability (team_a = home team)
         # This is a critical field for classifications
         'home_cover_probability': sim_doc.get("team_a_win_probability") or sim_doc.get("win_probability") or 0.5,
         # Total: use rcl_total_value computed earlier (fail-closed if None)
         'rcl_total': rcl_total_value if rcl_total_value is not None else default_total,
+        # Market total at simulation time
+        'simulation_market_total': total_data.get("market_total") or sim_doc.get("market_total"),
         # Over probability from top-level
         'over_probability': sim_doc.get("over_probability") or 0.5,
         'volatility': sim_doc.get("volatility_label") or sim_doc.get("mode") or "MODERATE",
-        'total_injury_impact': injury_impact
+        'total_injury_impact': injury_impact,
+        # Timestamp for freshness check
+        'computed_at': sim_doc.get("created_at") or sim_doc.get("computed_at")
     }
     
     config = {

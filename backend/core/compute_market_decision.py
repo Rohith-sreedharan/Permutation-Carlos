@@ -66,8 +66,9 @@ class MarketDecisionComputer:
         sim_spread_home = sim_result.get('model_spread_home_perspective', 0)
         home_cover_prob = sim_result.get('home_cover_probability', 0.5)
         away_cover_prob = 1 - home_cover_prob
-        
-        # 3. Determine pick (highest cover probability)
+                # Compute inputs hash early (needed for BLOCKED decisions)
+        inputs_hash = self._compute_inputs_hash(odds_snapshot, sim_result, config)
+                # 3. Determine pick (highest cover probability)
         home_team_id = list(game_competitors.keys())[0]
         away_team_id = list(game_competitors.keys())[1]
         
@@ -97,8 +98,43 @@ class MarketDecisionComputer:
             )
         
         # 4b. Odds Alignment Gate (per spec Section 4)
-        # Check if there's a simulation line available in odds for comparison
-        # For now, skip this check - would need sim_line vs market_line comparison
+        simulation_market_spread = sim_result.get('simulation_market_spread_home')
+        if simulation_market_spread is not None:
+            # Get current market line for home team (same perspective as simulation)
+            current_market_line_home = spread_lines.get(home_team_id, {}).get('line', 0)
+            
+            # REQUIREMENT 1: Absolute line delta logic
+            line_delta = abs(simulation_market_spread - current_market_line_home)
+            
+            # REQUIREMENT 2: Pick'em symmetry check
+            is_pickem = abs(current_market_line_home) < 0.01  # Treat as 0
+            
+            if is_pickem:
+                # Check implied probability delta
+                home_odds = spread_lines.get(home_team_id, {}).get('odds', -110)
+                away_odds = spread_lines.get(away_team_id, {}).get('odds', -110)
+                
+                implied_prob_home = self._get_implied_prob(home_odds)
+                implied_prob_away = self._get_implied_prob(away_odds)
+                prob_delta = abs(implied_prob_home - implied_prob_away)
+                
+                # Boundary: 0.0200 = PASS, 0.02001 = BLOCK
+                if prob_delta > 0.0200:
+                    return self._create_blocked_spread_decision(
+                        pick_team_id, pick_team_name, market_line,
+                        spread_lines, game_competitors, home_team_id, inputs_hash,
+                        blocked_reason=f"Pick'em symmetry violation: prob_delta={prob_delta:.4f} > 0.0200",
+                        release_status=ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+                    )
+            else:
+                # Boundary: 0.25 = PASS, 0.25001 = BLOCK
+                if line_delta > 0.25:
+                    return self._create_blocked_spread_decision(
+                        pick_team_id, pick_team_name, market_line,
+                        spread_lines, game_competitors, home_team_id, inputs_hash,
+                        blocked_reason=f"Odds movement: line_delta={line_delta:.4f} > 0.25 (sim={simulation_market_spread}, current={current_market_line_home})",
+                        release_status=ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+                    )
         
         # 4c. Freshness Gate (per spec Section 5)
         computed_at_str = sim_result.get('computed_at')
@@ -130,11 +166,10 @@ class MarketDecisionComputer:
             blocked_reason=None
         )
         
-        # 8. Release status (default OFFICIAL if classification is EDGE)
+        # 8. Release status (default APPROVED if validations pass)
         release_status = self._determine_release_status(classification, risk)
         
-        # 9. Build decision with canonical fields
-        inputs_hash = self._compute_inputs_hash(odds_snapshot, sim_result, config)
+        # 9. Build decision with canonical fields (inputs_hash already computed)
         selection_id = f"{self.game_id}_spread_{pick_team_id}"
         
         # Build market_selections (both sides of the spread)
