@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchEventsFromDB, getPredictions } from '../services/api';
+import { fetchEventsFromDB, getPredictions, API_BASE_URL } from '../services/api';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
 import EventListItem from './EventListItem';

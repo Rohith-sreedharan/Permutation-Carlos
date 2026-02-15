@@ -1,5 +1,5 @@
 import React from 'react';
-import DecisionCommandCenter from './components/DecisionCommandCenter';
+import MainLayout from './components/MainLayout';
 
 export default function App() {
   const handleAuthError = () => {
@@ -7,5 +7,5 @@ export default function App() {
     // In production, could redirect to login or show auth modal
   };
 
-  return <DecisionCommandCenter onAuthError={handleAuthError} />;
+  return <MainLayout onAuthError={handleAuthError} />;
 }
