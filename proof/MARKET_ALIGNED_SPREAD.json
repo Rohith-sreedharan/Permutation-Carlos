@@ -1,0 +1,72 @@
+{
+  "league": "NCAAB",
+  "game_id": "3fdae7883c7eb0b4fe00927d043d69ba",
+  "odds_event_id": "odds_event_3fdae7883c7eb0b4fe00927d043d69ba",
+  "market_type": "spread",
+  "decision_id": "4373929d-762d-4c14-8d2c-593c41b0e4d8",
+  "selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_spread_uic_flames",
+  "preferred_selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_spread_uic_flames",
+  "market_selections": [
+    {
+      "selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_spread_uic_flames",
+      "team_id": "uic_flames",
+      "team_name": "UIC Flames",
+      "line": 5.5,
+      "odds": -135
+    },
+    {
+      "selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_spread_northern_iowa_panthers",
+      "team_id": "northern_iowa_panthers",
+      "team_name": "Northern Iowa Panthers",
+      "line": -5.5,
+      "odds": 102
+    }
+  ],
+  "pick": {
+    "team_id": "uic_flames",
+    "team_name": "UIC Flames",
+    "side": null
+  },
+  "market": {
+    "line": 5.5,
+    "odds": -135
+  },
+  "model": {
+    "fair_line": 4.500334742671009
+  },
+  "fair_selection": {
+    "line": 4.500334742671009,
+    "team_id": "uic_flames"
+  },
+  "probabilities": {
+    "model_prob": 0.5782,
+    "market_implied_prob": 0.574468085106383
+  },
+  "edge": {
+    "edge_points": 0.9996652573289913,
+    "edge_ev": null,
+    "edge_grade": "D"
+  },
+  "classification": "MARKET_ALIGNED",
+  "release_status": "INFO_ONLY",
+  "reasons": [
+    "Model and market consensus detected",
+    "No significant value detected"
+  ],
+  "risk": {
+    "volatility_flag": "full",
+    "injury_impact": 0.0,
+    "clv_forecast": null,
+    "blocked_reason": null
+  },
+  "debug": {
+    "inputs_hash": "4703829d3dbfdbc1bee9eb2d84ba48e3",
+    "odds_timestamp": "2026-02-11T17:02:44.152944",
+    "sim_run_id": "sim_3fdae7883c7eb0b4fe00927d043d69ba_20251217211557",
+    "trace_id": "ed65a860-d4d6-45bd-897d-f3d67a82b94c",
+    "config_profile": "balanced",
+    "decision_version": 1,
+    "computed_at": "2026-02-11T17:02:44.152982"
+  },
+  "validator_failures": []
+}

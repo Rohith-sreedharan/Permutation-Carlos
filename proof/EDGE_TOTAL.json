@@ -1,0 +1,67 @@
+{
+  "league": "NCAAB",
+  "game_id": "3fdae7883c7eb0b4fe00927d043d69ba",
+  "odds_event_id": "odds_event_3fdae7883c7eb0b4fe00927d043d69ba",
+  "market_type": "total",
+  "decision_id": "5ea0ff7b-4abb-4cf9-9530-fbee9cddf7d4",
+  "selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_total_over",
+  "preferred_selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_total_over",
+  "market_selections": [
+    {
+      "selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_total_over",
+      "side": "OVER",
+      "line": 145.0,
+      "odds": -109
+    },
+    {
+      "selection_id": "3fdae7883c7eb0b4fe00927d043d69ba_total_under",
+      "side": "UNDER",
+      "line": 145.0,
+      "odds": -109
+    }
+  ],
+  "pick": {
+    "side": "OVER"
+  },
+  "market": {
+    "line": 145.0,
+    "odds": -109
+  },
+  "model": {
+    "fair_total": 147.75
+  },
+  "fair_selection": {
+    "total": 147.75,
+    "side": "OVER"
+  },
+  "probabilities": {
+    "model_prob": 0.6,
+    "market_implied_prob": 0.5215311004784688
+  },
+  "edge": {
+    "edge_points": 2.75,
+    "edge_ev": null,
+    "edge_grade": "B"
+  },
+  "classification": "EDGE",
+  "release_status": "OFFICIAL",
+  "reasons": [
+    "Total misprice: 2.8 points favoring OVER"
+  ],
+  "risk": {
+    "volatility_flag": "full",
+    "injury_impact": 0.0,
+    "clv_forecast": null,
+    "blocked_reason": null
+  },
+  "debug": {
+    "inputs_hash": "4703829d3dbfdbc1bee9eb2d84ba48e3",
+    "odds_timestamp": "2026-02-11T17:02:44.152944",
+    "sim_run_id": "sim_3fdae7883c7eb0b4fe00927d043d69ba_20251217211557",
+    "trace_id": "ed65a860-d4d6-45bd-897d-f3d67a82b94c",
+    "config_profile": "balanced",
+    "decision_version": 1,
+    "computed_at": "2026-02-11T17:02:44.152982"
+  },
+  "validator_failures": []
+}

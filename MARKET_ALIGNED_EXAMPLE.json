@@ -1,0 +1,149 @@
+{
+  "spread": {
+    "league": "NBA",
+    "game_id": "55ce3994bdb669f780eb1021014461cf",
+    "odds_event_id": "odds_event_55ce3994bdb669f780eb1021014461cf",
+    "market_type": "spread",
+    "decision_id": "de1b797e-6e8d-4237-bd14-62af0ecec6d5",
+    "selection_id": "55ce3994bdb669f780eb1021014461cf_spread_cleveland_cavaliers",
+    "preferred_selection_id": "55ce3994bdb669f780eb1021014461cf_spread_cleveland_cavaliers",
+    "market_selections": [
+      {
+        "selection_id": "55ce3994bdb669f780eb1021014461cf_spread_denver_nuggets",
+        "team_id": "denver_nuggets",
+        "team_name": "Denver Nuggets",
+        "line": -2.5,
+        "odds": -111
+      },
+      {
+        "selection_id": "55ce3994bdb669f780eb1021014461cf_spread_cleveland_cavaliers",
+        "team_id": "cleveland_cavaliers",
+        "team_name": "Cleveland Cavaliers",
+        "line": 2.5,
+        "odds": -125
+      }
+    ],
+    "pick": {
+      "team_id": "cleveland_cavaliers",
+      "team_name": "Cleveland Cavaliers",
+      "side": null
+    },
+    "market": {
+      "line": 2.5,
+      "odds": -125
+    },
+    "model": {
+      "fair_line": 0.0
+    },
+    "fair_selection": {
+      "line": 0,
+      "team_id": "cleveland_cavaliers"
+    },
+    "probabilities": {
+      "model_prob": 0.5,
+      "market_implied_prob": 0.5555555555555556
+    },
+    "edge": {
+      "edge_points": 2.5,
+      "edge_ev": null,
+      "edge_grade": "B"
+    },
+    "classification": "LEAN",
+    "release_status": "INFO_ONLY",
+    "reasons": [
+      "Spread misprice detected: 2.5 point edge"
+    ],
+    "risk": {
+      "volatility_flag": "MODERATE",
+      "injury_impact": 0.0,
+      "clv_forecast": null,
+      "blocked_reason": null
+    },
+    "debug": {
+      "inputs_hash": "09835adc02701ee2007b5666b6759857",
+      "odds_timestamp": "2026-02-10T17:22:11.235436",
+      "sim_run_id": "sim_55ce3994bdb669f780eb1021014461cf",
+      "trace_id": "27b46a07-4a1f-4748-be9c-290e41550f08",
+      "config_profile": "balanced",
+      "decision_version": 1,
+      "computed_at": "2026-02-10T17:22:11.235469"
+    },
+    "validator_failures": []
+  },
+  "moneyline": null,
+  "total": {
+    "league": "NBA",
+    "game_id": "55ce3994bdb669f780eb1021014461cf",
+    "odds_event_id": "odds_event_55ce3994bdb669f780eb1021014461cf",
+    "market_type": "total",
+    "decision_id": "5616f983-b7d3-43ee-9a82-e3af671a8aba",
+    "selection_id": "55ce3994bdb669f780eb1021014461cf_total_under",
+    "preferred_selection_id": "55ce3994bdb669f780eb1021014461cf_total_under",
+    "market_selections": [
+      {
+        "selection_id": "55ce3994bdb669f780eb1021014461cf_total_over",
+        "side": "OVER",
+        "line": 220,
+        "odds": -109
+      },
+      {
+        "selection_id": "55ce3994bdb669f780eb1021014461cf_total_under",
+        "side": "UNDER",
+        "line": 220,
+        "odds": -109
+      }
+    ],
+    "pick": {
+      "side": "UNDER"
+    },
+    "market": {
+      "line": 220.0,
+      "odds": -109
+    },
+    "model": {
+      "fair_total": 220.0
+    },
+    "fair_selection": {
+      "total": 220,
+      "side": "UNDER"
+    },
+    "probabilities": {
+      "model_prob": 0.5,
+      "market_implied_prob": 0.5215311004784688
+    },
+    "edge": {
+      "edge_points": 0.0,
+      "edge_ev": null,
+      "edge_grade": "D"
+    },
+    "classification": "MARKET_ALIGNED",
+    "release_status": "BLOCKED_BY_INTEGRITY",
+    "reasons": [
+      "Model and market consensus on total",
+      "No directional edge"
+    ],
+    "risk": {
+      "volatility_flag": "MODERATE",
+      "injury_impact": 0.0,
+      "clv_forecast": null,
+      "blocked_reason": null
+    },
+    "debug": {
+      "inputs_hash": "09835adc02701ee2007b5666b6759857",
+      "odds_timestamp": "2026-02-10T17:22:11.235436",
+      "sim_run_id": "sim_55ce3994bdb669f780eb1021014461cf",
+      "trace_id": "27b46a07-4a1f-4748-be9c-290e41550f08",
+      "config_profile": "balanced",
+      "decision_version": 1,
+      "computed_at": "2026-02-10T17:22:11.235469"
+    },
+    "validator_failures": [
+      "MARKET_ALIGNED cannot claim misprice in reasons: 'No directional edge'"
+    ]
+  },
+  "home_team_name": "Denver Nuggets",
+  "away_team_name": "Cleveland Cavaliers",
+  "inputs_hash": "09835adc02701ee2007b5666b6759857",
+  "decision_version": 1,
+  "computed_at": "2026-02-10T17:22:11.235927"
+}

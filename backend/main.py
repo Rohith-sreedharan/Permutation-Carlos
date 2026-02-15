@@ -120,6 +120,7 @@ from routes.market_state_routes import router as market_state_router
 from routes.parlay_architect_routes import router as parlay_architect_router
 from routes.calibration_routes import router as calibration_router  # NEW: Logging & Calibration System
 from routes.meta import router as meta_router  # NEW: Build/version metadata endpoint
+from routes.decisions import router as decisions_router  # NEW: Unified MarketDecision endpoint
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -173,6 +174,7 @@ app.include_router(daily_preview_router)  # Daily Preview for marketing conversi
 app.include_router(market_state_router)  # Market State Registry - Single source of truth
 app.include_router(parlay_architect_router)  # NEW: Parlay Architect - Tiered pool system
 app.include_router(calibration_router)  # NEW: Logging & Calibration System - Exit-grade dataset
+app.include_router(decisions_router, prefix="/api", tags=["decisions"])  # NEW: Unified MarketDecision endpoint
 
 
 @app.websocket("/ws")

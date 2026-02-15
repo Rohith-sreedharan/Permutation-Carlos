@@ -1,12 +1,31 @@
 
 import type { Event, Prediction, AffiliateStat, Referral, ChatMessage, TopAnalyst, User, Bet, AuthResponse, UserCredentials, UserRegistration, MonteCarloSimulation, CLVDataPoint, CLVStats, PerformanceMetrics } from '../types';
 
-// Use environment variable or fall back to localhost for development
-export const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  window.location.hostname === 'localhost' 
-    ? 'http://localhost:8000' 
-    : `${window.location.protocol}//${window.location.host}`
-);
+// EXPLICIT PRODUCTION/DEV ROUTING (no guessing)
+export const API_BASE_URL = (() => {
+  const viteEnv = import.meta.env.VITE_API_URL;
+  const hostname = window.location.hostname;
+  
+  // If env var set, use it (for .env.local dev override)
+  if (viteEnv) {
+    return viteEnv;
+  }
+  
+  // EXPLICIT: beta.beatvegas.app → production API
+  if (hostname.includes('beta.beatvegas.app') || hostname.includes('beatvegas.app')) {
+    return 'https://beta.beatvegas.app';
+  }
+  
+  // EXPLICIT: localhost → local API
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  
+  // DEFAULT: same-origin (production catchall)
+  return `${window.location.protocol}//${window.location.host}`;
+})();
+
+console.log('[API] Using API_BASE_URL:', API_BASE_URL);
 
 // --- Safe JSON Parser ---
 /**

@@ -1,0 +1,153 @@
+{
+  "spread": {
+    "league": "NCAAB",
+    "game_id": "7030f28cdeb54fbd95dfc13725bb710f",
+    "odds_event_id": "odds_event_7030f28cdeb54fbd95dfc13725bb710f",
+    "market_type": "spread",
+    "decision_id": "928e2613-691a-4eef-a25e-394fdf9a89f0",
+    "selection_id": "7030f28cdeb54fbd95dfc13725bb710f_spread_arizona_wildcats",
+    "preferred_selection_id": "7030f28cdeb54fbd95dfc13725bb710f_spread_arizona_wildcats",
+    "market_selections": [
+      {
+        "selection_id": "7030f28cdeb54fbd95dfc13725bb710f_spread_kansas_jayhawks",
+        "team_id": "kansas_jayhawks",
+        "team_name": "Kansas Jayhawks",
+        "line": 0,
+        "odds": -110
+      },
+      {
+        "selection_id": "7030f28cdeb54fbd95dfc13725bb710f_spread_arizona_wildcats",
+        "team_id": "arizona_wildcats",
+        "team_name": "Arizona Wildcats",
+        "line": 0,
+        "odds": -110
+      }
+    ],
+    "pick": {
+      "team_id": "arizona_wildcats",
+      "team_name": "Arizona Wildcats",
+      "side": null
+    },
+    "market": {
+      "line": 0.0,
+      "odds": null
+    },
+    "model": {
+      "fair_line": 0.0
+    },
+    "fair_selection": {
+      "line": 0,
+      "team_id": "arizona_wildcats"
+    },
+    "probabilities": {
+      "model_prob": 0.5,
+      "market_implied_prob": 0.5238095238095238
+    },
+    "edge": {
+      "edge_points": 0.0,
+      "edge_ev": null,
+      "edge_grade": "D"
+    },
+    "classification": "MARKET_ALIGNED",
+    "release_status": "BLOCKED_BY_INTEGRITY",
+    "reasons": [
+      "Model and market consensus detected",
+      "No quantitative edge identified"
+    ],
+    "risk": {
+      "volatility_flag": "MODERATE",
+      "injury_impact": 0.0,
+      "clv_forecast": null,
+      "blocked_reason": null
+    },
+    "debug": {
+      "inputs_hash": "d7fb6f6a13e1f239be19574c0ea703c2",
+      "odds_timestamp": "2026-02-10T01:47:11.128925",
+      "sim_run_id": "sim_7030f28cdeb54fbd95dfc13725bb710f",
+      "trace_id": "2ce11b25-3e24-4f61-ab9c-b5f4e54b73be",
+      "config_profile": "balanced",
+      "decision_version": 1,
+      "computed_at": "2026-02-10T01:47:11.128952"
+    },
+    "validator_failures": [
+      "MARKET_ALIGNED cannot claim misprice in reasons: 'No quantitative edge identified'",
+      "Spread market line cannot be 0"
+    ]
+  },
+  "moneyline": null,
+  "total": {
+    "league": "NCAAB",
+    "game_id": "7030f28cdeb54fbd95dfc13725bb710f",
+    "odds_event_id": "odds_event_7030f28cdeb54fbd95dfc13725bb710f",
+    "market_type": "total",
+    "decision_id": "07367b47-998f-4d87-9320-8cac8b7e5bcf",
+    "selection_id": "7030f28cdeb54fbd95dfc13725bb710f_total_under",
+    "preferred_selection_id": "7030f28cdeb54fbd95dfc13725bb710f_total_under",
+    "market_selections": [
+      {
+        "selection_id": "7030f28cdeb54fbd95dfc13725bb710f_total_over",
+        "side": "OVER",
+        "line": 220,
+        "odds": -109
+      },
+      {
+        "selection_id": "7030f28cdeb54fbd95dfc13725bb710f_total_under",
+        "side": "UNDER",
+        "line": 220,
+        "odds": -109
+      }
+    ],
+    "pick": {
+      "side": "UNDER"
+    },
+    "market": {
+      "line": 220.0,
+      "odds": -109
+    },
+    "model": {
+      "fair_total": 220.0
+    },
+    "fair_selection": {
+      "total": 220,
+      "side": "UNDER"
+    },
+    "probabilities": {
+      "model_prob": 0.5,
+      "market_implied_prob": 0.5215311004784688
+    },
+    "edge": {
+      "edge_points": 0.0,
+      "edge_ev": null,
+      "edge_grade": "D"
+    },
+    "classification": "MARKET_ALIGNED",
+    "release_status": "BLOCKED_BY_INTEGRITY",
+    "reasons": [
+      "Model and market consensus on total",
+      "No directional edge"
+    ],
+    "risk": {
+      "volatility_flag": "MODERATE",
+      "injury_impact": 0.0,
+      "clv_forecast": null,
+      "blocked_reason": null
+    },
+    "debug": {
+      "inputs_hash": "d7fb6f6a13e1f239be19574c0ea703c2",
+      "odds_timestamp": "2026-02-10T01:47:11.128925",
+      "sim_run_id": "sim_7030f28cdeb54fbd95dfc13725bb710f",
+      "trace_id": "2ce11b25-3e24-4f61-ab9c-b5f4e54b73be",
+      "config_profile": "balanced",
+      "decision_version": 1,
+      "computed_at": "2026-02-10T01:47:11.128952"
+    },
+    "validator_failures": [
+      "MARKET_ALIGNED cannot claim misprice in reasons: 'No directional edge'"
+    ]
+  },
+  "home_team_name": "Kansas Jayhawks",
+  "away_team_name": "Arizona Wildcats",
+  "inputs_hash": "d7fb6f6a13e1f239be19574c0ea703c2",
+  "decision_version": 1,
+  "computed_at": "2026-02-10T01:47:11.130011"
+}
