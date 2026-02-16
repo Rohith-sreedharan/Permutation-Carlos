@@ -17,6 +17,7 @@ from core.market_decision import (
 from core.compute_market_decision import MarketDecisionComputer
 from datetime import datetime
 from db.mongo import db
+from db.decision_audit_logger import get_decision_audit_logger
 import uuid
 
 router = APIRouter()
@@ -296,4 +297,71 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         computed_at=datetime.utcnow().isoformat()
     )
     
+    # ═══════════════════════════════════════════════════════════════════
+    # AUDIT LOGGING (Section 14 - ENGINE LOCK Specification)
+    # ═══════════════════════════════════════════════════════════════════
+    # CRITICAL: Audit write MUST succeed - HTTP 500 if fails
+    # This is infrastructure hardening, not engine patching
+    
+    audit_logger = get_decision_audit_logger()
+    
+    # Log spread decision
+    if spread_decision:
+        spread_audit_success = audit_logger.log_decision(
+            event_id=game_id,
+            inputs_hash=spread_decision.debug.inputs_hash,
+            decision_version=str(spread_decision.debug.decision_version),
+            classification=spread_decision.classification.value if spread_decision.classification else None,
+            release_status=spread_decision.release_status.value,
+            edge_points=spread_decision.edge.edge_points if spread_decision.edge else None,
+            model_prob=spread_decision.probabilities.model_prob if spread_decision.probabilities else None,
+            trace_id=spread_decision.debug.trace_id,
+            engine_version="2.0.0",
+            market_type="spread",
+            league=league,
+            additional_metadata={
+                "home_team": home_team,
+                "away_team": away_team,
+                "market_line": spread_decision.market.line if spread_decision.market else None,
+                "market_odds": spread_decision.market.odds if spread_decision.market else None
+            }
+        )
+        
+        if not spread_audit_success:
+            # Per Section 14: HTTP 500 if audit log write fails
+            raise HTTPException(
+                status_code=500,
+                detail="Decision audit log write failed - institutional compliance violation"
+            )
+    
+    # Log total decision (if computed)
+    if total_decision:
+        total_audit_success = audit_logger.log_decision(
+            event_id=game_id,
+            inputs_hash=total_decision.debug.inputs_hash,
+            decision_version=str(total_decision.debug.decision_version),
+            classification=total_decision.classification.value if total_decision.classification else None,
+            release_status=total_decision.release_status.value,
+            edge_points=total_decision.edge.edge_points if total_decision.edge else None,
+            model_prob=total_decision.probabilities.model_prob if total_decision.probabilities else None,
+            trace_id=total_decision.debug.trace_id,
+            engine_version="2.0.0",
+            market_type="total",
+            league=league,
+            additional_metadata={
+                "home_team": home_team,
+                "away_team": away_team,
+                "market_line": total_decision.market.line if total_decision.market else None,
+                "market_odds": total_decision.market.odds if total_decision.market else None
+            }
+        )
+        
+        if not total_audit_success:
+            # Per Section 14: HTTP 500 if audit log write fails
+            raise HTTPException(
+                status_code=500,
+                detail="Decision audit log write failed - institutional compliance violation"
+            )
+    
+    # Audit logging complete - return decision
     return decisions
