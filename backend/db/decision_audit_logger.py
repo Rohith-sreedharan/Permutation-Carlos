@@ -199,13 +199,15 @@ class DecisionAuditLogger:
     
     def query_by_trace_id(
         self,
-        trace_id: str
+        trace_id: str,
+        limit: int = 100
     ) -> list:
         """
         Query audit logs by trace ID (for request debugging).
         
         Args:
             trace_id: Request trace identifier
+            limit: Maximum records to return
         
         Returns:
             List of audit log entries for this trace
@@ -213,7 +215,7 @@ class DecisionAuditLogger:
         try:
             cursor = self.collection.find(
                 {"trace_id": trace_id}
-            ).sort("timestamp", -1)
+            ).sort("timestamp", -1).limit(limit)
             
             return list(cursor)
         except PyMongoError as e:
@@ -223,7 +225,8 @@ class DecisionAuditLogger:
     def get_decision_history(
         self,
         event_id: str,
-        inputs_hash: str
+        inputs_hash: str,
+        limit: int = 100
     ) -> list:
         """
         Get decision history for identical inputs.
@@ -234,6 +237,7 @@ class DecisionAuditLogger:
         Args:
             event_id: Event identifier
             inputs_hash: Hash of decision inputs
+            limit: Maximum records to return
         
         Returns:
             List of decisions with matching event_id + inputs_hash
@@ -242,7 +246,7 @@ class DecisionAuditLogger:
             cursor = self.collection.find({
                 "event_id": event_id,
                 "inputs_hash": inputs_hash
-            }).sort("timestamp", -1)
+            }).sort("timestamp", -1).limit(limit)
             
             return list(cursor)
         except PyMongoError as e:
