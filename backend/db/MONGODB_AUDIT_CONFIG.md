@@ -114,6 +114,8 @@ AUDIT_MONGO_URI=mongodb://audit_logger:<PASSWORD>@159.203.122.145:27017/beatvega
 MONGO_URI=mongodb://<admin_user>:<password>@159.203.122.145:27017/beatvegas?authSource=beatvegas
 ```
 
+**Note:** If using virtual environment, use `.venv` as standard Python convention
+
 ### Update DecisionAuditLogger
 
 **backend/db/decision_audit_logger.py:**
