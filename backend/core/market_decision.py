@@ -113,8 +113,9 @@ class Debug(BaseModel):
     sim_run_id: str = Field(..., description="Simulation run identifier")
     trace_id: str = Field(..., description="Trace ID for audit/debugging (UUID)")
     config_profile: Optional[str] = Field(None, description="Config used (balanced/high-vol/etc)")
-    decision_version: int = Field(..., description="Monotonic version for freshness checking (ATOMIC across all markets)")
+    decision_version: str = Field(..., description="SEMVER version (MAJOR.MINOR.PATCH) for decision schema/logic (ATOMIC across all markets)")
     computed_at: str = Field(..., description="ISO timestamp when decision was computed")
+    git_commit_sha: Optional[str] = Field(None, description="Git commit SHA for version traceability (Section 15)")
 
 
 class MarketDecision(BaseModel):

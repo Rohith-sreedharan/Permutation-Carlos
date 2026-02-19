@@ -88,6 +88,7 @@ class DecisionAuditLogger:
         engine_version: str,
         market_type: str,
         league: str,
+        git_commit_sha: Optional[str] = None,
         additional_metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
@@ -98,7 +99,7 @@ class DecisionAuditLogger:
         Args:
             event_id: Unique event identifier
             inputs_hash: SHA-256 hash of decision inputs (for determinism)
-            decision_version: Semantic version of decision logic
+            decision_version: Semantic version of decision logic (MAJOR.MINOR.PATCH)
             classification: EDGE | LEAN | MARKET_ALIGNED | null (if BLOCKED)
             release_status: APPROVED | BLOCKED_* | PENDING_REVIEW
             edge_points: Calculated edge (null if BLOCKED)
@@ -107,6 +108,7 @@ class DecisionAuditLogger:
             engine_version: Engine version string (e.g., "2.0.0")
             market_type: spread | total | moneyline
             league: NBA | NCAAB | NFL | etc
+            git_commit_sha: Git commit SHA for version traceability (Section 15)
             additional_metadata: Optional extra fields for context
         
         Returns:
@@ -129,6 +131,7 @@ class DecisionAuditLogger:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "engine_version": engine_version,
                 "trace_id": trace_id,
+                "git_commit_sha": git_commit_sha,  # Section 15: Version traceability
                 
                 # Additional context for forensics
                 "market_type": market_type,

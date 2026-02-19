@@ -319,6 +319,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             engine_version="2.0.0",
             market_type="spread",
             league=league,
+            git_commit_sha=spread_decision.debug.git_commit_sha,  # Section 15: Version traceability
             additional_metadata={
                 "home_team": home_team,
                 "away_team": away_team,
@@ -348,6 +349,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             engine_version="2.0.0",
             market_type="total",
             league=league,
+            git_commit_sha=total_decision.debug.git_commit_sha,  # Section 15: Version traceability,
             additional_metadata={
                 "home_team": home_team,
                 "away_team": away_team,

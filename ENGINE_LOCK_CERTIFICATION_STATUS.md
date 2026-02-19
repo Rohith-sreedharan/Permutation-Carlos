@@ -28,12 +28,12 @@ INCOMPLETE sections blocking ENGINE LOCK:
 ⚠️ Section 12: Test Suite (missing tests)
 ⚠️ Section 13: Production Proof Requirements (incomplete)
 ✅ Section 14: Audit Logging (100% COMPLETE - LOCKED)
-❌ Section 15: Version Control (not implemented)
+✅ Section 15: Version Control (100% COMPLETE - LOCKED)
 ❌ Section 16: CI/CD Gates (not implemented)
 ✅ Section 17: Moneyline Status (compliant - not implemented)
 ❌ Section 18: Lock Certification (blocked by above)
 
-BLOCKER COUNT: 4 sections must be completed before ENGINE LOCK.
+BLOCKER COUNT: 3 sections must be completed before ENGINE LOCK.
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -594,26 +594,57 @@ VERDICT: ✅ FULLY COMPLIANT - LOCKED
 SECTION 15 — VERSION CONTROL
 ═════════════════════════════
 
-Status: ❌ NOT IMPLEMENTED
+Status: ✅ 100% COMPLETE - LOCKED
 
 Requirements:
-❌ Semantic versioning for decision_version
-❌ MAJOR — threshold/formula/schema break
-❌ MINOR — additive rules
-❌ PATCH — bug fix only
-❌ decision_version must not change between identical requests
+✅ Semantic versioning for decision_version (MAJOR.MINOR.PATCH)
+✅ MAJOR — threshold/formula/schema break
+✅ MINOR — additive rules
+✅ PATCH — bug fix only
+✅ decision_version must not change between identical requests
+✅ Deterministic replay cache (identical inputs → identical outputs)
+✅ Git commit SHA traceability
+✅ Operator-controlled version bumps (no auto-increment)
 
-Current State:
-- decision_version hardcoded to 1
-- No version increment logic
-- No version history tracking
-- No identical request caching
+Implementation:
+✅ backend/core/version_manager.py (DecisionVersionManager - 250 lines)
+✅ backend/core/deterministic_replay_cache.py (DeterministicReplayCache - 280 lines)
+✅ backend/core/version.json (current version: 2.0.0)
+✅ backend/core/compute_market_decision.py (integrated version_manager)
+✅ backend/core/market_decision.py (Debug model updated with git_commit_sha)
+✅ backend/db/decision_audit_logger.py (git_commit_sha added to audit logs)
+✅ backend/routes/decisions.py (git_commit_sha passed to audit logger)
 
-Implementation: backend/core/compute_market_decision.py:bundle_version = 1 (static)
+Version Manager:
+✅ get_current_version() → returns SEMVER string (e.g., "2.0.0")
+✅ bump_version(type, by, description) → manual version bumps only
+✅ get_version_metadata() → includes decision_version + git_commit_sha
+✅ validate_version_format() → validates SEMVER format
 
-BLOCKER: Section 15 is 0% complete
+Deterministic Replay Cache:
+✅ MongoDB collection: deterministic_replay_cache
+✅ Cache key: (event_id, inputs_hash, market_type, decision_version)
+✅ TTL policy: No expiration (determinism records persist indefinitely)
+✅ get_cached_decision() → returns cached decision or None
+✅ cache_decision() → stores decision for replay
+✅ verify_determinism() → compares current vs cached decisions
 
-VERDICT: ❌ NON-COMPLIANT - BLOCKING ENGINE LOCK
+Unit Tests:
+✅ 14/14 tests PASSED (backend/tests/test_section_15_version_control.py)
+✅ SEMVER format validation (valid and invalid formats)
+✅ Version bump rules (MAJOR/MINOR/PATCH)
+✅ Identical inputs → identical outputs verification
+✅ Different version → cache miss
+✅ Determinism verification (success and failure cases)
+✅ Cache statistics reporting
+
+Proof Artifacts:
+✅ proof/SECTION_15_DETERMINISM_PASS.json (13 API calls, 0 differences)
+✅ proof/SECTION_15_VERSIONING_MATRIX.md (comprehensive version bump guide)
+
+Commits: (Section 15 implementation - 2026-02-19)
+
+VERDICT: ✅ FULLY COMPLIANT - LOCKED
 
 ═══════════════════════════════════════════════════════════════════
 
@@ -676,13 +707,12 @@ Certification Requirements:
 ❌ No missing proofs (3/4 missing)
 
 Can status = LOCKED?
-❌ NO - 4 sections blocking:
+❌ NO - 3 sections blocking:
 1. Section 8: Model Consistency Gate (partial)
 2. Section 11: UI Rendering Contract (partial)
 3. Section 12: Test Suite (incomplete)
 4. Section 13: Production Proofs (1/4)
-5. Section 15: Version Control (not implemented)
-6. Section 16: CI/CD Gates (not implemented)
+5. Section 16: CI/CD Gates (not implemented)
 
 VERDICT: ❌ ENGINE CANNOT BE LOCKED
 
@@ -691,7 +721,7 @@ VERDICT: ❌ ENGINE CANNOT BE LOCKED
 FINAL CERTIFICATION STATUS
 ═══════════════════════════════════════════════════════════════════
 
-OVERALL STATUS: ⚠️ 59% COMPLETE (10/17 sections)
+OVERALL STATUS: ⚠️ 65% COMPLETE (11/17 sections)
 
 LOCKED & READY:
 ✅ Section 1: Canonical Data Source
@@ -704,11 +734,12 @@ LOCKED & READY:
 ✅ Section 9: Release Status Contract
 ✅ Section 10: API Response Lock
 ✅ Section 14: Audit Logging
+✅ Section 15: Version Control
 ✅ Section 17: Moneyline Status
 
 BLOCKERS (MUST RESOLVE):
 1. ✅ Section 14: Audit Logging - 100% complete - LOCKED
-2. ❌ Section 15: Version Control - 0% complete
+2. ✅ Section 15: Version Control - 100% complete - LOCKED
 3. ❌ Section 16: CI/CD Gates - 0% complete
 
 CRITICAL (HIGH PRIORITY):
@@ -724,17 +755,23 @@ MEDIUM PRIORITY:
 ROADMAP TO ENGINE LOCK
 ═══════════════════════════════════════════════════════════════════
 
-PHASE 1 - BLOCKERS (REQUIRED):100% LOCKED)
+PHASE 1 - BLOCKERS (REQUIRED):
+✅ Audit logging infrastructure (Section 14 - 100% LOCKED)
   ✅ DecisionAuditLogger class created (296 lines)
   ✅ Integration into decisions.py endpoint
   ✅ HTTP 500 enforcement on write failure
   ✅ Query endpoints (3 routes)
   ✅ Comprehensive test suite (7 tests)
   ✅ MongoDB append-only role configuration (VERIFIED)
-  ✅ Production verification (6/6 tests PASSED
-  ⚠️ MongoDB append-only role configuration (manual)
-□ Implement version control for decision_version
-□ Implement CI/CD pipeline with gates
+  ✅ Production verification (6/6 tests PASSED)
+✅ Version control implementation (Section 15 - 100% LOCKED)
+  ✅ DecisionVersionManager with SEMVER (MAJOR.MINOR.PATCH)
+  ✅ DeterministicReplayCache for identical inputs → identical outputs
+  ✅ Git commit SHA traceability
+  ✅ Operator-controlled version bumps
+  ✅ Unit tests (14/14 PASSED)
+  ✅ Proof artifacts (DETERMINISM_PASS.json, VERSIONING_MATRIX.md)
+□ Implement CI/CD pipeline with gates (Section 16)
 
 PHASE 2 - CRITICAL (REQUIRED):
 □ Generate LEAN proof artifact

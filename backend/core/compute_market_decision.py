@@ -18,6 +18,8 @@ from core.market_decision import (
     ModelSpread, ModelTotal, ModelMoneyline, Probabilities, Edge, Risk, Debug
 )
 from core.validate_market_decision import validate_market_decision
+from core.version_manager import get_version_manager
+from core.deterministic_replay_cache import get_replay_cache
 
 
 class MarketDecisionComputer:
@@ -37,9 +39,14 @@ class MarketDecisionComputer:
         self.game_id = game_id
         self.odds_event_id = odds_event_id
         # ATOMIC: One version per compute cycle (shared across all markets)
-        self.bundle_version = 1
+        # Section 15: Decision version from version manager (SEMVER)
+        version_manager = get_version_manager()
+        self.bundle_version = version_manager.get_current_version()
+        self.git_commit_sha = version_manager.git_commit_sha
         self.bundle_computed_at = datetime.utcnow().isoformat()
         self.bundle_trace_id = str(uuid.uuid4())
+        # Section 15: Deterministic replay cache
+        self.replay_cache = get_replay_cache()
     
     def compute_spread(
         self,
@@ -221,8 +228,9 @@ class MarketDecisionComputer:
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
                 trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
-                decision_version=self.bundle_version,  # ← ATOMIC: Same version for all markets
-                computed_at=self.bundle_computed_at  # ← CANONICAL: Consistent timestamp
+                decision_version=self.bundle_version,  # ← ATOMIC: Same version for all markets (SEMVER)
+                computed_at=self.bundle_computed_at,  # ← CANONICAL: Consistent timestamp
+                git_commit_sha=self.git_commit_sha  # ← Section 15: Version traceability
             ),
             validator_failures=[]
         )
@@ -324,8 +332,9 @@ class MarketDecisionComputer:
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
                 trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
-                decision_version=self.bundle_version,  # ← ATOMIC: Same version for all markets
-                computed_at=self.bundle_computed_at  # ← CANONICAL: Consistent timestamp
+                decision_version=self.bundle_version,  # ← ATOMIC: Same version for all markets (SEMVER)
+                computed_at=self.bundle_computed_at,  # ← CANONICAL: Consistent timestamp
+                git_commit_sha=self.git_commit_sha  # ← Section 15: Version traceability
             ),
             validator_failures=[]
         )
@@ -552,8 +561,9 @@ class MarketDecisionComputer:
                 sim_run_id="blocked",
                 trace_id=self.bundle_trace_id,
                 config_profile=None,
-                decision_version=self.bundle_version,
-                computed_at=self.bundle_computed_at
+                decision_version=self.bundle_version,  # SEMVER from version_manager
+                computed_at=self.bundle_computed_at,
+                git_commit_sha=self.git_commit_sha  # Section 15: Version traceability
             ),
             validator_failures=[]
         )
