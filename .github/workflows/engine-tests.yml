@@ -1,0 +1,274 @@
+name: Engine Tests + Schema Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/engine-tests.yml'
+  push:
+    branches: [main]
+
+jobs:
+  backend-unit-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start MongoDB (for integration tests)
+        uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '7.0'
+
+      - name: Run pytest (unit tests)
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short --strict-markers --no-skipped
+        env:
+          MONGO_URI: mongodb://localhost:27017/
+          PYTHONPATH: .
+
+      - name: Check for skipped tests (fail if any)
+        run: |
+          cd backend
+          SKIPPED_COUNT=$(python -m pytest tests/ --collect-only -q 2>/dev/null | grep -c "skipped" || echo "0")
+          if [ "$SKIPPED_COUNT" -gt 0 ]; then
+            echo "❌ FAIL: $SKIPPED_COUNT tests are marked as skipped"
+            echo "CI/CD Gate: No skipped tests allowed"
+            exit 1
+          fi
+          echo "✅ No skipped tests detected"
+
+  backend-integration-tests:
+    name: Backend Integration Tests (Smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '7.0'
+
+      - name: Run integration smoke tests
+        run: |
+          cd backend
+          # Test MongoDB connection
+          python -c "from pymongo import MongoClient; client = MongoClient('mongodb://localhost:27017/'); print('MongoDB: OK')"
+          
+          # Test core imports (smoke test)
+          python -c "from core.version_manager import get_version_manager; vm = get_version_manager(); print(f'Version Manager: {vm.get_current_version()}')"
+          
+          # Test decision audit logger initialization
+          python -c "from db.decision_audit_logger import DecisionAuditLogger; logger = DecisionAuditLogger('mongodb://localhost:27017/', 'test_db'); print('Audit Logger: OK')"
+          
+          echo "✅ Integration smoke tests passed"
+        env:
+          MONGO_URI: mongodb://localhost:27017/
+          PYTHONPATH: .
+
+  schema-validation:
+    name: Schema Validation Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate Pydantic models (API response lock)
+        run: |
+          cd backend
+          python -c "
+          from core.market_decision import MarketDecision, GameDecisions, Debug, Classification, ReleaseStatus
+          from pydantic import ValidationError
+          import sys
+          
+          print('=== Schema Validation Gate ===')
+          print('Validating MarketDecision schema...')
+          
+          # Validate required fields exist
+          required_fields = ['league', 'game_id', 'odds_event_id', 'market_type', 'decision_id', 'release_status', 'debug']
+          schema = MarketDecision.model_json_schema()
+          
+          missing = []
+          for field in required_fields:
+            if field not in schema.get('properties', {}):
+              missing.append(field)
+          
+          if missing:
+            print(f'❌ FAIL: Missing required fields: {missing}')
+            sys.exit(1)
+          
+          # Validate Debug model has decision_version as string (SEMVER)
+          debug_schema = Debug.model_json_schema()
+          if debug_schema['properties']['decision_version']['type'] != 'string':
+            print('❌ FAIL: decision_version must be string (SEMVER)')
+            sys.exit(1)
+          
+          # Validate Debug model has git_commit_sha
+          if 'git_commit_sha' not in debug_schema['properties']:
+            print('❌ FAIL: git_commit_sha missing from Debug model')
+            sys.exit(1)
+          
+          print('✅ MarketDecision schema valid')
+          print('✅ Debug.decision_version is string (SEMVER)')
+          print('✅ Debug.git_commit_sha present')
+          print('✅ Schema validation gate PASSED')
+          "
+        env:
+          PYTHONPATH: .
+
+  api-response-contract:
+    name: API Response Contract Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate ENGINE LOCK contract compliance
+        run: |
+          cd backend
+          python -c "
+          from core.market_decision import ReleaseStatus, Classification
+          import sys
+          
+          print('=== API Response Contract Validation ===')
+          
+          # Validate ReleaseStatus enums (Section 0)
+          required_statuses = [
+            'APPROVED',
+            'BLOCKED_BY_INTEGRITY',
+            'BLOCKED_BY_ODDS_MISMATCH',
+            'BLOCKED_BY_STALE_DATA',
+            'BLOCKED_BY_MISSING_DATA',
+            'PENDING_REVIEW'
+          ]
+          
+          for status in required_statuses:
+            if not hasattr(ReleaseStatus, status):
+              print(f'❌ FAIL: Missing ReleaseStatus.{status}')
+              sys.exit(1)
+          
+          print(f'✅ All {len(required_statuses)} ReleaseStatus enums present')
+          
+          # Validate Classification enums
+          required_classifications = ['EDGE', 'LEAN', 'MARKET_ALIGNED']
+          
+          for classification in required_classifications:
+            if not hasattr(Classification, classification):
+              print(f'❌ FAIL: Missing Classification.{classification}')
+              sys.exit(1)
+          
+          print(f'✅ All {len(required_classifications)} Classification enums present')
+          print('✅ API Response Contract validation PASSED')
+          "
+        env:
+          PYTHONPATH: .
+
+  section-15-determinism-test:
+    name: Section 15 Determinism Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '7.0'
+
+      - name: Run Section 15 tests (SEMVER + Deterministic Replay)
+        run: |
+          cd backend
+          python -m pytest tests/test_section_15_version_control.py -v --tb=short --strict-markers
+        env:
+          MONGO_URI: mongodb://localhost:27017/
+          PYTHONPATH: .
+
+  all-gates-passed:
+    name: All Gates Passed ✅
+    runs-on: ubuntu-latest
+    needs: [backend-unit-tests, backend-integration-tests, schema-validation, api-response-contract, section-15-determinism-test]
+    
+    steps:
+      - name: Summary
+        run: |
+          echo "✅ Backend Unit Tests: PASSED"
+          echo "✅ Backend Integration Tests: PASSED"
+          echo "✅ Schema Validation Gate: PASSED"
+          echo "✅ API Response Contract: PASSED"
+          echo "✅ Section 15 Determinism: PASSED"
+          echo ""
+          echo "🎉 All CI/CD gates passed - Ready to merge"
