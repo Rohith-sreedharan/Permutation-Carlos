@@ -12,7 +12,7 @@ Tests verify:
 
 import pytest
 from datetime import datetime, timezone
-from backend.db.decision_audit_logger import DecisionAuditLogger, get_decision_audit_logger
+from db.decision_audit_logger import DecisionAuditLogger, get_decision_audit_logger
 from pymongo import MongoClient
 import os
 

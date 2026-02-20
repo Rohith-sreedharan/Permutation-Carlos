@@ -14,8 +14,8 @@ All tests MUST pass before ENGINE LOCK.
 """
 
 import pytest
-from backend.core.compute_market_decision import MarketDecisionComputer
-from backend.core.market_decision import ReleaseStatus, Classification
+from core.compute_market_decision import MarketDecisionComputer
+from core.market_decision import ReleaseStatus, Classification
 
 
 class TestOddsAlignmentGate:
