@@ -35,8 +35,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install
+          npm rebuild
+          # Explicitly rebuild tailwindcss (PostCSS dependency)
+          cd node_modules/tailwindcss && npm rebuild || true
+          cd ../..
 
       - name: TypeScript type check
         run: npx tsc --noEmit
@@ -84,8 +88,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install
+          npm rebuild
+          # Explicitly rebuild tailwindcss (PostCSS dependency)
+          cd node_modules/tailwindcss && npm rebuild || true
+          cd ../..
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -149,8 +157,12 @@ EOF
 
       - name: Install dependencies
         run: |
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install
+          npm rebuild
+          # Explicitly rebuild tailwindcss (PostCSS dependency)
+          cd node_modules/tailwindcss && npm rebuild || true
+          cd ../..
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -247,8 +259,12 @@ EOF
 
       - name: Install dependencies
         run: |
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install
+          npm rebuild
+          # Explicitly rebuild tailwindcss (PostCSS dependency)
+          cd node_modules/tailwindcss && npm rebuild || true
+          cd ../..
 
       - name: Check for skipped Playwright tests
         run: |
