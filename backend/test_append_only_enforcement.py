@@ -97,7 +97,8 @@ def main():
         if e.code == 13 or "not authorized" in str(e).lower():
             print_pass("UPDATE correctly DENIED by MongoDB")
             print(f"   Error code: {e.code}")
-            print(f"   Error message: {e.details.get('errmsg', str(e))}")
+            error_msg = e.details.get('errmsg', str(e)) if e.details else str(e)
+            print(f"   Error message: {error_msg}")
         else:
             print_fail(f"UPDATE failed with unexpected error: {e}")
             return False
@@ -119,7 +120,8 @@ def main():
         if e.code == 13 or "not authorized" in str(e).lower():
             print_pass("DELETE correctly DENIED by MongoDB")
             print(f"   Error code: {e.code}")
-            print(f"   Error message: {e.details.get('errmsg', str(e))}")
+            error_msg = e.details.get('errmsg', str(e)) if e.details else str(e)
+            print(f"   Error message: {error_msg}")
         else:
             print_fail(f"DELETE failed with unexpected error: {e}")
             return False

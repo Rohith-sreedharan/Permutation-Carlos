@@ -242,6 +242,9 @@ class TestDeterministicReplayCache:
             decision_version="2.0.0"
         )
         
+        # Verify cache hit
+        assert decision_2 is not None, "Expected cache hit but got None"
+        
         # Decisions must be byte-identical (excluding timestamp fields)
         assert decision_2["event_id"] == decision_1["event_id"]
         assert decision_2["classification"] == decision_1["classification"]

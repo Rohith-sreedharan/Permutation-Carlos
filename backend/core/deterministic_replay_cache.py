@@ -32,7 +32,7 @@ class DeterministicReplayCache:
     Critical for Section 15 compliance and testing.
     """
     
-    def __init__(self, mongo_uri: str = None):
+    def __init__(self, mongo_uri: Optional[str] = None):
         """
         Initialize deterministic replay cache.
         
@@ -202,7 +202,7 @@ class DeterministicReplayCache:
         market_type: str,
         decision_version: str,
         current_decision: Dict[str, Any],
-        exclude_fields: list = None
+        exclude_fields: Optional[list] = None
     ) -> tuple[bool, list]:
         """
         Verify that current decision matches cached decision.
@@ -318,7 +318,7 @@ class DeterministicReplayCache:
 _replay_cache_instance: Optional[DeterministicReplayCache] = None
 
 
-def get_replay_cache(mongo_uri: str = None) -> DeterministicReplayCache:
+def get_replay_cache(mongo_uri: Optional[str] = None) -> DeterministicReplayCache:
     """
     Get singleton replay cache instance.
     
