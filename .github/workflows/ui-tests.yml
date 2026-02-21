@@ -93,6 +93,19 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Start preview server
+        run: |
+          npx vite preview --port 5173 --host &
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:5173 > /dev/null; then
+              echo "✅ Server ready"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 1
+          done
+
       - name: Run Playwright tests
         run: |
           # Check if tests exist
@@ -145,6 +158,19 @@ EOF
       - name: Build frontend
         run: npm run build
 
+      - name: Start preview server
+        run: |
+          npx vite preview --port 5173 --host &
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:5173 > /dev/null; then
+              echo "✅ Server ready"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 1
+          done
+
       - name: Create BLOCKED/APPROVED rendering test
         run: |
           mkdir -p tests/e2e
@@ -157,37 +183,35 @@ EOF
            * Tests that UI correctly handles ReleaseStatus contract:
            * - APPROVED: Shows pick details, classification, edge
            * - BLOCKED_*: Hides pick details, shows blocked reason
+           * 
+           * NOTE: These are minimal smoke tests until full UI implementation
            */
 
           test.describe('Release Status Rendering Contract', () => {
-            test('APPROVED decision shows pick details', async ({ page }) => {
-              // This is a placeholder test - in production, mock API response
-              // or use test fixtures with APPROVED decisions
+            test('APPROVED decision renders without crashing', async ({ page }) => {
+              page.setDefaultTimeout(10000);
               
-              // For now, check that the app loads without crashing
-              await page.goto('http://localhost:5173');
+              const response = await page.goto('http://localhost:5173', { 
+                waitUntil: 'domcontentloaded' 
+              });
               
-              // Wait for app to load
-              await page.waitForLoadState('networkidle');
+              expect(response?.status()).toBe(200);
               
-              // Basic smoke test: verify app renders
-              const body = await page.textContent('body');
-              expect(body).toBeTruthy();
-              
-              console.log('✅ APPROVED rendering smoke test passed');
+              const body = await page.locator('body');
+              await expect(body).toBeVisible({ timeout: 5000 });
             });
 
-            test('BLOCKED decision hides pick details', async ({ page }) => {
-              // This is a placeholder test - in production, mock API response
-              // with BLOCKED_BY_* status and verify pick details are hidden
+            test('BLOCKED decision renders without crashing', async ({ page }) => {
+              page.setDefaultTimeout(10000);
               
-              await page.goto('http://localhost:5173');
-              await page.waitForLoadState('networkidle');
+              const response = await page.goto('http://localhost:5173', { 
+                waitUntil: 'domcontentloaded' 
+              });
               
-              const body = await page.textContent('body');
-              expect(body).toBeTruthy();
+              expect(response?.status()).toBe(200);
               
-              console.log('✅ BLOCKED rendering smoke test passed');
+              const body = await page.locator('body');
+              await expect(body).toBeVisible({ timeout: 5000 });
             });
           });
           EOF
