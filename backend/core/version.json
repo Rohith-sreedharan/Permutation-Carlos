@@ -1,0 +1,12 @@
+{
+  "major": 5,
+  "minor": 1,
+  "patch": 1,
+  "version": "5.1.1",
+  "previous_version": "5.1.0",
+  "bump_type": "patch",
+  "updated_at": "2026-02-20T14:41:52.633423+00:00",
+  "updated_by": "test_user",
+  "change_description": "Bug fix: edge calculation rounding",
+  "git_commit_sha": "8a3af06"
+}

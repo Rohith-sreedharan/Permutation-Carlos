@@ -1,0 +1,36 @@
+{
+  "test": "Section 14 HTTP 500 Enforcement",
+  "date": "2026-02-17T07:42:43.969337",
+  "specification_requirement": "Section 14: HTTP 500 if log write fails",
+  "implementation": {
+    "file": "backend/routes/decisions.py",
+    "lines": "~290-360",
+    "code": [
+      "audit_success = logger.log_decision(...)",
+      "if not audit_success:",
+      "    raise HTTPException(",
+      "        status_code=500,",
+      "        detail='Decision audit log write failed - institutional compliance violation'",
+      "    )"
+    ]
+  },
+  "test_procedure": {
+    "step_1": "Inject failure in log_decision() - return False",
+    "step_2": "Call POST /api/core/decisions with valid data",
+    "step_3": "Verify response status = 500",
+    "step_4": "Verify response detail contains 'audit log write failed'",
+    "step_5": "Remove injection, verify normal operation"
+  },
+  "expected_result": {
+    "http_status": 500,
+    "error_detail": "Decision audit log write failed - institutional compliance violation",
+    "behavior": "Decision computation succeeds but result not returned due to audit failure"
+  },
+  "verification_status": "MANUAL TEST REQUIRED",
+  "notes": [
+    "Production MongoDB unreachable from test environment",
+    "HTTP 500 enforcement verified in code review",
+    "Manual curl test required on production server",
+    "Backend logs will show [CRITICAL] audit write failure"
+  ]
+}
