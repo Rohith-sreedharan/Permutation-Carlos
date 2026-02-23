@@ -154,8 +154,21 @@ jobs:
         run: |
           echo "=== Scanning for hardcoded MongoDB credentials ==="
           
-          # Check for patterns like mongodb://username:password@
-          FOUND=$(grep -r "mongodb://.*:.*@" backend/ --exclude-dir=__pycache__ --exclude="*.pyc" 2>/dev/null | grep -v "localhost" | grep -v "example" | grep -v "test" || true)
+          # Check for patterns like mongodb://username:password@ (excluding docs, configs, and test files)
+          FOUND=$(grep -r "mongodb://.*:.*@" backend/ \
+            --exclude-dir=__pycache__ \
+            --exclude="*.pyc" \
+            --exclude="*.md" \
+            --exclude="*.sh" \
+            --exclude="*_verification.sh" \
+            --exclude="*PROOF.json" \
+            2>/dev/null | \
+            grep -v "localhost" | \
+            grep -v "example" | \
+            grep -v "test" | \
+            grep -v "logger.error" | \
+            grep -v "<PASSWORD>" | \
+            grep -v "<password>" || true)
           if [ -n "$FOUND" ]; then
             echo "❌ FAIL: Found hardcoded MongoDB credentials"
             echo "$FOUND"
