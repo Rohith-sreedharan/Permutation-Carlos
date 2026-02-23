@@ -165,6 +165,7 @@ jobs:
             2>/dev/null | \
             grep -v "localhost" | \
             grep -v "example" | \
+            grep -v "Example:" | \
             grep -v "test" | \
             grep -v "logger.error" | \
             grep -v "<PASSWORD>" | \
