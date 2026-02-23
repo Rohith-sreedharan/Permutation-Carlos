@@ -269,13 +269,13 @@ jobs:
           if [ ! -f "tests/test_section_15_version_control.py" ]; then
             echo "⚠️ Section 15 tests not found - using placeholder"
             mkdir -p tests
-            cat > tests/test_section_15_version_control_placeholder.py << 'TESTEOF'
-import pytest
-
-def test_section_15_placeholder():
-    """Placeholder test for Section 15 - actual tests in separate file."""
-    assert True, "Section 15 tests placeholder"
-TESTEOF
+            cat > tests/test_section_15_version_control_placeholder.py <<'ENDOFFILE'
+          import pytest
+          
+          def test_section_15_placeholder():
+              """Placeholder test for Section 15 - actual tests in separate file."""
+              assert True, "Section 15 tests placeholder"
+          ENDOFFILE
             python -m pytest tests/test_section_15_version_control_placeholder.py -v --tb=short --strict-markers
           else
             python -m pytest tests/test_section_15_version_control.py -v --tb=short --strict-markers
