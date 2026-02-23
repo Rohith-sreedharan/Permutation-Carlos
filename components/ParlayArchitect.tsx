@@ -12,6 +12,7 @@ interface Leg {
   ev: number;
   volatility?: string;
   tier?: string;  // A, B, or C tier classification
+  pick_state?: string;  // PICK, LEAN, etc.
 }
 
 // PARLAY_BLOCKED state response structure

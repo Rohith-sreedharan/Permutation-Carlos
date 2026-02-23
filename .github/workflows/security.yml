@@ -155,15 +155,19 @@ jobs:
           echo "=== Scanning for hardcoded MongoDB credentials ==="
           
           # Check for patterns like mongodb://username:password@
-          if grep -r "mongodb://.*:.*@" backend/ --exclude-dir=__pycache__ --exclude="*.pyc" 2>/dev/null | grep -v "localhost" | grep -v "example" | grep -v "test"; then
+          FOUND=$(grep -r "mongodb://.*:.*@" backend/ --exclude-dir=__pycache__ --exclude="*.pyc" 2>/dev/null | grep -v "localhost" | grep -v "example" | grep -v "test" || true)
+          if [ -n "$FOUND" ]; then
             echo "❌ FAIL: Found hardcoded MongoDB credentials"
+            echo "$FOUND"
             echo "Use environment variables for connection strings"
             exit 1
           fi
           
           # Check for exposed passwords in config files
-          if grep -r "AuditLog2026SecureHashMongoDB" backend/ --exclude-dir=__pycache__ 2>/dev/null | grep -v "test_append_only_enforcement.py" | grep -v "SECTION_14_APPEND_ONLY_PROOF"; then
+          FOUND=$(grep -r "AuditLog2026SecureHashMongoDB" backend/ --exclude-dir=__pycache__ 2>/dev/null | grep -v "test_append_only_enforcement.py" | grep -v "SECTION_14_APPEND_ONLY_PROOF" || true)
+          if [ -n "$FOUND" ]; then
             echo "❌ FAIL: Found hardcoded audit logger password outside test files"
+            echo "$FOUND"
             exit 1
           fi
           
