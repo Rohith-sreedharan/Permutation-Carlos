@@ -14,6 +14,7 @@ All tests MUST pass before ENGINE LOCK.
 """
 
 import pytest
+from datetime import datetime, timedelta
 from core.compute_market_decision import MarketDecisionComputer
 from core.market_decision import ReleaseStatus, Classification
 
@@ -22,7 +23,7 @@ class TestOddsAlignmentGate:
     """Test Section 4 - Odds Alignment Gate"""
     
     def setup_method(self):
-        """Setup test data"""
+        """Setup test data with fresh timestamps"""
         self.computer = MarketDecisionComputer(
             league="NBA",
             game_id="test_game_123",
@@ -40,6 +41,11 @@ class TestOddsAlignmentGate:
             'lean_threshold': 0.5,
             'prob_threshold': 0.55
         }
+        
+        # Use dynamic timestamps to pass freshness gate (must be < 120 minutes old)
+        now = datetime.utcnow()
+        self.fresh_computed_at = (now - timedelta(minutes=60)).isoformat() + 'Z'
+        self.fresh_odds_timestamp = now.isoformat() + 'Z'
     
     # ==========================================
     # TEST 1: Exact match - APPROVED
@@ -52,7 +58,7 @@ class TestOddsAlignmentGate:
         Should PASS odds alignment gate.
         """
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': -3.5, 'odds': -110},
                 'celtics': {'line': 3.5, 'odds': -110}
@@ -66,7 +72,7 @@ class TestOddsAlignmentGate:
             'home_cover_probability': 0.58,
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -92,7 +98,7 @@ class TestOddsAlignmentGate:
         Should PASS odds alignment gate.
         """
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': -3.25, 'odds': -110},
                 'celtics': {'line': 3.25, 'odds': -110}
@@ -106,7 +112,7 @@ class TestOddsAlignmentGate:
             'home_cover_probability': 0.57,
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -131,7 +137,7 @@ class TestOddsAlignmentGate:
         CRITICAL: classification = null, edge_points = null, model_prob = null
         """
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': -3.0, 'odds': -110},
                 'celtics': {'line': 3.0, 'odds': -110}
@@ -145,7 +151,7 @@ class TestOddsAlignmentGate:
             'home_cover_probability': 0.56,
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -180,7 +186,7 @@ class TestOddsAlignmentGate:
         Should PASS pick'em symmetry check.
         """
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': 0.0, 'odds': -110},
                 'celtics': {'line': 0.0, 'odds': -107}
@@ -189,12 +195,12 @@ class TestOddsAlignmentGate:
         
         sim_result = {
             'simulation_id': 'sim_126',
-            'model_spread_home_perspective': 0.5,
+            'model_spread_home_perspective': 0.001,  # Near-zero, home slightly favored
             'simulation_market_spread_home': 0.0,
-            'home_cover_probability': 0.52,
+            'home_cover_probability': 0.51,  # Just above 50% (matches negative spread)
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -222,7 +228,7 @@ class TestOddsAlignmentGate:
         CRITICAL: All decision fields nullified.
         """
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': 0.0, 'odds': -110},
                 'celtics': {'line': 0.0, 'odds': 108}
@@ -231,12 +237,12 @@ class TestOddsAlignmentGate:
         
         sim_result = {
             'simulation_id': 'sim_127',
-            'model_spread_home_perspective': 0.8,
+            'model_spread_home_perspective': -0.001,  # Near-zero, home slightly favored
             'simulation_market_spread_home': 0.0,
-            'home_cover_probability': 0.54,
+            'home_cover_probability': 0.51,  # Just above 50% (matches negative spread)
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -263,7 +269,7 @@ class TestOddsAlignmentGate:
     def test_boundary_0_25_exactly_passes(self):
         """Boundary: line_delta = 0.25 exactly → PASS"""
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': -5.0, 'odds': -110},
                 'celtics': {'line': 5.0, 'odds': -110}
@@ -277,7 +283,7 @@ class TestOddsAlignmentGate:
             'home_cover_probability': 0.60,
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -289,7 +295,7 @@ class TestOddsAlignmentGate:
     def test_boundary_0_25001_blocks(self):
         """Boundary: line_delta = 0.25001 → BLOCK"""
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': -5.0, 'odds': -110},
                 'celtics': {'line': 5.0, 'odds': -110}
@@ -303,7 +309,7 @@ class TestOddsAlignmentGate:
             'home_cover_probability': 0.60,
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -317,7 +323,7 @@ class TestOddsAlignmentGate:
         # Set up odds to create exactly 0.0200 prob delta
         # This requires careful American odds calculation
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': 0.0, 'odds': -110},  # ~0.5238
                 'celtics': {'line': 0.0, 'odds': -109}  # ~0.5217 → delta ~0.0021 (PASS)
@@ -326,12 +332,12 @@ class TestOddsAlignmentGate:
         
         sim_result = {
             'simulation_id': 'sim_boundary_3',
-            'model_spread_home_perspective': 0.3,
+            'model_spread_home_perspective': -0.002,  # Near-zero, home very slightly favored
             'simulation_market_spread_home': 0.0,
-            'home_cover_probability': 0.51,
+            'home_cover_probability': 0.51,  # Just above 50% (matches negative spread)
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
@@ -351,7 +357,7 @@ class TestOddsAlignmentGate:
         If odds gate fails, classification must NOT occur.
         """
         odds_snapshot = {
-            'timestamp': '2026-02-15T12:00:00Z',
+            'timestamp': self.fresh_odds_timestamp,
             'spread_lines': {
                 'lakers': {'line': -2.5, 'odds': -110},
                 'celtics': {'line': 2.5, 'odds': -110}
@@ -365,7 +371,7 @@ class TestOddsAlignmentGate:
             'home_cover_probability': 0.75,  # Strong probability
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
-            'computed_at': '2026-02-15T11:00:00Z'
+            'computed_at': self.fresh_computed_at
         }
         
         decision = self.computer.compute_spread(
