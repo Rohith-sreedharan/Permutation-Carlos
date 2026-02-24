@@ -457,15 +457,20 @@ class MarketDecisionComputer:
         """
         Validate directional integrity per spec Section 3.
         
-        If median_margin > 0 → home_win_prob > 0.5
-        If median_margin < 0 → home_win_prob < 0.5
+        Spread sign indicates favoritism:
+        - Negative spread (e.g., -3.5): Home is FAVORITE → should have higher win prob (> 0.5)
+        - Positive spread (e.g., +3.5): Home is UNDERDOG → should have lower win prob (< 0.5)  
+        - Zero spread (pick'em): Win probability should be near 50/50 (±0.02)
+        
+        If median_margin > 0 (home underdog) → home_win_prob < 0.5
+        If median_margin < 0 (home favorite) → home_win_prob > 0.5
         If median_margin = 0 → home_win_prob ≈ 0.5 ±0.02
         """
-        if sim_spread_home > 0:
-            return home_cover_prob > 0.5
-        elif sim_spread_home < 0:
+        if sim_spread_home > 0:  # Home is underdog (gets points)
             return home_cover_prob < 0.5
-        else:  # sim_spread_home == 0
+        elif sim_spread_home < 0:  # Home is favorite (gives points)
+            return home_cover_prob > 0.5
+        else:  # sim_spread_home == 0 (pick'em)
             return abs(home_cover_prob - 0.5) <= 0.02
     
     def _validate_freshness(self, computed_at_str: str, max_age_minutes: int = 120) -> bool:
