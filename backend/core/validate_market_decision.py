@@ -61,11 +61,12 @@ def validate_market_decision(
     
     # 4. Spread sign sanity (critical: prevents "both teams +6.5" bug)
     if decision.market_type.value == "spread":
-        # Cannot validate opponent here without full odds snapshot
-        # But we can check that line is non-zero
+        # Pick'em markets (line = 0) are VALID
+        # Only check spread sign consistency for non-pick'em markets
         market_line = getattr(decision.market, 'line', None)
-        if market_line == 0:
-            violations.append("Spread market line cannot be 0")
+        if market_line is None:
+            violations.append("Spread market must have a line value")
+        # Note: market_line = 0 is valid for pick'em markets
     
     # 5. Total side logic
     if decision.market_type.value == "total":
