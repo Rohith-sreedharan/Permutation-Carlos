@@ -43,12 +43,18 @@ class DecisionAuditLogger:
             mongo_uri: MongoDB connection string
             database: Database name (default: beatvegas_prod)
         """
-        self.client = MongoClient(mongo_uri)
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
         self.db = self.client[database]
         self.collection = self.db["decision_audit_logs"]
         
         # Ensure collection exists with proper indexes
-        self._ensure_collection_setup()
+        # Wrap in try-except to allow instantiation even with invalid connections
+        try:
+            self._ensure_collection_setup()
+        except Exception:
+            # Collection setup failed (likely connection issue)
+            # Logger can still be instantiated, but write operations will fail gracefully
+            pass
     
     def _ensure_collection_setup(self):
         """

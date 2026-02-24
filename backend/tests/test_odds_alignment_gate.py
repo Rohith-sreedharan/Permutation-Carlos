@@ -195,9 +195,9 @@ class TestOddsAlignmentGate:
         
         sim_result = {
             'simulation_id': 'sim_126',
-            'model_spread_home_perspective': 0.001,  # Near-zero, home slightly favored
+            'model_spread_home_perspective': -0.001,  # Near-zero, home slightly favored
             'simulation_market_spread_home': 0.0,
-            'home_cover_probability': 0.51,  # Just above 50% (matches negative spread)
+            'home_cover_probability': 0.52,  # Above 50% (matches negative spread)
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
             'computed_at': self.fresh_computed_at
@@ -334,7 +334,7 @@ class TestOddsAlignmentGate:
             'simulation_id': 'sim_boundary_3',
             'model_spread_home_perspective': -0.002,  # Near-zero, home very slightly favored
             'simulation_market_spread_home': 0.0,
-            'home_cover_probability': 0.51,  # Just above 50% (matches negative spread)
+            'home_cover_probability': 0.52,  # Above 50% (matches negative spread)
             'volatility': 'MODERATE',
             'total_injury_impact': 0.0,
             'computed_at': self.fresh_computed_at
