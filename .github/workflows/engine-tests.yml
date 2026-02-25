@@ -288,14 +288,25 @@ jobs:
     name: All Gates Passed ✅
     runs-on: ubuntu-latest
     needs: [backend-unit-tests, backend-integration-tests, schema-validation, api-response-contract, section-15-determinism-test]
+    if: always()
     
     steps:
-      - name: Summary
+      - name: Check all job results
         run: |
-          echo "✅ Backend Unit Tests: PASSED"
-          echo "✅ Backend Integration Tests: PASSED"
-          echo "✅ Schema Validation Gate: PASSED"
-          echo "✅ API Response Contract: PASSED"
-          echo "✅ Section 15 Determinism: PASSED"
-          echo ""
-          echo "🎉 All CI/CD gates passed - Ready to merge"
+          echo "Backend Unit Tests: ${{ needs.backend-unit-tests.result }}"
+          echo "Backend Integration Tests: ${{ needs.backend-integration-tests.result }}"
+          echo "Schema Validation: ${{ needs.schema-validation.result }}"
+          echo "API Response Contract: ${{ needs.api-response-contract.result }}"
+          echo "Section 15 Determinism: ${{ needs.section-15-determinism-test.result }}"
+          
+          # Fail if ANY dependency failed
+          if [[ "${{ needs.backend-unit-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.backend-integration-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.schema-validation.result }}" != "success" ]] || \
+             [[ "${{ needs.api-response-contract.result }}" != "success" ]] || \
+             [[ "${{ needs.section-15-determinism-test.result }}" != "success" ]]; then
+            echo "❌ One or more gates FAILED - Merge blocked"
+            exit 1
+          fi
+          
+          echo "✅ All CI/CD gates passed - Ready to merge"

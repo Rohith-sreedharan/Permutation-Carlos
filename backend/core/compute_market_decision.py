@@ -43,7 +43,7 @@ class MarketDecisionComputer:
         version_manager = get_version_manager()
         self.bundle_version = version_manager.get_current_version()
         self.git_commit_sha = version_manager.git_commit_sha
-        self.bundle_computed_at = datetime.utcnow().isoformat()
+        self.bundle_computed_at = datetime.now(datetime.UTC).isoformat()
         self.bundle_trace_id = str(uuid.uuid4())
         # Section 15: Deterministic replay cache
         self.replay_cache = get_replay_cache()
@@ -224,7 +224,7 @@ class MarketDecisionComputer:
             risk=risk,
             debug=Debug(
                 inputs_hash=inputs_hash,
-                odds_timestamp=odds_snapshot.get('timestamp', datetime.utcnow().isoformat()),
+                odds_timestamp=odds_snapshot.get('timestamp', datetime.now(datetime.UTC).isoformat()),
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
                 trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
@@ -328,7 +328,7 @@ class MarketDecisionComputer:
             risk=risk,
             debug=Debug(
                 inputs_hash=inputs_hash,
-                odds_timestamp=odds_snapshot.get('timestamp', datetime.utcnow().isoformat()),
+                odds_timestamp=odds_snapshot.get('timestamp', datetime.now(datetime.UTC).isoformat()),
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
                 trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
@@ -482,7 +482,7 @@ class MarketDecisionComputer:
         try:
             from dateutil import parser
             computed_at = parser.isoparse(computed_at_str)
-            now = datetime.utcnow()
+            now = datetime.now(datetime.UTC)
             # Make computed_at timezone-naive if it has timezone info
             if computed_at.tzinfo:
                 computed_at = computed_at.replace(tzinfo=None)
@@ -562,7 +562,7 @@ class MarketDecisionComputer:
             ),
             debug=Debug(
                 inputs_hash=inputs_hash,
-                odds_timestamp=datetime.utcnow().isoformat(),
+                odds_timestamp=datetime.now(datetime.UTC).isoformat(),
                 sim_run_id="blocked",
                 trace_id=self.bundle_trace_id,
                 config_profile=None,

@@ -43,7 +43,7 @@ class TestOddsAlignmentGate:
         }
         
         # Use dynamic timestamps to pass freshness gate (must be < 120 minutes old)
-        now = datetime.utcnow()
+        now = datetime.now(datetime.UTC)
         self.fresh_computed_at = (now - timedelta(minutes=60)).isoformat() + 'Z'
         self.fresh_odds_timestamp = now.isoformat() + 'Z'
     
