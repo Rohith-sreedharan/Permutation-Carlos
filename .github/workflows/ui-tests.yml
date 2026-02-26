@@ -3,9 +3,20 @@ name: UI Tests (Build + Playwright)
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'components/**'
+      - 'src/**'
+      - 'services/**'
+      - 'utils/**'
+      - 'types/**'
+      - 'package.json'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - 'playwright.config.ts'
+      - 'tests/**'
+      - '.github/workflows/ui-tests.yml'
   push:
     branches: [main]
-  # Path filters removed: required checks cannot be bypassed by changing only backend files
 
 jobs:
   frontend-build:
@@ -269,13 +280,23 @@ jobs:
     name: All UI Gates Passed ✅
     runs-on: ubuntu-latest
     needs: [frontend-build, playwright-tests, playwright-blocked-approved-rendering, check-no-skipped-tests]
+    if: always()
     
     steps:
-      - name: Summary
+      - name: Check all job results
         run: |
-          echo "✅ Frontend Build + TypeCheck: PASSED"
-          echo "✅ Playwright Tests: PASSED"
-          echo "✅ BLOCKED/APPROVED Rendering: PASSED"
-          echo "✅ No Skipped Tests: VERIFIED"
-          echo ""
-          echo "🎉 All UI gates passed - Ready to merge"
+          echo "Frontend Build: ${{ needs.frontend-build.result }}"
+          echo "Playwright Tests: ${{ needs.playwright-tests.result }}"
+          echo "BLOCKED/APPROVED Rendering: ${{ needs.playwright-blocked-approved-rendering.result }}"
+          echo "No Skipped Tests Check: ${{ needs.check-no-skipped-tests.result }}"
+          
+          # Fail if ANY dependency failed
+          if [[ "${{ needs.frontend-build.result }}" != "success" ]] || \
+             [[ "${{ needs.playwright-tests.result }}" != "success" ]] || \
+             [[ "${{ needs.playwright-blocked-approved-rendering.result }}" != "success" ]] || \
+             [[ "${{ needs.check-no-skipped-tests.result }}" != "success" ]]; then
+            echo "❌ One or more UI gates FAILED - Merge blocked"
+            exit 1
+          fi
+          
+          echo "✅ All UI gates passed - Ready to merge"
