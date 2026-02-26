@@ -3,9 +3,6 @@ name: Engine Tests + Schema Validation
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/engine-tests.yml'
   push:
     branches: [main]
 

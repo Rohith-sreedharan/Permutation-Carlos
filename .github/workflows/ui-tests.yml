@@ -3,18 +3,6 @@ name: UI Tests (Build + Playwright)
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'components/**'
-      - 'src/**'
-      - 'services/**'
-      - 'utils/**'
-      - 'types/**'
-      - 'package.json'
-      - 'tsconfig.json'
-      - 'vite.config.ts'
-      - 'playwright.config.ts'
-      - 'tests/**'
-      - '.github/workflows/ui-tests.yml'
   push:
     branches: [main]
 

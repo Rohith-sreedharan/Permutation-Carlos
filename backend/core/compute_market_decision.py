@@ -483,11 +483,14 @@ class MarketDecisionComputer:
             from dateutil import parser
             computed_at = parser.isoparse(computed_at_str)
             now = datetime.now(timezone.utc)
-            # Make both timezone-naive for comparison
-            if computed_at.tzinfo:
-                computed_at = computed_at.replace(tzinfo=None)
-            if now.tzinfo:
-                now = now.replace(tzinfo=None)
+            
+            # Ensure both are timezone-aware for comparison
+            if computed_at.tzinfo is None:
+                # Assume UTC if no timezone specified
+                computed_at = computed_at.replace(tzinfo=timezone.utc)
+            if now.tzinfo is None:
+                now = now.replace(tzinfo=timezone.utc)
+                
             age_minutes = (now - computed_at).total_seconds() / 60
             return age_minutes <= max_age_minutes
         except:
