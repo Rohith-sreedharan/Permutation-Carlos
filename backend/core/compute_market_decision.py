@@ -10,7 +10,7 @@ NO UI-SIDE RECOMPUTATION ALLOWED.
 
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, List, Literal
 from core.market_decision import (
     MarketDecision, MarketType, Classification, ReleaseStatus,
@@ -43,7 +43,7 @@ class MarketDecisionComputer:
         version_manager = get_version_manager()
         self.bundle_version = version_manager.get_current_version()
         self.git_commit_sha = version_manager.git_commit_sha
-        self.bundle_computed_at = datetime.now(datetime.UTC).isoformat()
+        self.bundle_computed_at = datetime.now(timezone.utc).isoformat()
         self.bundle_trace_id = str(uuid.uuid4())
         # Section 15: Deterministic replay cache
         self.replay_cache = get_replay_cache()

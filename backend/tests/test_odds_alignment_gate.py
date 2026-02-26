@@ -14,7 +14,7 @@ All tests MUST pass before ENGINE LOCK.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from core.compute_market_decision import MarketDecisionComputer
 from core.market_decision import ReleaseStatus, Classification
 
@@ -43,7 +43,7 @@ class TestOddsAlignmentGate:
         }
         
         # Use dynamic timestamps to pass freshness gate (must be < 120 minutes old)
-        now = datetime.now(datetime.UTC)
+        now = datetime.now(timezone.utc)
         self.fresh_computed_at = (now - timedelta(minutes=60)).isoformat() + 'Z'
         self.fresh_odds_timestamp = now.isoformat() + 'Z'
     
