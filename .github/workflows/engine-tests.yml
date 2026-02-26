@@ -3,11 +3,9 @@ name: Engine Tests + Schema Validation
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/engine-tests.yml'
   push:
     branches: [main]
+  # Path filters removed: required checks cannot be bypassed by changing only frontend files
 
 jobs:
   backend-unit-tests:
