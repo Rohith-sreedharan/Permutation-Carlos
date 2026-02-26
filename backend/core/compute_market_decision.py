@@ -224,7 +224,7 @@ class MarketDecisionComputer:
             risk=risk,
             debug=Debug(
                 inputs_hash=inputs_hash,
-                odds_timestamp=odds_snapshot.get('timestamp', datetime.now(datetime.UTC).isoformat()),
+                odds_timestamp=odds_snapshot.get('timestamp', datetime.now(timezone.utc).isoformat()),
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
                 trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
@@ -328,7 +328,7 @@ class MarketDecisionComputer:
             risk=risk,
             debug=Debug(
                 inputs_hash=inputs_hash,
-                odds_timestamp=odds_snapshot.get('timestamp', datetime.now(datetime.UTC).isoformat()),
+                odds_timestamp=odds_snapshot.get('timestamp', datetime.now(timezone.utc).isoformat()),
                 sim_run_id=sim_result.get('simulation_id', 'unknown'),
                 trace_id=self.bundle_trace_id,  # ← CANONICAL: Audit trail
                 config_profile=config.get('profile', 'balanced'),
@@ -482,7 +482,7 @@ class MarketDecisionComputer:
         try:
             from dateutil import parser
             computed_at = parser.isoparse(computed_at_str)
-            now = datetime.now(datetime.UTC)
+            now = datetime.now(timezone.utc)
             # Make computed_at timezone-naive if it has timezone info
             if computed_at.tzinfo:
                 computed_at = computed_at.replace(tzinfo=None)
@@ -562,7 +562,7 @@ class MarketDecisionComputer:
             ),
             debug=Debug(
                 inputs_hash=inputs_hash,
-                odds_timestamp=datetime.now(datetime.UTC).isoformat(),
+                odds_timestamp=datetime.now(timezone.utc).isoformat(),
                 sim_run_id="blocked",
                 trace_id=self.bundle_trace_id,
                 config_profile=None,
