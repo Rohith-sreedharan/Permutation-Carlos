@@ -43,9 +43,10 @@ class TestOddsAlignmentGate:
         }
         
         # Use dynamic timestamps to pass freshness gate (must be < 120 minutes old)
+        # NOTE: timezone-aware .isoformat() produces +00:00 suffix - do NOT add 'Z'
         now = datetime.now(timezone.utc)
-        self.fresh_computed_at = (now - timedelta(minutes=60)).isoformat() + 'Z'
-        self.fresh_odds_timestamp = now.isoformat() + 'Z'
+        self.fresh_computed_at = (now - timedelta(minutes=60)).isoformat()
+        self.fresh_odds_timestamp = now.isoformat()
     
     # ==========================================
     # TEST 1: Exact match - APPROVED
