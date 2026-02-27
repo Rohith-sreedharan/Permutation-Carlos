@@ -1,0 +1,13 @@
+{
+  "teams": {
+    "home": null,
+    "away": null
+  },
+  "atomic_integrity": {
+    "decision_version_spread": 1,
+    "decision_version_total": 1,
+    "trace_id_spread": "23f10b1d-30e6-4c45-b7a4-9e81c3ca5ad6",
+    "trace_id_total": "23f10b1d-30e6-4c45-b7a4-9e81c3ca5ad6",
+    "all_match": true
+  }
+}

@@ -120,6 +120,8 @@ from routes.market_state_routes import router as market_state_router
 from routes.parlay_architect_routes import router as parlay_architect_router
 from routes.calibration_routes import router as calibration_router  # NEW: Logging & Calibration System
 from routes.meta import router as meta_router  # NEW: Build/version metadata endpoint
+from routes.decisions import router as decisions_router  # NEW: Unified MarketDecision endpoint
+from routes.audit import router as audit_router  # NEW: Decision Audit Log Query Endpoint (Section 14)
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -142,6 +144,7 @@ app.include_router(analyzer_router)  # NEW: AI Analyzer - LLM-powered game expla
 app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
 app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
 app.include_router(meta_router)  # NEW: Build/version metadata for validation
+app.include_router(audit_router)  # NEW: Decision Audit Log Query Endpoint (Section 14 compliance)
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)
@@ -173,6 +176,7 @@ app.include_router(daily_preview_router)  # Daily Preview for marketing conversi
 app.include_router(market_state_router)  # Market State Registry - Single source of truth
 app.include_router(parlay_architect_router)  # NEW: Parlay Architect - Tiered pool system
 app.include_router(calibration_router)  # NEW: Logging & Calibration System - Exit-grade dataset
+app.include_router(decisions_router, prefix="/api", tags=["decisions"])  # NEW: Unified MarketDecision endpoint
 
 
 @app.websocket("/ws")

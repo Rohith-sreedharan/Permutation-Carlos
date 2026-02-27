@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchEventsFromDB, getPredictions } from '../services/api';
+import { fetchEventsFromDB, getPredictions, API_BASE_URL } from '../services/api';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
 import EventListItem from './EventListItem';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 // SVG Icons (replacing lucide-react)
 const Target = ({ className }: { className?: string }) => (
@@ -85,10 +83,18 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
       setError(null);
       
       // Fetch from database with all sports and no date filter
-      const [eventsData, predictionsData] = await Promise.all([
-        fetchEventsFromDB(undefined, undefined, true, 200),
-        getPredictions(),
-      ]);
+      const eventsData = await fetchEventsFromDB(undefined, undefined, true, 200);
+      
+      // Try to fetch predictions if authenticated, otherwise skip
+      let predictionsData: Prediction[] = [];
+      try {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+          predictionsData = await getPredictions();
+        }
+      } catch (err: any) {
+        console.warn('Predictions unavailable (not authenticated)');
+      }
 
       const predictionsMap = new Map<string, Prediction>();
       predictionsData.forEach((p) => predictionsMap.set(p.event_id, p));
@@ -100,11 +106,14 @@ const DecisionCommandCenter: React.FC<DecisionCommandCenterProps> = ({ onAuthErr
 
       setEventsWithPredictions(mergedData);
 
-      // Load user's decision log and metrics
-      await loadDecisionMetrics();
+      // Load user's decision log and metrics (if authenticated)
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        await loadDecisionMetrics();
+      }
     } catch (err: any) {
       if (err.message.includes('No authentication token found') || err.message.includes('Session expired')) {
-        onAuthError();
+        console.warn('Authentication required - session expired or missing');
       } else {
         setError('Failed to fetch data. Please try again later.');
       }
