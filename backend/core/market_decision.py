@@ -207,5 +207,5 @@ class GameDecisions(BaseModel):
     
     # Meta
     inputs_hash: str = Field(..., description="Global inputs hash for this snapshot")
-    decision_version: int = Field(..., description="Monotonic version number")
+    decision_version: str = Field(..., description="SEMVER version (MAJOR.MINOR.PATCH)")
     computed_at: str = Field(..., description="ISO timestamp of computation")

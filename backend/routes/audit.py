@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
-from backend.db.decision_audit_logger import get_decision_audit_logger
+from db.decision_audit_logger import get_decision_audit_logger
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
