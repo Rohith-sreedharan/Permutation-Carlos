@@ -221,7 +221,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-[1800px] mx-auto">
       {/* Modern Horizontal Loading Bar */}
       {polling && (
         <div className="fixed top-0 left-0 right-0 z-50">
@@ -255,8 +255,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
       </PageHeader>
       
       {/* DATE & TIME SORT CONTROLS - Command Center Vibe */}
-      <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-lg p-4 border border-electric-blue/20 shadow-xl">
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+      <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-xl p-5 border border-electric-blue/20 shadow-xl">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-5">
           {/* Date Filter */}
           <div className="flex items-center space-x-3">
             <span className="text-xs text-neon-green uppercase font-bold tracking-wider flex items-center gap-1">
@@ -316,14 +316,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:max-w-xs">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-2">
+        <div className="relative w-full md:max-w-sm">
           <input
             type="text"
             placeholder="Search by team name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-charcoal border border-navy rounded-lg px-4 py-2 text-white placeholder-light-gray focus:ring-2 focus:ring-electric-blue focus:outline-none pl-10"
+            className="w-full bg-charcoal border border-navy rounded-lg px-4 py-2.5 text-white placeholder-light-gray focus:ring-2 focus:ring-electric-blue focus:outline-none pl-10"
           />
           <svg className="w-5 h-5 text-light-gray absolute left-3 top-1/2 -translate-y-1/2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         </div>
@@ -345,14 +345,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
             </div>
           )}
           {filteredEvents.length === 0 ? (
-            <div className="text-center py-16 bg-charcoal rounded-lg border border-navy">
+            <div className="text-center py-20 bg-charcoal rounded-xl border border-navy">
               <div className="text-6xl mb-4">🎯</div>
               <p className="text-light-gray text-xl font-semibold mb-2">No games found</p>
               <p className="text-light-gray/60 text-sm">Try adjusting your filters or check back later for upcoming games.</p>
             </div>
           ) : (
             layout === 'grid' ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
                 {filteredEvents.map((event) => (
                   <EventCard 
                     key={event.id} 
@@ -362,7 +362,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
                 ))}
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {filteredEvents.map((event) => (
                   <EventListItem 
                     key={event.id} 

@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
-import DecisionCommandCenter from './DecisionCommandCenter';
 import GameDetail from './GameDetail';
 import Leaderboard from './Leaderboard';
 import Community from './Community';
 import AdminPanel from './AdminPanel';
-import CreatorProfile from './CreatorProfile';
+import TrustLoop from './TrustLoop';
+import ParlayArchitect from './ParlayArchitect';
+import Affiliates from './Affiliates';
+import Settings from './Settings';
+import TelegramConnection from './TelegramConnection';
+import WarRoom from './WarRoom';
+import WarRoomLeaderboard from './WarRoomLeaderboard';
+import SubscriptionPlans from './SubscriptionPlans';
+import Profile from './Profile';
 import type { Page } from '../types';
 
 interface MainLayoutProps {
@@ -53,17 +60,38 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
       case 'community':
         return <Community />;
       
-      case 'admin':
-        return isAdmin ? <AdminPanel /> : <Dashboard onAuthError={onAuthError} onGameClick={handleGameClick} />;
+      case 'trust-loop':
+        return <TrustLoop />;
+      
+      case 'architect':
+        return <ParlayArchitect />;
+      
+      case 'affiliates':
+        return <Affiliates />;
+      
+      case 'settings':
+        return <Settings />;
+      
+      case 'telegram':
+        return <TelegramConnection />;
+      
+      case 'war-room':
+        return <WarRoom />;
+      
+      case 'war-room-leaderboard':
+        return <WarRoomLeaderboard />;
+      
+      case 'billing':
+        return <SubscriptionPlans />;
       
       case 'profile':
-        return (
-          <CreatorProfile 
-            username="user" 
-            onTailParlay={(slipId) => console.log('Tail parlay:', slipId)}
-            onBack={() => setCurrentPage('dashboard')}
-          />
-        );
+        return <Profile />;
+      
+      case 'wallet':
+        return <Profile />;
+      
+      case 'admin':
+        return isAdmin ? <AdminPanel /> : <Dashboard onAuthError={onAuthError} onGameClick={handleGameClick} />;
       
       default:
         return <Dashboard onAuthError={onAuthError} onGameClick={handleGameClick} />;
@@ -82,7 +110,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
       />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto p-6">
         {renderContent()}
       </div>
     </div>

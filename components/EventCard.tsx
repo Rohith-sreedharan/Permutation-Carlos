@@ -39,9 +39,9 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
   return (
     <div 
       onClick={onClick}
-      className={`bg-charcoal rounded-lg shadow-lg p-4 flex flex-col space-y-3 relative transition-all duration-300 border ${
-        isRecalculated ? 'border-neon-green shadow-neon-green/50 animate-pulse' : 'border-transparent hover:border-electric-blue'
-      } ${onClick ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+      className={`bg-charcoal rounded-xl shadow-lg p-5 flex flex-col space-y-4 relative transition-all duration-300 border ${
+        isRecalculated ? 'border-neon-green shadow-neon-green/50 animate-pulse' : 'border-navy/50 hover:border-electric-blue'
+      } ${onClick ? 'cursor-pointer hover:scale-[1.01] hover:shadow-xl' : ''}`}
     >
       {/* AI Recalculated Badge */}
       {isRecalculated && (

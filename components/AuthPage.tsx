@@ -66,7 +66,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       const response = await completePasskeyLogin(email, credentialData);
       
       if (response.access_token) {
-        localStorage.setItem('token', response.access_token);
+        localStorage.setItem('authToken', response.access_token);
         onAuthSuccess();
       } else {
         throw new Error('Login failed');
@@ -117,7 +117,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             try {
               const verifyResponse = await verify2FALogin(response.temp_token, result.value);
               if (verifyResponse.access_token) {
-                localStorage.setItem('token', verifyResponse.access_token);
+                localStorage.setItem('authToken', verifyResponse.access_token);
                 onAuthSuccess();
               }
             } catch (err: any) {
@@ -130,7 +130,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         
         // Normal login without 2FA
         if (response.access_token) {
-          localStorage.setItem('token', response.access_token);
+          localStorage.setItem('authToken', response.access_token);
           onAuthSuccess();
         } else {
           setError('Login failed. Please try again.');
@@ -144,7 +144,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         }
         const response = await registerUser({ email, username: username || email.split('@')[0], password });
         if (response.access_token) {
-          localStorage.setItem('token', response.access_token);
+          localStorage.setItem('authToken', response.access_token);
           onAuthSuccess();
         } else {
           setError('Registration failed. Please try again.');

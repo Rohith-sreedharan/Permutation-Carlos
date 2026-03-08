@@ -85,4 +85,4 @@ echo -e "${BLUE}Press Ctrl+C to stop the server${NC}"
 echo ""
 
 # Run the FastAPI server with PYTHONPATH set
-PYTHONPATH=$(pwd) uvicorn main:app --reload --port 8000 --host 0.0.0.0
+PYTHONPATH=$(pwd) 
