@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.5, pytest-9.0.2, pluggy-1.6.0 -- /Users/rohithaditya/Downloads/Permutation-Carlos/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/rohithaditya/Downloads/Permutation-Carlos/backend
+plugins: anyio-4.11.0
+collecting ... collected 23 items
+
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_line_delta_exact_match_approved PASSED [  4%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_line_delta_within_tolerance_approved PASSED [  8%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_line_delta_exceeds_tolerance_blocked PASSED [ 13%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_pickem_symmetry_pass PASSED [ 17%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_pickem_symmetry_block PASSED [ 21%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_boundary_0_25_exactly_passes PASSED [ 26%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_boundary_0_25001_blocks PASSED [ 30%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_boundary_prob_delta_0_0200_passes PASSED [ 34%]
+tests/test_odds_alignment_gate.py::TestOddsAlignmentGate::test_lifecycle_order_odds_before_classification PASSED [ 39%]
+tests/test_section_15_version_control.py::TestVersionManager::test_version_format_validation PASSED [ 43%]
+tests/test_section_15_version_control.py::TestVersionManager::test_get_current_version_returns_semver PASSED [ 47%]
+tests/test_section_15_version_control.py::TestVersionManager::test_version_metadata_includes_git_sha PASSED [ 52%]
+tests/test_section_15_version_control.py::TestVersionManager::test_version_bump_major PASSED [ 56%]
+tests/test_section_15_version_control.py::TestVersionManager::test_version_bump_minor PASSED [ 60%]
+tests/test_section_15_version_control.py::TestVersionManager::test_version_bump_patch PASSED [ 65%]
+tests/test_section_15_version_control.py::TestVersionManager::test_version_bump_invalid_type PASSED [ 69%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_cache_miss_returns_none PASSED [ 73%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_cache_hit_returns_decision PASSED [ 78%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_identical_inputs_return_identical_outputs PASSED [ 82%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_different_version_cache_miss PASSED [ 86%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_verify_determinism_success PASSED [ 91%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_verify_determinism_failure PASSED [ 95%]
+tests/test_section_15_version_control.py::TestDeterministicReplayCache::test_cache_statistics PASSED [100%]
+
+============================== 23 passed in 0.82s ==============================

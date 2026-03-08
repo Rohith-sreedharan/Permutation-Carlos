@@ -1,0 +1,130 @@
+{
+    "spread": {
+        "league": "NBA",
+        "game_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a",
+        "odds_event_id": "odds_event_ad1dc68e34d3d8c8c69f10ea02d1b55a",
+        "market_type": "spread",
+        "decision_id": "048a0848-154f-4035-9240-5f59a81ec9a1",
+        "selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_spread_minnesota_timberwolves",
+        "preferred_selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_spread_minnesota_timberwolves",
+        "market_selections": [
+            {
+                "selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_spread_minnesota_timberwolves",
+                "team_id": "minnesota_timberwolves",
+                "team_name": "Minnesota Timberwolves",
+                "line": 0,
+                "odds": -110
+            },
+            {
+                "selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_spread_orlando_magic",
+                "team_id": "orlando_magic",
+                "team_name": "Orlando Magic",
+                "line": 0,
+                "odds": -110
+            }
+        ],
+        "pick": null,
+        "market": {
+            "line": 0.0,
+            "odds": -110
+        },
+        "model": null,
+        "fair_selection": null,
+        "probabilities": null,
+        "edge": null,
+        "classification": null,
+        "release_status": "BLOCKED_BY_STALE_DATA",
+        "reasons": [],
+        "risk": {
+            "volatility_flag": null,
+            "injury_impact": null,
+            "clv_forecast": null,
+            "blocked_reason": "Simulation data stale (> 120 minutes old)"
+        },
+        "debug": {
+            "inputs_hash": "2a14c6fb6e01b8ac7dceca79fe931f27",
+            "odds_timestamp": "2026-03-07T16:35:42.724998+00:00",
+            "sim_run_id": "blocked",
+            "trace_id": "b878172d-6d5f-43d2-9c3e-98623e34d803",
+            "config_profile": null,
+            "decision_version": "6.1.1",
+            "computed_at": "2026-03-07T16:35:42.715439+00:00",
+            "git_commit_sha": "ab0118e"
+        },
+        "validator_failures": []
+    },
+    "moneyline": null,
+    "total": {
+        "league": "NBA",
+        "game_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a",
+        "odds_event_id": "odds_event_ad1dc68e34d3d8c8c69f10ea02d1b55a",
+        "market_type": "total",
+        "decision_id": "3dde395c-8b3c-4b97-b57c-25a81f9fc87d",
+        "selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_total_over",
+        "preferred_selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_total_over",
+        "market_selections": [
+            {
+                "selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_total_over",
+                "side": "OVER",
+                "line": 220.0,
+                "odds": -109
+            },
+            {
+                "selection_id": "ad1dc68e34d3d8c8c69f10ea02d1b55a_total_under",
+                "side": "UNDER",
+                "line": 220.0,
+                "odds": -109
+            }
+        ],
+        "pick": {
+            "side": "OVER"
+        },
+        "market": {
+            "line": 220.0,
+            "odds": -109
+        },
+        "model": {
+            "fair_total": 234.45
+        },
+        "fair_selection": {
+            "total": 234.45,
+            "side": "OVER"
+        },
+        "probabilities": {
+            "model_prob": 0.6,
+            "market_implied_prob": 0.5215311004784688
+        },
+        "edge": {
+            "edge_points": 14.449999999999989,
+            "edge_ev": null,
+            "edge_grade": "S"
+        },
+        "classification": "EDGE",
+        "release_status": "APPROVED",
+        "reasons": [
+            "Total misprice: 14.4 points favoring OVER"
+        ],
+        "risk": {
+            "volatility_flag": "full",
+            "injury_impact": 0.0,
+            "clv_forecast": null,
+            "blocked_reason": null
+        },
+        "debug": {
+            "inputs_hash": "2a14c6fb6e01b8ac7dceca79fe931f27",
+            "odds_timestamp": "2026-03-07T16:35:42.711526",
+            "sim_run_id": "sim_ad1dc68e34d3d8c8c69f10ea02d1b55a_20260307024057",
+            "trace_id": "b878172d-6d5f-43d2-9c3e-98623e34d803",
+            "config_profile": "balanced",
+            "decision_version": "6.1.1",
+            "computed_at": "2026-03-07T16:35:42.715439+00:00",
+            "git_commit_sha": "ab0118e"
+        },
+        "validator_failures": []
+    },
+    "home_team_name": "Minnesota Timberwolves",
+    "away_team_name": "Orlando Magic",
+    "inputs_hash": "2a14c6fb6e01b8ac7dceca79fe931f27",
+    "decision_version": "6.1.1",
+    "computed_at": "2026-03-07T16:35:42.734345"
+}

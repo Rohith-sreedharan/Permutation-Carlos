@@ -1,12 +1,12 @@
 {
-  "major": 6,
+  "major": 7,
   "minor": 1,
   "patch": 1,
-  "version": "6.1.1",
-  "previous_version": "6.1.0",
+  "version": "7.1.1",
+  "previous_version": "7.1.0",
   "bump_type": "patch",
-  "updated_at": "2026-02-28T02:28:29.450343+00:00",
+  "updated_at": "2026-03-07T13:12:50.775985+00:00",
   "updated_by": "test_user",
   "change_description": "Bug fix: edge calculation rounding",
-  "git_commit_sha": "ab0118e"
+  "git_commit_sha": "e77feec"
 }

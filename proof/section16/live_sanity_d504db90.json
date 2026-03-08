@@ -1,0 +1,130 @@
+{
+    "spread": {
+        "league": "NBA",
+        "game_id": "d504db9034e7831de4702ce8e4a2ece6",
+        "odds_event_id": "odds_event_d504db9034e7831de4702ce8e4a2ece6",
+        "market_type": "spread",
+        "decision_id": "2821ae82-8026-46d0-a4bc-7e387891d30f",
+        "selection_id": "d504db9034e7831de4702ce8e4a2ece6_spread_brooklyn_nets",
+        "preferred_selection_id": "d504db9034e7831de4702ce8e4a2ece6_spread_brooklyn_nets",
+        "market_selections": [
+            {
+                "selection_id": "d504db9034e7831de4702ce8e4a2ece6_spread_detroit_pistons",
+                "team_id": "detroit_pistons",
+                "team_name": "Detroit Pistons",
+                "line": 0,
+                "odds": -110
+            },
+            {
+                "selection_id": "d504db9034e7831de4702ce8e4a2ece6_spread_brooklyn_nets",
+                "team_id": "brooklyn_nets",
+                "team_name": "Brooklyn Nets",
+                "line": 0,
+                "odds": -110
+            }
+        ],
+        "pick": null,
+        "market": {
+            "line": 0.0,
+            "odds": -110
+        },
+        "model": null,
+        "fair_selection": null,
+        "probabilities": null,
+        "edge": null,
+        "classification": null,
+        "release_status": "BLOCKED_BY_STALE_DATA",
+        "reasons": [],
+        "risk": {
+            "volatility_flag": null,
+            "injury_impact": null,
+            "clv_forecast": null,
+            "blocked_reason": "Simulation data stale (> 120 minutes old)"
+        },
+        "debug": {
+            "inputs_hash": "53207ece4e934ee50e1365a8729e4244",
+            "odds_timestamp": "2026-03-07T16:35:42.790700+00:00",
+            "sim_run_id": "blocked",
+            "trace_id": "ac3b56cb-1571-4564-a86b-53ed54106a61",
+            "config_profile": null,
+            "decision_version": "6.1.1",
+            "computed_at": "2026-03-07T16:35:42.790629+00:00",
+            "git_commit_sha": "ab0118e"
+        },
+        "validator_failures": []
+    },
+    "moneyline": null,
+    "total": {
+        "league": "NBA",
+        "game_id": "d504db9034e7831de4702ce8e4a2ece6",
+        "odds_event_id": "odds_event_d504db9034e7831de4702ce8e4a2ece6",
+        "market_type": "total",
+        "decision_id": "60382084-0b4f-45ed-8554-0c0ad7dc445b",
+        "selection_id": "d504db9034e7831de4702ce8e4a2ece6_total_over",
+        "preferred_selection_id": "d504db9034e7831de4702ce8e4a2ece6_total_over",
+        "market_selections": [
+            {
+                "selection_id": "d504db9034e7831de4702ce8e4a2ece6_total_over",
+                "side": "OVER",
+                "line": 220.0,
+                "odds": -109
+            },
+            {
+                "selection_id": "d504db9034e7831de4702ce8e4a2ece6_total_under",
+                "side": "UNDER",
+                "line": 220.0,
+                "odds": -109
+            }
+        ],
+        "pick": {
+            "side": "OVER"
+        },
+        "market": {
+            "line": 220.0,
+            "odds": -109
+        },
+        "model": {
+            "fair_total": 237.15
+        },
+        "fair_selection": {
+            "total": 237.15,
+            "side": "OVER"
+        },
+        "probabilities": {
+            "model_prob": 0.6,
+            "market_implied_prob": 0.5215311004784688
+        },
+        "edge": {
+            "edge_points": 17.150000000000006,
+            "edge_ev": null,
+            "edge_grade": "S"
+        },
+        "classification": "EDGE",
+        "release_status": "APPROVED",
+        "reasons": [
+            "Total misprice: 17.2 points favoring OVER"
+        ],
+        "risk": {
+            "volatility_flag": "full",
+            "injury_impact": 0.0,
+            "clv_forecast": null,
+            "blocked_reason": null
+        },
+        "debug": {
+            "inputs_hash": "53207ece4e934ee50e1365a8729e4244",
+            "odds_timestamp": "2026-03-07T16:35:42.790209",
+            "sim_run_id": "sim_d504db9034e7831de4702ce8e4a2ece6_20260307023749",
+            "trace_id": "ac3b56cb-1571-4564-a86b-53ed54106a61",
+            "config_profile": "balanced",
+            "decision_version": "6.1.1",
+            "computed_at": "2026-03-07T16:35:42.790629+00:00",
+            "git_commit_sha": "ab0118e"
+        },
+        "validator_failures": []
+    },
+    "home_team_name": "Detroit Pistons",
+    "away_team_name": "Brooklyn Nets",
+    "inputs_hash": "53207ece4e934ee50e1365a8729e4244",
+    "decision_version": "6.1.1",
+    "computed_at": "2026-03-07T16:35:42.790779"
+}
