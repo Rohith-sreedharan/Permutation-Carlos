@@ -4,7 +4,7 @@
         "game_id": "d2465617bbd58c113358fb2053afcd30",
         "odds_event_id": "odds_event_d2465617bbd58c113358fb2053afcd30",
         "market_type": "spread",
-        "decision_id": "e0af2bef-5354-44e6-b02f-d1e2e03875ab",
+        "decision_id": "211b3aa8-d9c1-432a-a885-fc28f867317d",
         "selection_id": "d2465617bbd58c113358fb2053afcd30_spread_atlanta_hawks",
         "preferred_selection_id": "d2465617bbd58c113358fb2053afcd30_spread_atlanta_hawks",
         "market_selections": [
@@ -23,32 +23,51 @@
                 "odds": -110
             }
         ],
-        "pick": null,
+        "pick": {
+            "team_id": "atlanta_hawks",
+            "team_name": "Atlanta Hawks",
+            "side": null
+        },
         "market": {
             "line": 0.0,
-            "odds": -110
+            "odds": null
         },
-        "model": null,
-        "fair_selection": null,
-        "probabilities": null,
-        "edge": null,
-        "classification": null,
-        "release_status": "BLOCKED_BY_STALE_DATA",
-        "reasons": [],
+        "model": {
+            "fair_line": -4.788925465220982
+        },
+        "fair_selection": {
+            "line": -4.788925465220982,
+            "team_id": "atlanta_hawks"
+        },
+        "probabilities": {
+            "model_prob": 0.6327,
+            "market_implied_prob": 0.5238095238095238
+        },
+        "edge": {
+            "edge_points": 4.788925465220982,
+            "edge_ev": null,
+            "edge_grade": "A"
+        },
+        "classification": "EDGE",
+        "release_status": "APPROVED",
+        "reasons": [
+            "Spread misprice detected: 4.8 point edge",
+            "High cover probability: 63.3%"
+        ],
         "risk": {
-            "volatility_flag": null,
-            "injury_impact": null,
+            "volatility_flag": "full",
+            "injury_impact": 0.0,
             "clv_forecast": null,
-            "blocked_reason": "Simulation data stale (> 120 minutes old)"
+            "blocked_reason": null
         },
         "debug": {
-            "inputs_hash": "19e0f3539379f70b6512837cad1807d1",
-            "odds_timestamp": "2026-03-07T16:35:42.768297+00:00",
-            "sim_run_id": "blocked",
-            "trace_id": "c234e0ac-ed9e-44eb-a282-c52d7f518534",
-            "config_profile": null,
+            "inputs_hash": "fd4d46eb7122e09ac56b4b91b7669c92",
+            "odds_timestamp": "2026-03-08T05:53:21.611674",
+            "sim_run_id": "sim_d2465617bbd58c113358fb2053afcd30_20260308054318",
+            "trace_id": "3587caba-70e0-4dfb-b442-e396277c7356",
+            "config_profile": "balanced",
             "decision_version": "6.1.1",
-            "computed_at": "2026-03-07T16:35:42.768207+00:00",
+            "computed_at": "2026-03-08T05:53:21.612294+00:00",
             "git_commit_sha": "ab0118e"
         },
         "validator_failures": []
@@ -59,7 +78,7 @@
         "game_id": "d2465617bbd58c113358fb2053afcd30",
         "odds_event_id": "odds_event_d2465617bbd58c113358fb2053afcd30",
         "market_type": "total",
-        "decision_id": "5f2f2ddf-7a4c-4058-8de6-207d82b314f8",
+        "decision_id": "ca6b37d8-3d44-41d5-998a-d63a8a4c8153",
         "selection_id": "d2465617bbd58c113358fb2053afcd30_total_over",
         "preferred_selection_id": "d2465617bbd58c113358fb2053afcd30_total_over",
         "market_selections": [
@@ -84,10 +103,10 @@
             "odds": -109
         },
         "model": {
-            "fair_total": 238.92
+            "fair_total": 240.03
         },
         "fair_selection": {
-            "total": 238.92,
+            "total": 240.03,
             "side": "OVER"
         },
         "probabilities": {
@@ -95,14 +114,14 @@
             "market_implied_prob": 0.5215311004784688
         },
         "edge": {
-            "edge_points": 18.919999999999987,
+            "edge_points": 20.03,
             "edge_ev": null,
             "edge_grade": "S"
         },
         "classification": "EDGE",
         "release_status": "APPROVED",
         "reasons": [
-            "Total misprice: 18.9 points favoring OVER"
+            "Total misprice: 20.0 points favoring OVER"
         ],
         "risk": {
             "volatility_flag": "full",
@@ -111,20 +130,20 @@
             "blocked_reason": null
         },
         "debug": {
-            "inputs_hash": "19e0f3539379f70b6512837cad1807d1",
-            "odds_timestamp": "2026-03-07T16:35:42.767070",
-            "sim_run_id": "sim_d2465617bbd58c113358fb2053afcd30_20260307023744",
-            "trace_id": "c234e0ac-ed9e-44eb-a282-c52d7f518534",
+            "inputs_hash": "fd4d46eb7122e09ac56b4b91b7669c92",
+            "odds_timestamp": "2026-03-08T05:53:21.611674",
+            "sim_run_id": "sim_d2465617bbd58c113358fb2053afcd30_20260308054318",
+            "trace_id": "3587caba-70e0-4dfb-b442-e396277c7356",
             "config_profile": "balanced",
             "decision_version": "6.1.1",
-            "computed_at": "2026-03-07T16:35:42.768207+00:00",
+            "computed_at": "2026-03-08T05:53:21.612294+00:00",
             "git_commit_sha": "ab0118e"
         },
         "validator_failures": []
     },
     "home_team_name": "Atlanta Hawks",
     "away_team_name": "Philadelphia 76ers",
-    "inputs_hash": "19e0f3539379f70b6512837cad1807d1",
+    "inputs_hash": "fd4d46eb7122e09ac56b4b91b7669c92",
     "decision_version": "6.1.1",
-    "computed_at": "2026-03-07T16:35:42.768364"
+    "computed_at": "2026-03-08T05:53:21.612442"
 }

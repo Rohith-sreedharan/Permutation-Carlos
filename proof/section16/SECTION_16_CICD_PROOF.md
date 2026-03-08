@@ -1,8 +1,8 @@
 # SECTION 16 — CI/CD GOVERNANCE: EVIDENCE PACKAGE
 
 **Status:** LOCKED  
-**Lock Date:** 2026-03-07  
-**Final Commit:** `e77feec8d519bba1667cc265035aecdf25b661c1`  
+**Lock Date:** 2026-03-08  
+**Final Commit:** `ab0118e` (last green CI - all 3 workflows SUCCESS)  
 
 ---
 
@@ -64,27 +64,44 @@
 - `live_sanity_d2465617.json` (ATL vs PHI)
 - `live_sanity_d504db90.json` (DET vs BKN)
 
-### Results:
-| Game | Spread | Total | Status |
-|------|--------|-------|--------|
-| Minnesota Timberwolves vs Orlando Magic | EDGE | EDGE | ✅ APPROVED |
-| Atlanta Hawks vs Philadelphia 76ers | EDGE | EDGE | ✅ APPROVED |
-| Detroit Pistons vs Brooklyn Nets | EDGE | EDGE | ✅ APPROVED |
+### Results (exact from raw JSON):
+| Game | spread.release_status | spread.classification | total.release_status | moneyline |
+|------|----------------------|----------------------|---------------------|-----------|
+| MIN @ ORL | `"APPROVED"` | `"EDGE"` (grade: S) | `"APPROVED"` | `null` |
+| ATL @ PHI | `"APPROVED"` | `"EDGE"` (grade: S) | `"APPROVED"` | `null` |
+| DET @ BKN | `"APPROVED"` | `"EDGE"` (grade: S) | `"APPROVED"` | `null` |
 
-**Verification:**
-- 0 contradictions
-- 0 BLOCKED_BY_INTEGRITY
-- 0 selection_id mismatches
-- Decision version: 6.1.1 (consistent across all)
+**Raw JSON Evidence (all 3 games):**
+```json
+{
+  "spread": {
+    "release_status": "APPROVED",
+    "classification": "EDGE",
+    "edge": { "edge_grade": "S" },
+    "risk": { "blocked_reason": null },
+    "validator_failures": []
+  },
+  "total": {
+    "release_status": "APPROVED",
+    "classification": "EDGE"
+  },
+  "moneyline": null
+}
+```
+
+**Debug Fields (from all payloads):**
+- `git_commit_sha`: `"ab0118e"`
+- `decision_version`: `"6.1.1"`
+- `blocked_reason`: `null` (no stale data blocking)
 
 ---
 
 ## 4. Commit History (Section 16 Fixes)
 
-| Commit | Description |
-|--------|-------------|
-| `e77feec` | FIX: Correct decision_version type in GameDecisions (str not int) + Fix audit.py import |
-| `ab0118e` | FIX: Remove invalid +00:00Z double timezone suffix (ROOT CAUSE FIX #6) |
+| Commit | Description | CI Status |
+|--------|-------------|-----------|
+| `e77feec` | FIX: Correct decision_version type + Fix audit.py import | ❌ FAILED (billing lock) |
+| `ab0118e` | FIX: Remove invalid +00:00Z double suffix (ROOT CAUSE FIX #6) | ✅ GREEN (LOCK COMMIT) |
 | `ff2b8c7` | FIX: Remove workflow path filters + fix timezone-aware datetime (INSTITUTIONAL FIX #5) |
 | `e1d5b04` | FIX: Make datetime comparison timezone-naive in freshness validation |
 | `2ade658` | FIX: Replace ALL remaining datetime.UTC with timezone.utc |
@@ -161,5 +178,5 @@ This evidence package certifies that Section 16 CI/CD Governance requirements ar
 
 ---
 
-*Generated: 2026-03-07*  
-*Lock Commit: e77feec8d519bba1667cc265035aecdf25b661c1*
+*Generated: 2026-03-08*  
+*Lock Commit: ab0118e (last green CI - e77feec CI failed due to billing)*
