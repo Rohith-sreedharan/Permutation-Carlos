@@ -16,6 +16,7 @@ from db.schemas.logging_calibration_schemas import (
     Channel,
     Visibility
 )
+from services.observability_service import observability_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ class PublishingService:
             channel=Channel(channel),
             visibility=Visibility(visibility),
             copy_template_id=copy_template_id,
-            locked_market_snapshot_id=prediction.get("market_snapshot_id", "unknown"),
+            locked_market_snapshot_id=prediction.get("market_snapshot_id_used") or prediction.get("market_snapshot_id", "unknown"),
             locked_engine_version=prediction.get("engine_version", "unknown"),
             locked_model_version=prediction.get("model_version", "unknown"),
             locked_decision_policy_version=prediction.get("decision_policy_version", "1.0"),
@@ -106,6 +107,24 @@ class PublishingService:
         )
         
         self.published_collection.insert_one(published.model_dump())
+
+        trace_id = prediction.get("trace_id") or f"trace_publish_{prediction_id}"
+        snapshot_hash = prediction.get("snapshot_hash") or prediction.get("market_snapshot_id_used")
+        decision_id = prediction.get("decision_id")
+        observability_service.log_prediction_lifecycle(
+            stage="PUBLISHED",
+            decision_id=decision_id,
+            event_id=prediction["event_id"],
+            prediction_id=prediction_id,
+            publish_id=publish_id,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={
+                "channel": channel,
+                "visibility": visibility,
+                "is_official": is_official,
+            },
+        )
         
         logger.info(
             f"📢 Published prediction: {publish_id} "
