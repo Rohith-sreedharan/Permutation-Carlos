@@ -1,0 +1,70 @@
+from services.parlay_execution_agent import ParlayExecutionAgent
+
+
+class FakeCollection:
+    def __init__(self):
+        self.docs = []
+
+    def insert_one(self, doc):
+        self.docs.append(doc)
+        return type("InsertResult", (), {"inserted_id": doc.get("event_id") or doc.get("charge_id") or "ok"})
+
+
+def test_log_execution_event_writes_append_only_execution_row():
+    execution_log = FakeCollection()
+    overage_log = FakeCollection()
+    agent = ParlayExecutionAgent(
+        execution_log_collection=execution_log,
+        overage_log_collection=overage_log,
+    )
+
+    event_id = agent.log_execution_event(
+        run_id="run_1",
+        user_id="user_1",
+        trace_id="trace_1",
+        decision_id="decision_1",
+        event_type="PARLAY_EXECUTED",
+        payload={"legs": 4},
+    )
+
+    assert event_id
+    assert len(execution_log.docs) == 1
+    doc = execution_log.docs[0]
+    assert doc["event_id"] == event_id
+    assert doc["run_id"] == "run_1"
+    assert doc["user_id"] == "user_1"
+    assert doc["trace_id"] == "trace_1"
+    assert doc["decision_id"] == "decision_1"
+    assert doc["event_type"] == "PARLAY_EXECUTED"
+    assert doc["payload"] == {"legs": 4}
+    assert "created_at_utc" in doc
+
+
+def test_log_overage_charge_writes_append_only_charge_row():
+    execution_log = FakeCollection()
+    overage_log = FakeCollection()
+    agent = ParlayExecutionAgent(
+        execution_log_collection=execution_log,
+        overage_log_collection=overage_log,
+    )
+
+    charge_id = agent.log_overage_charge(
+        parlay_run_id="run_2",
+        user_id="user_2",
+        trace_id="trace_2",
+        billing_period_start="2026-03-01",
+        token_shortfall=25,
+        charge_usd=0.5,
+    )
+
+    assert charge_id
+    assert len(overage_log.docs) == 1
+    doc = overage_log.docs[0]
+    assert doc["charge_id"] == charge_id
+    assert doc["parlay_run_id"] == "run_2"
+    assert doc["user_id"] == "user_2"
+    assert doc["trace_id"] == "trace_2"
+    assert doc["billing_period_start"] == "2026-03-01"
+    assert doc["token_shortfall"] == 25
+    assert doc["charge_usd"] == 0.5
+    assert "created_at_utc" in doc

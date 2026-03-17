@@ -122,6 +122,8 @@ from routes.calibration_routes import router as calibration_router  # NEW: Loggi
 from routes.meta import router as meta_router  # NEW: Build/version metadata endpoint
 from routes.decisions import router as decisions_router  # NEW: Unified MarketDecision endpoint
 from routes.audit import router as audit_router  # NEW: Decision Audit Log Query Endpoint (Section 14)
+from routes.distribution_routes import router as distribution_router  # NEW: Distribution Governance endpoint
+from routes.integrity_routes import router as integrity_router  # NEW: Integrity Sentinel internal endpoint
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -145,6 +147,8 @@ app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
 app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
 app.include_router(meta_router)  # NEW: Build/version metadata for validation
 app.include_router(audit_router)  # NEW: Decision Audit Log Query Endpoint (Section 14 compliance)
+app.include_router(distribution_router)  # NEW: Distribution Governance internal endpoint
+app.include_router(integrity_router)  # NEW: Integrity Sentinel internal endpoint
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)
