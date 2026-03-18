@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchEvents, fetchEventsByDateRealtime, fetchEventsFromDB, getPredictions } from '../services/api';
+import { DASHBOARD_COPY, PLAN_IDS, PRODUCT_LIMITS, type PlanId } from '../uiCopy/products';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
 import EventListItem from './EventListItem';
@@ -25,9 +26,30 @@ type TimeOrder = 'soonest' | 'latest';
 interface DashboardProps {
   onAuthError: () => void;
   onGameClick?: (gameId: string) => void;
+  currentPlan?: PlanId | null;
+  cyclesRemaining?: number;
+  tokensRemaining?: number;
+  telegramConnected?: boolean;
+  billingPeriodEnd?: string;
+  overageCapRemaining?: number;
+  onUpgradeToPlatform?: () => void;
+  onJoinTelegram?: () => void;
+  onGetPlatform?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+  onAuthError,
+  onGameClick,
+  currentPlan,
+  cyclesRemaining,
+  tokensRemaining,
+  telegramConnected,
+  billingPeriodEnd,
+  overageCapRemaining = PRODUCT_LIMITS.PARLAY_OVERAGE_MONTHLY_CAP_USD,
+  onUpgradeToPlatform,
+  onJoinTelegram,
+  onGetPlatform,
+}) => {
   const [eventsWithPredictions, setEventsWithPredictions] = useState<EventWithPrediction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [polling, setPolling] = useState<boolean>(false);
@@ -221,7 +243,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
   }
 
   return (
-    <div className="space-y-6 max-w-[1800px] mx-auto">
+    <div className="space-y-6 max-w-450 mx-auto">
       {/* Modern Horizontal Loading Bar */}
       {polling && (
         <div className="fixed top-0 left-0 right-0 z-50">
@@ -234,6 +256,107 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
               </svg>
               Pulling latest games & odds...
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Status Bar */}
+      {currentPlan === PLAN_IDS.BEATVEGAS_PLATFORM && (
+        <div className="bg-charcoal rounded-xl border border-electric-blue/30 px-5 py-4 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-bold uppercase tracking-widest text-electric-blue bg-electric-blue/10 px-3 py-1 rounded-full">
+              {DASHBOARD_COPY.PLATFORM_SUBSCRIBER.planBadge}
+            </span>
+            <span className={`text-xs flex items-center gap-1.5 ${telegramConnected ? 'text-neon-green' : 'text-light-gray/60'}`}>
+              <span className={`w-2 h-2 rounded-full ${telegramConnected ? 'bg-neon-green' : 'bg-light-gray/40'}`}></span>
+              {DASHBOARD_COPY.PLATFORM_SUBSCRIBER.telegramLabel}: {telegramConnected ? 'Connected' : 'Not connected'}
+            </span>
+          </div>
+          {cyclesRemaining !== undefined && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-light-gray/80">
+                  {cyclesRemaining <= 0
+                    ? <>{DASHBOARD_COPY.CYCLES_WIDGET.exhausted} · <span className="text-bold-red">{DASHBOARD_COPY.CYCLES_WIDGET.exhaustedNote}</span></>
+                    : <>{DASHBOARD_COPY.CYCLES_WIDGET.normal(cyclesRemaining)}{cyclesRemaining < 10000 && <span className="ml-2 text-vibrant-yellow">{DASHBOARD_COPY.CYCLES_WIDGET.lowWarning}</span>}</>
+                  }
+                </span>
+                {billingPeriodEnd && cyclesRemaining > 0 && (
+                  <span className="text-xs text-light-gray/50">Resets {billingPeriodEnd}</span>
+                )}
+              </div>
+              <div className="w-full bg-navy rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${cyclesRemaining <= 0 ? 'w-0' : cyclesRemaining < 10000 ? 'bg-vibrant-yellow' : 'bg-neon-green'}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (cyclesRemaining / PRODUCT_LIMITS.INTELLIGENCE_CYCLES_MONTHLY) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {tokensRemaining !== undefined && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-light-gray/80">
+                  {tokensRemaining <= 0
+                    ? <>{DASHBOARD_COPY.TOKENS_WIDGET.exhausted} · <span className="text-bold-red">{DASHBOARD_COPY.TOKENS_WIDGET.exhaustedNote}</span> {DASHBOARD_COPY.TOKENS_WIDGET.capLabel} <span className="text-vibrant-yellow">${overageCapRemaining}</span></>
+                    : <>{DASHBOARD_COPY.TOKENS_WIDGET.normal(tokensRemaining)}{tokensRemaining < 150 && <span className="ml-2 text-vibrant-yellow">{DASHBOARD_COPY.TOKENS_WIDGET.lowWarning}</span>}</>
+                  }
+                </span>
+                {billingPeriodEnd && tokensRemaining > 0 && (
+                  <span className="text-xs text-light-gray/50">Resets {billingPeriodEnd}</span>
+                )}
+              </div>
+              <div className="w-full bg-navy rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${tokensRemaining <= 0 ? 'w-0' : tokensRemaining < 150 ? 'bg-vibrant-yellow' : 'bg-electric-blue'}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (tokensRemaining / PRODUCT_LIMITS.PARLAY_TOKENS_MONTHLY) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentPlan === PLAN_IDS.TELEGRAM_SYNDICATE && (
+        <div className="bg-charcoal rounded-xl border border-electric-blue/20 px-5 py-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-neon-green bg-neon-green/10 px-3 py-1 rounded-full">
+                {DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.planBadge}
+              </span>
+              <p className="text-xs text-light-gray/70 mt-2">
+                {DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.upgradeNote}{' '}
+                <span className="text-white">{DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.upgradePrice}</span>
+              </p>
+            </div>
+            {onUpgradeToPlatform && (
+              <button
+                onClick={onUpgradeToPlatform}
+                className="text-xs font-bold px-4 py-2 bg-electric-blue hover:bg-electric-blue/90 text-white rounded-lg transition-colors whitespace-nowrap"
+              >
+                {DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.upgradeCta}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {currentPlan === null && (
+        <div className="bg-charcoal rounded-xl border border-electric-blue/20 px-5 py-5 text-center space-y-4">
+          <p className="text-white font-semibold text-base">{DASHBOARD_COPY.NO_SUBSCRIPTION.welcome}</p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={onJoinTelegram}
+              className="text-sm font-bold px-5 py-2.5 bg-neon-green/10 hover:bg-neon-green/20 text-neon-green border border-neon-green/30 rounded-lg transition-colors"
+            >
+              {DASHBOARD_COPY.NO_SUBSCRIPTION.telegramCta}
+            </button>
+            <button
+              onClick={onGetPlatform}
+              className="text-sm font-bold px-5 py-2.5 bg-electric-blue hover:bg-electric-blue/90 text-white rounded-lg transition-colors"
+            >
+              {DASHBOARD_COPY.NO_SUBSCRIPTION.platformCta}
+            </button>
           </div>
         </div>
       )}

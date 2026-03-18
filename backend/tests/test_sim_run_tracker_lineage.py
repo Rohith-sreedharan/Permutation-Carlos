@@ -28,9 +28,9 @@ class FakeObservability:
 
 def make_tracker() -> SimRunTracker:
     tracker = SimRunTracker()
-    tracker.sim_runs_collection = FakeCollection()
-    tracker.sim_run_inputs_collection = FakeCollection()
-    tracker.predictions_collection = FakeCollection()
+    setattr(tracker, "sim_runs_collection", FakeCollection())
+    setattr(tracker, "sim_run_inputs_collection", FakeCollection())
+    setattr(tracker, "predictions_collection", FakeCollection())
     return tracker
 
 
@@ -65,8 +65,9 @@ def test_create_prediction_persists_decision_trace_and_snapshot(monkeypatch):
     )
 
     assert prediction_id
-    assert len(tracker.predictions_collection.docs) == 1
-    doc = tracker.predictions_collection.docs[0]
+    predictions = getattr(tracker, "predictions_collection")
+    assert len(predictions.docs) == 1
+    doc = predictions.docs[0]
     assert doc["decision_id"] == "decision_1"
     assert doc["trace_id"] == "trace_1"
     assert doc["snapshot_hash"] == "snapshot_hash_1"

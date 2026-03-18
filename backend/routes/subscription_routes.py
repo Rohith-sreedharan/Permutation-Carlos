@@ -38,7 +38,7 @@ def _get_user_id_from_auth(authorization: Optional[str]) -> str:
 async def get_subscription_status(authorization: Optional[str] = Header(None)):
     """
     Get user's current subscription status
-    Returns tier, renewal date, payment method, and subscription status
+    Returns canonical entitlement state, billing period metadata, and payment status.
     """
     user_id = _get_user_id_from_auth(authorization)
     
@@ -50,12 +50,28 @@ async def get_subscription_status(authorization: Optional[str] = Header(None)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Default response for users without active subscription
+    billing_state = db["billing_state"].find_one({"user_id": user_id}) or {}
+
+    raw_status = str(billing_state.get("status", "inactive")).lower()
+    if raw_status == "active":
+        normalized_status = "active"
+    elif raw_status in {"past_due", "past-due"}:
+        normalized_status = "past_due"
+    else:
+        normalized_status = "canceled"
+
     response = {
-        "tier": user.get("tier", "starter"),
-        "renewalDate": None,
+        "plan_id": billing_state.get("plan_id"),
+        "platform_access": bool(billing_state.get("platform_access", False)),
+        "telegram_access": bool(billing_state.get("telegram_access", False)),
+        "engine_cycles_limit": int(billing_state.get("engine_cycles_limit", 0) or 0),
+        "engine_cycles_remaining": int(billing_state.get("engine_cycles_remaining", 0) or 0),
+        "parlay_tokens_remaining": int(billing_state.get("parlay_tokens_remaining", 0) or 0),
+        "overage_charges_current_period": float(billing_state.get("overage_charges_current_period", 0) or 0),
+        "billing_period_end": billing_state.get("billing_period_end") or billing_state.get("next_billing_date"),
+        "renewalDate": billing_state.get("next_billing_date"),
         "paymentMethod": None,
-        "status": "active" if user.get("tier") == "starter" else "inactive"
+        "status": normalized_status,
     }
     
     # If user has Stripe subscription, fetch live status
@@ -75,9 +91,16 @@ async def get_subscription_status(authorization: Optional[str] = Header(None)):
                     pass
             
             response = {
-                "tier": user.get("tier", "starter"),
+                "plan_id": response.get("plan_id"),
+                "platform_access": response.get("platform_access", False),
+                "telegram_access": response.get("telegram_access", False),
+                "engine_cycles_limit": response.get("engine_cycles_limit", 0),
+                "engine_cycles_remaining": response.get("engine_cycles_remaining", 0),
+                "parlay_tokens_remaining": response.get("parlay_tokens_remaining", 0),
+                "overage_charges_current_period": response.get("overage_charges_current_period", 0),
+                "billing_period_end": response.get("billing_period_end"),
                 "renewalDate": renewal_date,
-                "status": subscription.get("status", "unknown"),
+                "status": "active" if subscription.get("status") in {"active", "trialing"} else "past_due" if subscription.get("status") == "past_due" else "canceled",
                 "paymentMethod": None  # Would need to fetch payment method separately
             }
             
@@ -103,7 +126,7 @@ async def get_subscription_status(authorization: Optional[str] = Header(None)):
 @router.get("/usage")
 async def get_subscription_usage(authorization: Optional[str] = Header(None)):
     """
-    Get user's subscription usage (simulations run, daily limits, etc.)
+    Get user's canonical entitlement usage snapshot.
     """
     user_id = _get_user_id_from_auth(authorization)
     
@@ -115,30 +138,16 @@ async def get_subscription_usage(authorization: Optional[str] = Header(None)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    tier = user.get("tier", "starter")
-    
-    # Tier limits
-    tier_limits = {
-        "starter": {"sims_per_day": 2, "name": "Starter (Free)"},
-        "pro": {"sims_per_day": 15, "name": "Pro"},
-        "sharps_room": {"sims_per_day": 60, "name": "Sharps Room"},
-        "founder": {"sims_per_day": 300, "name": "Founder"}
-    }
-    
-    limits = tier_limits.get(tier, tier_limits["starter"])
-    
-    # Get usage from simulations collection (simplified - in production track daily usage)
-    usage = user.get("usage", {})
-    sims_used_today = usage.get("sims_used_today", 0)
-    last_reset = usage.get("last_reset", datetime.now(timezone.utc).isoformat())
-    
+    billing_state = db["billing_state"].find_one({"user_id": user_id}) or {}
+
     return {
-        "tier": tier,
-        "tier_name": limits["name"],
-        "sims_per_day": limits["sims_per_day"],
-        "sims_used_today": sims_used_today,
-        "sims_remaining": max(0, limits["sims_per_day"] - sims_used_today),
-        "last_reset": last_reset
+        "plan_id": billing_state.get("plan_id"),
+        "platform_access": bool(billing_state.get("platform_access", False)),
+        "telegram_access": bool(billing_state.get("telegram_access", False)),
+        "engine_cycles_limit": int(billing_state.get("engine_cycles_limit", 0) or 0),
+        "engine_cycles_remaining": int(billing_state.get("engine_cycles_remaining", 0) or 0),
+        "parlay_tokens_remaining": int(billing_state.get("parlay_tokens_remaining", 0) or 0),
+        "billing_period_end": billing_state.get("billing_period_end") or billing_state.get("next_billing_date"),
     }
 
 

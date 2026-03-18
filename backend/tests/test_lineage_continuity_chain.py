@@ -157,10 +157,10 @@ def test_lineage_continuity_simulation_to_calibration(monkeypatch):
 
     # Simulation -> Prediction
     sim_tracker = SimRunTracker()
-    sim_tracker.sim_runs_collection = FakeCollection()
-    sim_tracker.sim_run_inputs_collection = FakeCollection()
+    setattr(sim_tracker, "sim_runs_collection", FakeCollection())
+    setattr(sim_tracker, "sim_run_inputs_collection", FakeCollection())
     predictions = FakeCollection()
-    sim_tracker.predictions_collection = predictions
+    setattr(sim_tracker, "predictions_collection", predictions)
 
     sim_run_id = "sim_1"
     prediction_id = sim_tracker.create_prediction(
@@ -223,8 +223,8 @@ def test_lineage_continuity_simulation_to_calibration(monkeypatch):
     # Prediction -> Publish
     publishing = PublishingService()
     published = FakeCollection()
-    publishing.published_collection = published
-    publishing.predictions_collection = predictions
+    setattr(publishing, "published_collection", published)
+    setattr(publishing, "predictions_collection", predictions)
 
     publish_id = publishing.publish_prediction(
         prediction_id=prediction_id,
@@ -237,10 +237,8 @@ def test_lineage_continuity_simulation_to_calibration(monkeypatch):
 
     # Publish -> Settlement
     grading = GradingService()
-    grading.grading_collection = FakeCollection()
-    grading.published_collection = published
-    grading.predictions_collection = predictions
-    grading.event_results_collection = FakeCollection(
+    grading_records = FakeCollection()
+    event_results = FakeCollection(
         docs=[
             {
                 "event_id": event_id,
@@ -252,7 +250,7 @@ def test_lineage_continuity_simulation_to_calibration(monkeypatch):
             }
         ]
     )
-    grading.odds_snapshots_collection = FakeCollection(
+    odds_snapshots = FakeCollection(
         docs=[
             {
                 "snapshot_id": "close_1",
@@ -264,17 +262,22 @@ def test_lineage_continuity_simulation_to_calibration(monkeypatch):
             }
         ]
     )
+    setattr(grading, "grading_collection", grading_records)
+    setattr(grading, "published_collection", published)
+    setattr(grading, "predictions_collection", predictions)
+    setattr(grading, "event_results_collection", event_results)
+    setattr(grading, "odds_snapshots_collection", odds_snapshots)
 
     graded_id = grading.grade_published_prediction(publish_id)
     assert graded_id is not None
 
     # Settlement -> Calibration training data continuity
     calibration = CalibrationService()
-    calibration.calibration_versions_collection = FakeCollection()
-    calibration.calibration_segments_collection = FakeCollection()
-    calibration.grading_collection = grading.grading_collection
-    calibration.published_collection = published
-    calibration.predictions_collection = predictions
+    setattr(calibration, "calibration_versions_collection", FakeCollection())
+    setattr(calibration, "calibration_segments_collection", FakeCollection())
+    setattr(calibration, "grading_collection", grading_records)
+    setattr(calibration, "published_collection", published)
+    setattr(calibration, "predictions_collection", predictions)
 
     now = datetime.now(timezone.utc)
     samples = calibration._get_training_data(now - timedelta(days=7), now + timedelta(days=1))

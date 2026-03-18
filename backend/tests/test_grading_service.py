@@ -61,29 +61,33 @@ class FakeObservability:
 
 def make_service() -> GradingService:
     svc = GradingService()
-    svc.grading_collection = FakeCollection()
-    svc.published_collection = FakeCollection()
-    svc.predictions_collection = FakeCollection()
-    svc.event_results_collection = FakeCollection()
-    svc.odds_snapshots_collection = FakeCollection()
+    setattr(svc, "grading_collection", FakeCollection())
+    setattr(svc, "published_collection", FakeCollection())
+    setattr(svc, "predictions_collection", FakeCollection())
+    setattr(svc, "event_results_collection", FakeCollection())
+    setattr(svc, "odds_snapshots_collection", FakeCollection())
     return svc
 
 
 def test_grade_published_prediction_skips_non_official_predictions(monkeypatch):
     svc = make_service()
-    svc.published_collection.docs.append(
+    published = FakeCollection(
+        docs=[
         {
             "publish_id": "pub_non_official",
             "prediction_id": "pred_1",
             "event_id": "event_1",
             "is_official": False,
         }
+    ]
     )
+    setattr(svc, "published_collection", published)
 
     result = svc.grade_published_prediction("pub_non_official")
 
     assert result is None
-    assert len(svc.grading_collection.docs) == 0
+    grading_records = getattr(svc, "grading_collection")
+    assert len(grading_records.docs) == 0
 
 
 def test_grade_published_prediction_writes_grading_and_observability(monkeypatch):
@@ -91,7 +95,8 @@ def test_grade_published_prediction_writes_grading_and_observability(monkeypatch
     fake_obs = FakeObservability()
     monkeypatch.setattr(grading_module, "observability_service", fake_obs)
 
-    svc.published_collection.docs.append(
+    published = FakeCollection(
+        docs=[
         {
             "publish_id": "pub_1",
             "prediction_id": "pred_1",
@@ -101,8 +106,10 @@ def test_grade_published_prediction_writes_grading_and_observability(monkeypatch
             "published_at_utc": "2026-03-01T00:00:00+00:00",
             "trace_id": "trace_pub_1",
         }
+    ]
     )
-    svc.predictions_collection.docs.append(
+    predictions = FakeCollection(
+        docs=[
         {
             "prediction_id": "pred_1",
             "market_key": "SPREAD:FULL_GAME",
@@ -111,8 +118,10 @@ def test_grade_published_prediction_writes_grading_and_observability(monkeypatch
             "market_snapshot_id_used": "snap_open_1",
             "decision_id": "decision_1",
         }
+    ]
     )
-    svc.event_results_collection.docs.append(
+    event_results = FakeCollection(
+        docs=[
         {
             "event_id": "event_1",
             "status": "FINAL",
@@ -121,8 +130,10 @@ def test_grade_published_prediction_writes_grading_and_observability(monkeypatch
             "total_score": 213,
             "margin": 7,
         }
+    ]
     )
-    svc.odds_snapshots_collection.docs.append(
+    odds_snapshots = FakeCollection(
+        docs=[
         {
             "snapshot_id": "snap_close_1",
             "event_id": "event_1",
@@ -131,13 +142,20 @@ def test_grade_published_prediction_writes_grading_and_observability(monkeypatch
             "is_close_candidate": True,
             "price_american": -120,
         }
+    ]
     )
+
+    setattr(svc, "published_collection", published)
+    setattr(svc, "predictions_collection", predictions)
+    setattr(svc, "event_results_collection", event_results)
+    setattr(svc, "odds_snapshots_collection", odds_snapshots)
 
     graded_id = svc.grade_published_prediction("pub_1")
 
     assert graded_id is not None
-    assert len(svc.grading_collection.docs) == 1
-    doc = svc.grading_collection.docs[0]
+    grading_records = getattr(svc, "grading_collection")
+    assert len(grading_records.docs) == 1
+    doc = grading_records.docs[0]
     assert doc["publish_id"] == "pub_1"
     assert doc["result_code"] == "WIN"
     assert doc["bet_status"] == "SETTLED"

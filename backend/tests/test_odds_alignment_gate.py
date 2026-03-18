@@ -49,11 +49,11 @@ class TestOddsAlignmentGate:
         self.fresh_odds_timestamp = now.isoformat()
     
     # ==========================================
-    # TEST 1: Exact match - APPROVED
+    # TEST 1: Exact match - OFFICIAL
     # ==========================================
-    def test_line_delta_exact_match_approved(self):
+    def test_line_delta_exact_match_official(self):
         """
-        Test 1: sim = -3.5, market = -3.5 → APPROVED
+        Test 1: sim = -3.5, market = -3.5 → OFFICIAL
         
         line_delta = 0.0
         Should PASS odds alignment gate.
@@ -80,8 +80,8 @@ class TestOddsAlignmentGate:
             odds_snapshot, sim_result, self.config, self.game_competitors
         )
         
-        # Should be APPROVED (passes odds gate)
-        assert decision.release_status == ReleaseStatus.APPROVED
+        # Should be OFFICIAL (passes odds gate)
+        assert decision.release_status == ReleaseStatus.OFFICIAL
         # Should have classification
         assert decision.classification is not None
         # Should have edge calculated
@@ -89,11 +89,11 @@ class TestOddsAlignmentGate:
         assert decision.edge.edge_points is not None
     
     # ==========================================
-    # TEST 2: Within tolerance - APPROVED
+    # TEST 2: Within tolerance - OFFICIAL
     # ==========================================
-    def test_line_delta_within_tolerance_approved(self):
+    def test_line_delta_within_tolerance_official(self):
         """
-        Test 2: sim = -3.5, market = -3.25 → APPROVED
+        Test 2: sim = -3.5, market = -3.25 → OFFICIAL
         
         line_delta = 0.25 (EXACT boundary)
         Should PASS odds alignment gate.
@@ -121,7 +121,7 @@ class TestOddsAlignmentGate:
         )
         
         # CRITICAL: 0.25 MUST PASS (boundary test)
-        assert decision.release_status == ReleaseStatus.APPROVED
+        assert decision.release_status == ReleaseStatus.OFFICIAL
         assert decision.classification is not None
         assert decision.edge is not None
     
@@ -130,7 +130,7 @@ class TestOddsAlignmentGate:
     # ==========================================
     def test_line_delta_exceeds_tolerance_blocked(self):
         """
-        Test 3: sim = -3.5, market = -3.0 → BLOCKED_BY_ODDS_MISMATCH
+        Test 3: sim = -3.5, market = -3.0 → BLOCKED_BY_INTEGRITY
         
         line_delta = 0.5 (EXCEEDS 0.25)
         Should BLOCK.
@@ -160,7 +160,7 @@ class TestOddsAlignmentGate:
         )
         
         # MUST be BLOCKED
-        assert decision.release_status == ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+        assert decision.release_status == ReleaseStatus.BLOCKED_BY_INTEGRITY
         
         # REQUIREMENT 3: No edge before odds pass
         assert decision.classification is None
@@ -178,7 +178,7 @@ class TestOddsAlignmentGate:
     # ==========================================
     def test_pickem_symmetry_pass(self):
         """
-        Test 4 (Pick'em PASS): line = 0.0, prob_delta = 0.0091 → APPROVED
+        Test 4 (Pick'em PASS): line = 0.0, prob_delta = 0.0091 → OFFICIAL
         
         implied_prob_home = 0.5238 (odds -110)
         implied_prob_away = 0.5147 (odds -107)
@@ -209,7 +209,7 @@ class TestOddsAlignmentGate:
         )
         
         # Should PASS pick'em symmetry
-        assert decision.release_status == ReleaseStatus.APPROVED
+        assert decision.release_status == ReleaseStatus.OFFICIAL
         assert decision.classification is not None
         assert decision.edge is not None
     
@@ -251,7 +251,7 @@ class TestOddsAlignmentGate:
         )
         
         # MUST be BLOCKED
-        assert decision.release_status == ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+        assert decision.release_status == ReleaseStatus.BLOCKED_BY_INTEGRITY
         
         # All decision fields nullified
         assert decision.classification is None
@@ -291,7 +291,7 @@ class TestOddsAlignmentGate:
             odds_snapshot, sim_result, self.config, self.game_competitors
         )
         
-        assert decision.release_status == ReleaseStatus.APPROVED
+        assert decision.release_status == ReleaseStatus.OFFICIAL
     
     def test_boundary_0_25001_blocks(self):
         """Boundary: line_delta = 0.25001 → BLOCK"""
@@ -317,7 +317,7 @@ class TestOddsAlignmentGate:
             odds_snapshot, sim_result, self.config, self.game_competitors
         )
         
-        assert decision.release_status == ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+        assert decision.release_status == ReleaseStatus.BLOCKED_BY_INTEGRITY
     
     def test_boundary_prob_delta_0_0200_passes(self):
         """Boundary: pick'em prob_delta = 0.0200 exactly → PASS"""
@@ -346,7 +346,7 @@ class TestOddsAlignmentGate:
         )
         
         # Should pass (prob delta is small)
-        assert decision.release_status == ReleaseStatus.APPROVED
+        assert decision.release_status == ReleaseStatus.OFFICIAL
     
     # ==========================================
     # LIFECYCLE ORDER TEST
@@ -380,7 +380,7 @@ class TestOddsAlignmentGate:
         )
         
         # Despite huge edge and strong probability, must BLOCK due to odds movement
-        assert decision.release_status == ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+        assert decision.release_status == ReleaseStatus.BLOCKED_BY_INTEGRITY
         
         # Classification MUST NOT occur
         assert decision.classification is None

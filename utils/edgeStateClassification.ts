@@ -592,5 +592,5 @@ export function getTelegramPostType(classification: EdgeClassification): 'play' 
  * GLOBAL DISCLAIMER - Add everywhere (UI + Telegram bio)
  */
 export const PLATFORM_DISCLAIMER = 
-  'BeatVegas surfaces model signals, but only releases trades that pass risk-adjusted execution thresholds.';
+  'BeatVegas surfaces engine signals, but only releases trades that pass risk-adjusted execution thresholds.';
 

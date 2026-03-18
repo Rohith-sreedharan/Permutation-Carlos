@@ -19,7 +19,7 @@ const SocialMetaTags: React.FC<SocialMetaTagsProps> = ({ event, pageType = 'dash
   useEffect(() => {
     // Default meta tags for dashboard
     let title = 'BeatVegas - AI Sports Betting Intelligence';
-    let description = 'Advanced AI-powered sports betting predictions with Monte Carlo simulations, real-time odds tracking, and professional-grade analytics.';
+    let description = 'Advanced AI-powered sports betting predictions with Decision Engine intelligence cycles, real-time odds tracking, and professional-grade analytics.';
     let image = 'https://beatvegas.ai/og-default.png'; // Placeholder - replace with your hosted image
     let url = 'https://beatvegas.ai';
 
@@ -52,7 +52,7 @@ const SocialMetaTags: React.FC<SocialMetaTagsProps> = ({ event, pageType = 'dash
       const volatility = pred?.volatility || '';
       
       const metrics = [confidence, ev, volatility].filter(Boolean).join(' • ');
-      description = `AI Prediction: ${metrics}. Monte Carlo-validated pick with real-time odds tracking and advanced analytics.`;
+      description = `Engine Projection: ${metrics}. Decision Engine validated signal with real-time odds tracking and advanced analytics.`;
 
       // Game-specific image URL (you can generate these dynamically)
       image = `https://beatvegas.ai/og-game-${event.id}.png`;

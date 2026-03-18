@@ -22,18 +22,10 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
         loadUser();
     }, []);
 
-    // Format tier name for display
-    const getTierDisplay = (tier: string) => {
-        const tierMap: Record<string, string> = {
-            'free': 'Free Tier',
-            'starter': 'Starter',
-            'core': 'Core',
-            'pro': 'Pro',
-            'elite': 'Elite 👑',
-            'sharps_room': 'Sharps Room',
-            'founder': 'Founder 👑'
-        };
-        return tierMap[tier?.toLowerCase()] || 'Starter';
+    const getAccessDisplay = (profile: any) => {
+        if (profile?.platform_access) return 'BeatVegas Platform';
+        if (profile?.telegram_access) return 'Telegram Syndicate';
+        return 'No active subscription';
     };
 
     return (
@@ -46,7 +38,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
                         <img src={user.avatarUrl} alt="User Avatar" className="w-10 h-10 rounded-full" />
                         <div>
                             <p className="font-semibold text-white">{user.username}</p>
-                            <p className="text-xs text-light-gray">{getTierDisplay(user.tier)}</p>
+                            <p className="text-xs text-light-gray">{getAccessDisplay(user)}</p>
                         </div>
                     </div>
                 )}

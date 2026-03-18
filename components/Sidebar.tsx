@@ -47,14 +47,6 @@ const NavLink: React.FC<{
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, onLogout, userRole = 'user', isAdmin = false }) => {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [currentTier, setCurrentTier] = useState('starter');
-
-  const handleSelectTier = async (tier: string) => {
-    // Redirect to billing page with selected tier
-    setCurrentPage('billing');
-    setShowUpgradeModal(false);
-    // You can pass tier selection state through URL params or context
-  };
 
   return (
     <>
@@ -128,8 +120,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, onLogout
       <UpgradeModal
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
-        currentTier={currentTier}
-        onSelectTier={handleSelectTier}
+        currentPlan="telegram_syndicate"
+        onConfirmUpgrade={() => {
+          setCurrentPage('billing');
+          setShowUpgradeModal(false);
+        }}
       />
     </>
   );

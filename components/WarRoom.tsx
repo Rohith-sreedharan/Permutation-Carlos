@@ -169,7 +169,7 @@ const WarRoom: React.FC = () => {
   const loadUserTier = async () => {
     try {
       const user = await verifyToken();
-      setUserTier(user?.tier || 'free');
+      setUserTier(user?.platform_access ? 'platform' : user?.telegram_access ? 'telegram' : 'free');
     } catch (err) {
       console.error('Failed to load user tier:', err);
       setUserTier('free');
@@ -863,7 +863,7 @@ const ModelContextPanel: React.FC<ModelContextPanelProps> = ({ game, marketType,
       {/* Meta */}
       <div className="text-xs text-light-gray">
         <p>Signal ID: {mockContext.signal_id}</p>
-        <p>{mockContext.simulation_iterations.toLocaleString()} simulations</p>
+        <p>{mockContext.simulation_iterations.toLocaleString()} Intelligence Cycles</p>
       </div>
     </div>
   );

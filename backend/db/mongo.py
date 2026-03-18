@@ -179,6 +179,89 @@ def ensure_indexes() -> None:
             ("market_type", 1),
             ("market_settlement", 1)
         ], name="sport_market_index", background=True)
+
+        # Phase 1+ persistence indexes: canonical decision bundles
+        db["decision_records"].create_index("identity_key", unique=True)
+        db["decision_records"].create_index("record_id", unique=True)
+        db["decision_records"].create_index([("game_id", 1), ("created_at", -1)])
+
+        # Distribution Governance indexes (Operational Architecture v1.0.0)
+        db["distribution_decision_log"].create_index("distribution_id", unique=True)
+        db["distribution_decision_log"].create_index("decision_id", unique=True)
+        db["distribution_decision_log"].create_index([("event_id", 1)])
+        db["distribution_decision_log"].create_index([("calendar_day", 1)])
+        db["distribution_decision_log"].create_index([("distribution_category", 1), ("calendar_day", 1)])
+        db["distribution_decision_log"].create_index([("market_type", 1), ("calendar_day", 1)])
+        db["distribution_decision_log"].create_index([("trace_id", 1)])
+
+        # Lifecycle + assertion support indexes used by governance services
+        db["prediction_lifecycle_log"].create_index([("decision_id", 1), ("timestamp", -1)])
+        db["prediction_lifecycle_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["prediction_lifecycle_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+        db["prediction_lifecycle_log"].create_index([("stage", 1), ("timestamp", -1)])
+        db["assertion_failure_log"].create_index([("code", 1), ("created_at_utc", -1)])
+
+        # Phase 2 observability indexes (append-only)
+        db["decision_audit_log"].create_index([("audit_id", 1)], unique=True)
+        db["decision_audit_log"].create_index([("event_id", 1), ("timestamp", -1)])
+        db["decision_audit_log"].create_index([("decision_id", 1), ("timestamp", -1)])
+        db["decision_audit_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["decision_audit_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["decision_settlement_metrics"].create_index([("metrics_id", 1)], unique=True)
+        db["decision_settlement_metrics"].create_index([("graded_id", 1), ("timestamp", -1)])
+        db["decision_settlement_metrics"].create_index([("publish_id", 1), ("timestamp", -1)])
+        db["decision_settlement_metrics"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["decision_settlement_metrics"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["truth_dataset"].create_index([("truth_row_id", 1)], unique=True)
+        db["truth_dataset"].create_index([("event_id", 1), ("timestamp", -1)])
+        db["truth_dataset"].create_index([("prediction_id", 1), ("timestamp", -1)])
+        db["truth_dataset"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["truth_dataset"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["clv_capture_log"].create_index([("clv_capture_id", 1)], unique=True)
+        db["clv_capture_log"].create_index([("event_id", 1), ("timestamp", -1)])
+        db["clv_capture_log"].create_index([("prediction_id", 1), ("timestamp", -1)])
+        db["clv_capture_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["clv_capture_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["calibration_records"].create_index([("calibration_record_id", 1)], unique=True)
+        db["calibration_records"].create_index([("calibration_version", 1), ("timestamp", -1)])
+        db["calibration_records"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["calibration_records"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["drift_detection_log"].create_index([("drift_id", 1)], unique=True)
+        db["drift_detection_log"].create_index([("drift_detected", 1), ("timestamp", -1)])
+        db["drift_detection_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["drift_detection_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        # Billing + parlay execution observability indexes (Spec v2.0.1)
+        db["billing_state"].create_index([("user_id", 1)], unique=True)
+        db["billing_state"].create_index([("plan_id", 1)])
+        db["billing_state"].create_index([("status", 1)])
+        db["billing_state"].create_index([("next_billing_date", 1)])
+
+        db["billing_state_change_log"].create_index([("change_id", 1)], unique=True)
+        db["billing_state_change_log"].create_index([("user_id", 1)])
+        db["billing_state_change_log"].create_index([("trace_id", 1)])
+        db["billing_state_change_log"].create_index([("field_changed", 1)])
+        db["billing_state_change_log"].create_index([("created_at_utc", -1)])
+
+        db["parlay_execution_log"].create_index([("event_id", 1)], unique=True)
+        db["parlay_execution_log"].create_index([("run_id", 1)])
+        db["parlay_execution_log"].create_index([("user_id", 1)])
+        db["parlay_execution_log"].create_index([("trace_id", 1)])
+        db["parlay_execution_log"].create_index([("decision_id", 1)])
+        db["parlay_execution_log"].create_index([("event_type", 1)])
+        db["parlay_execution_log"].create_index([("created_at_utc", -1)])
+
+        db["parlay_overage_charge_log"].create_index([("charge_id", 1)], unique=True)
+        db["parlay_overage_charge_log"].create_index([("parlay_run_id", 1)], unique=True)
+        db["parlay_overage_charge_log"].create_index([("user_id", 1)])
+        db["parlay_overage_charge_log"].create_index([("trace_id", 1)])
+        db["parlay_overage_charge_log"].create_index([("billing_period_start", 1)])
+        db["parlay_overage_charge_log"].create_index([("created_at_utc", -1)])
         
         logger.info("✅ Database indexes created successfully")
         

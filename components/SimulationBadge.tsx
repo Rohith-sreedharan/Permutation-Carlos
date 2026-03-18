@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatSimulationCount, getUserTierInfo, type TierName } from '../utils/tierConfig';
+import { COPY } from '../utils/uiCopy';
 
 interface SimulationBadgeProps {
   tier?: TierName;
@@ -11,7 +12,7 @@ interface SimulationBadgeProps {
 }
 
 /**
- * SimulationBadge - Displays "Powered by X simulations" with tier branding
+ * SimulationBadge - Displays "Powered by X Intelligence Cycles" with tier branding
  * Now includes variance stability indicator and 95% confidence interval
  */
 export default function SimulationBadge({ 
@@ -49,7 +50,7 @@ export default function SimulationBadge({
           <path d="M13 7H7v6h6V7z" />
           <path fillRule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clipRule="evenodd" />
         </svg>
-        <span>Powered by {formattedCount} simulations</span>
+        <span>{COPY.poweredByCycles(formattedCount)}</span>
       </div>
 
       {/* Variance Stability Badge */}

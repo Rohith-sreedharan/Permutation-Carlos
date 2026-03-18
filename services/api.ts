@@ -637,31 +637,18 @@ export const fetchPerformanceReport = async (timeRange: '7d' | '30d' | '90d' | '
     return safeJsonParse(res);
 };
 
-// --- Beat Vegas - Tier Management endpoints ---
-export const getUserTier = async (): Promise<{ tier: 'starter' | 'pro' | 'sharps_room' | 'founder'; features: string[] }> => {
-    const headers = ensureAuthHeaders();
-    const res = await fetch(`${API_BASE_URL}/api/account/tier`, { headers });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
-    if (!res.ok) throw new Error('Failed to fetch user tier');
-    return safeJsonParse(res);
-};
-
-export const upgradeTier = async (targetTier: 'pro' | 'sharps_room' | 'founder'): Promise<{ success: boolean; message: string }> => {
-    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
-    const res = await fetch(`${API_BASE_URL}/api/account/upgrade`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ tier: targetTier }),
-    });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
-    if (!res.ok) throw new Error('Failed to upgrade tier');
-    return safeJsonParse(res);
-};
-
 // --- Subscription Management ---
 export const getSubscriptionStatus = async (): Promise<{
-    tier: string;
-    renewalDate: string;
+    plan_id?: 'telegram_syndicate' | 'beatvegas_platform' | null;
+    platform_access?: boolean;
+    telegram_access?: boolean;
+    engine_cycles_limit?: number;
+    engine_cycles_remaining?: number;
+    parlay_tokens_remaining?: number;
+    overage_charges_current_period?: number;
+    billing_period_end?: string;
+    renewalDate?: string;
+    tier?: string;
     paymentMethod?: { last4: string; brand: string };
     status: 'active' | 'canceled' | 'past_due';
 }> => {

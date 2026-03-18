@@ -56,7 +56,6 @@ export interface EventWithPrediction extends Event {
     prediction?: Prediction;
 }
 
-// FIX: Updated User interface with new tier system (STARTER, EXPLORER, PRO, ELITE)
 export interface User {
     id: string;
     rank: number;
@@ -64,7 +63,9 @@ export interface User {
     avatarUrl: string;
     score: number;
     streaks: number;
-    tier?: 'STARTER' | 'EXPLORER' | 'PRO' | 'ELITE' | 'FOUNDER';
+  plan_id?: 'telegram_syndicate' | 'beatvegas_platform' | null;
+  platform_access?: boolean;
+  telegram_access?: boolean;
     is_affiliate?: boolean; // For creator status
 }
 
@@ -386,9 +387,9 @@ export interface PerformanceMetrics {
   };
 }
 
-// Beat Vegas - Subscription Tier Types
+// Beat Vegas - Subscription Plan Types
 export interface SubscriptionTier {
-  id: 'starter' | 'pro' | 'sharps_room' | 'founder';
+  id: 'telegram_syndicate' | 'beatvegas_platform';
   name: string;
   price: number;
   simulations: string;
@@ -508,6 +509,158 @@ export interface MarketView {
   
   // OPTIONAL: Debug (dev toggle only)
   debug_payload?: Record<string, any>;
+}
+
+/**
+ * CANONICAL DECISION OBJECT (Phase 1 Audit Requirement)
+ * ======================================================
+ * 
+ * Single source of truth for all UI components displaying edge decisions.
+ * This object MUST be read by:
+ * - Top card classification
+ * - Final Unified Summary
+ * - Action Summary  
+ * - Official Edge badge
+ * - "Why This Edge Exists" section
+ * 
+ * NO UI COMPONENT may compute its own edge determination.
+ * The OFFICIAL EDGE badge MUST only appear when:
+ *   validator_status === 'PASS' AND edge_status === 'EDGE'
+ * 
+ * rules_passed is FROZEN at snapshot time - does not change between page loads.
+ */
+export type ValidatorStatus = 'PASS' | 'FAIL' | 'DEGRADED';
+export type EdgeStatus = 'EDGE' | 'LEAN' | 'NO_EDGE' | 'BLOCKED';
+export type OfficialAction = 'TAKE' | 'LEAN' | 'NO_ACTION' | 'BLOCKED';
+export type OfficialMarket = 'SPREAD' | 'MONEYLINE' | 'TOTAL' | null;
+export type OfficialSide = 'HOME' | 'AWAY' | 'OVER' | 'UNDER' | null;
+
+export interface RulesPassed {
+  gap_threshold: boolean;        // Model-market gap meets minimum
+  confidence_threshold: boolean; // Confidence meets minimum
+  volatility_check: boolean;     // Volatility within acceptable range
+  integrity_check: boolean;      // Data integrity passes
+  odds_alignment: boolean;       // Odds match at snapshot time
+  staleness_check: boolean;      // Data not stale
+}
+
+export interface CanonicalDecision {
+  // Identifiers
+  event_id: string;
+  snapshot_hash: string;
+  
+  // Engine decision (READ-ONLY)
+  validator_status: ValidatorStatus;
+  edge_status: EdgeStatus;
+  
+  // Official pick (null if NO_EDGE/BLOCKED)
+  official_market: OfficialMarket;
+  official_side: OfficialSide;
+  official_action: OfficialAction;
+  
+  // Metrics frozen at decision time
+  model_gap_pts: number;           // Frozen at snapshot
+  win_probability_edge: number;    // Frozen at snapshot (0-1)
+  
+  // Rules that were checked (FROZEN - never recomputed)
+  rules_passed: RulesPassed;
+  
+  // Reasons for this decision (pre-computed by engine)
+  reasons: string[];
+  
+  // Block reason if blocked
+  block_reason?: string;
+  
+  // Timestamp when decision was computed
+  computed_at: string;
+}
+
+/**
+ * Derive CanonicalDecision from MarketView (engine output)
+ * UI MUST use this function - direct computation forbidden
+ * 
+ * FROZEN AT SNAPSHOT TIME: rules_passed are computed once from marketView
+ * and never recomputed. The snapshot_hash locks all values to one odds snapshot.
+ */
+export function deriveCanonicalDecision(
+  eventId: string,
+  marketView: MarketView | null | undefined,
+  marketType: 'SPREAD' | 'MONEYLINE' | 'TOTAL'
+): CanonicalDecision | null {
+  if (!marketView) return null;
+  
+  // Extract preferred selection
+  const preferredSel = marketView.model_preference_selection_id !== 'NO_EDGE' && 
+                       marketView.model_preference_selection_id !== 'INVALID'
+    ? marketView.selections.find(s => s.selection_id === marketView.model_preference_selection_id)
+    : null;
+  
+  // Determine official side
+  let officialSide: OfficialSide = null;
+  if (preferredSel) {
+    officialSide = preferredSel.side as OfficialSide;
+  }
+  
+  // Determine edge status from edge_class
+  let edgeStatus: EdgeStatus;
+  switch (marketView.edge_class) {
+    case 'EDGE': edgeStatus = 'EDGE'; break;
+    case 'LEAN': edgeStatus = 'LEAN'; break;
+    case 'MARKET_ALIGNED': edgeStatus = 'NO_EDGE'; break;
+    case 'NO_PLAY':
+    case 'INVALID': edgeStatus = 'BLOCKED'; break;
+    default: edgeStatus = 'NO_EDGE';
+  }
+  
+  // Determine official action
+  let officialAction: OfficialAction;
+  if (edgeStatus === 'EDGE') officialAction = 'TAKE';
+  else if (edgeStatus === 'LEAN') officialAction = 'LEAN';
+  else if (edgeStatus === 'BLOCKED') officialAction = 'BLOCKED';
+  else officialAction = 'NO_ACTION';
+  
+  // FROZEN AT SNAPSHOT TIME: Compute rules_passed from integrity checks
+  // These values are locked to the marketView snapshot and never recomputed
+  const rulesPassed: RulesPassed = {
+    gap_threshold: marketView.edge_points >= 2.0,
+    confidence_threshold: (marketView.confidence_score ?? 0) >= 50,
+    volatility_check: !marketView.integrity_violations?.includes('HIGH_VOLATILITY'),
+    integrity_check: marketView.integrity_status === 'PASS',
+    odds_alignment: !marketView.integrity_violations?.includes('ODDS_MISMATCH'),
+    staleness_check: !marketView.integrity_violations?.includes('STALE_DATA'),
+  };
+  
+  // Win probability edge (frozen at snapshot)
+  const modelProb = preferredSel?.model_probability ?? 0.5;
+  const marketProb = preferredSel?.market_probability ?? 0.5;
+  const winProbEdge = modelProb - marketProb;
+  
+  return {
+    event_id: eventId,
+    snapshot_hash: marketView.snapshot_hash,
+    validator_status: marketView.integrity_status === 'PASS' ? 'PASS' : 
+                      marketView.integrity_status === 'FAIL' ? 'FAIL' : 'DEGRADED',
+    edge_status: edgeStatus,
+    official_market: marketType,
+    official_side: officialSide,
+    official_action: officialAction,
+    model_gap_pts: marketView.edge_points,
+    win_probability_edge: winProbEdge,
+    rules_passed: rulesPassed,
+    reasons: marketView.explanation ? [marketView.explanation] : [],
+    block_reason: marketView.integrity_violations?.join(', '),
+    // Use snapshot_hash as a timestamp proxy since it's computed at decision time
+    computed_at: `snapshot:${marketView.snapshot_hash}`,
+  };
+}
+
+/**
+ * Check if OFFICIAL EDGE badge should be shown
+ * This is THE ONLY function that determines this - no other checks allowed
+ */
+export function shouldShowOfficialEdge(decision: CanonicalDecision | null): boolean {
+  if (!decision) return false;
+  return decision.validator_status === 'PASS' && decision.edge_status === 'EDGE';
 }
 
 /**

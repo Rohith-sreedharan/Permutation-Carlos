@@ -47,7 +47,7 @@ class FakeGradingService:
 def test_start_registers_weekly_and_daily_jobs():
     sched = CalibrationScheduler()
     fake_backend = FakeSchedulerBackend()
-    sched.scheduler = fake_backend
+    setattr(sched, "scheduler", fake_backend)
 
     sched.start()
 
@@ -58,7 +58,7 @@ def test_start_registers_weekly_and_daily_jobs():
 
 def test_run_now_returns_false_for_missing_job():
     sched = CalibrationScheduler()
-    sched.scheduler = FakeSchedulerBackend()
+    setattr(sched, "scheduler", FakeSchedulerBackend())
 
     assert sched.run_now("missing") is False
 
@@ -75,7 +75,7 @@ def test_run_now_executes_existing_job():
         name="job",
         replace_existing=True,
     )
-    sched.scheduler = backend
+    setattr(sched, "scheduler", backend)
 
     assert sched.run_now("job_1") is True
     assert ran["value"] is True

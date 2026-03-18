@@ -22,15 +22,15 @@ export interface PerformanceMetrics {
 
 interface PerformanceMetricsProps {
   userId: string;
-  userTier: 'starter' | 'pro' | 'sharps_room' | 'founder';
+  platformAccess: boolean;
 }
 
-const PerformanceMetricsDashboard: React.FC<PerformanceMetricsProps> = ({ userId, userTier }) => {
+const PerformanceMetricsDashboard: React.FC<PerformanceMetricsProps> = ({ userId, platformAccess }) => {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | 'season'>('30d');
 
-  const hasSharpsAccess = ['sharps_room', 'founder'].includes(userTier);
+  const hasSharpsAccess = platformAccess;
 
   useEffect(() => {
     if (!hasSharpsAccess) return;
@@ -67,7 +67,7 @@ const PerformanceMetricsDashboard: React.FC<PerformanceMetricsProps> = ({ userId
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
         </div>
-        <h3 className="text-xl font-bold">Advanced Performance Metrics: Sharps Room Exclusive</h3>
+        <h3 className="text-xl font-bold">Advanced Performance Metrics: Platform Access Required</h3>
         <p className="text-light-gray max-w-md mx-auto">
           Deep dive into probabilistic accuracy with Brier Score, Log Loss, and market-by-market performance analytics.
         </p>
@@ -92,7 +92,7 @@ const PerformanceMetricsDashboard: React.FC<PerformanceMetricsProps> = ({ userId
           </div>
         </div>
         <button className="bg-gold text-charcoal px-6 py-3 rounded-lg font-semibold hover:bg-gold/90 transition">
-          Upgrade to Sharps Room
+          Upgrade to Platform
         </button>
       </div>
     );

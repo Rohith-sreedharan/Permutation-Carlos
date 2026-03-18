@@ -353,7 +353,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         {/* Bottom tagline */}
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-400">
-            Elite sports analytics powered by Monte Carlo simulations
+            Elite sports analytics powered by the BeatVegas Decision Engine
           </p>
         </div>
       </div>

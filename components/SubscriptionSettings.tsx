@@ -1,30 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import LoadingSpinner from './LoadingSpinner';
 import { getSubscriptionStatus } from '../services/api';
+import {
+  BILLING_PAGE_COPY,
+  PLAN_IDS,
+  type PlanId,
+} from '../uiCopy/products';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
 
-interface SubscriptionData {
-  tier: string;
-  renewalDate: string;
+interface BillingState {
+  plan_id: PlanId | null;
+  platform_access: boolean;
+  telegram_access: boolean;
+  engine_cycles_limit: number;
+  status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'TRIAL';
+  next_billing_date: string;
+  billing_period_end: string;
+  overage_charges_current_period: number;
+  cycles_remaining?: number;
+  parlay_tokens_remaining?: number;
   paymentMethod?: {
     last4: string;
     brand: string;
   };
-  status: 'active' | 'canceled' | 'past_due';
+}
+
+function normalizeBillingState(data: any): BillingState {
+  const rawPlanId = data?.plan_id;
+  const planId: PlanId | null = rawPlanId === PLAN_IDS.BEATVEGAS_PLATFORM
+    ? PLAN_IDS.BEATVEGAS_PLATFORM
+    : rawPlanId === PLAN_IDS.TELEGRAM_SYNDICATE
+      ? PLAN_IDS.TELEGRAM_SYNDICATE
+      : null;
+
+  const normalizedStatus = (data?.status || 'active').toUpperCase();
+  const status: BillingState['status'] =
+    normalizedStatus === 'PAST_DUE'
+      ? 'PAST_DUE'
+      : normalizedStatus === 'CANCELLED' || normalizedStatus === 'CANCELED'
+        ? 'CANCELLED'
+        : normalizedStatus === 'TRIAL'
+          ? 'TRIAL'
+          : 'ACTIVE';
+
+  const nextBillingDate = data?.next_billing_date || data?.renewalDate || new Date().toISOString();
+
+  return {
+    plan_id: planId,
+    platform_access: Boolean(data?.platform_access),
+    telegram_access: Boolean(data?.telegram_access),
+    engine_cycles_limit: Number(data?.engine_cycles_limit ?? 0),
+    status,
+    next_billing_date: nextBillingDate,
+    billing_period_end: data?.billing_period_end || nextBillingDate,
+    overage_charges_current_period: Number(data?.overage_charges_current_period || 0),
+    cycles_remaining: Number(data?.engine_cycles_remaining ?? data?.cycles_remaining ?? 0),
+    parlay_tokens_remaining: Number(data?.parlay_tokens_remaining ?? 0),
+    paymentMethod: data?.paymentMethod,
+  };
 }
 
 const SubscriptionSettings: React.FC = () => {
-  const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
+  const [billing, setBilling] = useState<BillingState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
-    const loadSubscription = async () => {
+    const load = async () => {
       try {
         setLoading(true);
         const data = await getSubscriptionStatus();
-        setSubscription(data);
+        setBilling(normalizeBillingState(data));
         setError(null);
       } catch (err: any) {
         setError(err.message || 'Failed to load subscription');
@@ -33,7 +81,7 @@ const SubscriptionSettings: React.FC = () => {
         setLoading(false);
       }
     };
-    loadSubscription();
+    load();
   }, []);
 
   const handleManageSubscription = async () => {
@@ -43,20 +91,15 @@ const SubscriptionSettings: React.FC = () => {
         setError('Please log in to manage your subscription');
         return;
       }
-
       const response = await fetch(`${API_BASE_URL}/api/stripe/customer-portal`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${token}` },
       });
-
       if (!response.ok) {
         const data = await response.json();
         setError(data.detail || 'Failed to access customer portal');
         return;
       }
-
       const data = await response.json();
       if (data.url) {
         window.location.href = data.url;
@@ -69,216 +112,208 @@ const SubscriptionSettings: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+  if (loading) return <LoadingSpinner />;
+  if (error) return <div className="text-center text-bold-red p-8">{error}</div>;
 
-  if (error) {
-    return <div className="text-center text-bold-red p-8">{error}</div>;
-  }
-
-  const tierInfo = {
-    starter: { name: 'Starter', color: 'from-gray-500 to-gray-600', price: 'Free' },
-    core: { name: 'Core', color: 'from-blue-500 to-blue-600', price: '$29/mo' },
-    pro: { name: 'Pro', color: 'from-purple-500 to-purple-600', price: '$49/mo' },
-    elite: { name: 'Elite', color: 'from-gold-500 to-gold-600', price: '$89/mo' },
-    founder: { name: 'Founder', color: 'from-gold-600 to-yellow-500', price: 'Lifetime' }
-  };
-
-  const currentTier = (subscription?.tier || 'starter').toLowerCase();
-  const tierConfig = tierInfo[currentTier as keyof typeof tierInfo] || tierInfo.starter;
+  const bc = BILLING_PAGE_COPY;
+  const planId = billing?.plan_id;
+  const isTelegram = planId === PLAN_IDS.TELEGRAM_SYNDICATE;
+  const isPlatform = planId === PLAN_IDS.BEATVEGAS_PLATFORM;
+  const cyclesRemaining = billing?.cycles_remaining ?? 0;
+  const tokensRemaining = billing?.parlay_tokens_remaining ?? 0;
+  const overageCharges = billing?.overage_charges_current_period ?? 0;
+  const capRemaining = Math.max(0, 200 - overageCharges);
+  const resetDate = billing?.billing_period_end
+    ? new Date(billing.billing_period_end).toLocaleDateString()
+    : '—';
+  const nextBillingDate = billing?.next_billing_date
+    ? new Date(billing.next_billing_date).toLocaleDateString()
+    : '—';
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-4xl font-bold text-white font-teko">Billing & Subscription</h1>
-        <span className="text-sm text-light-gray">Manage your plan and payment methods</span>
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-white">{bc.pageTitle}</h1>
+        <p className="text-light-gray mt-1">{bc.subheadline}</p>
       </div>
 
-      {/* Current Plan Card */}
-      <div className={`bg-linear-to-br ${tierConfig.color} rounded-lg shadow-lg p-8`}>
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm text-white/70 uppercase tracking-wider">Current Plan</p>
-            <h2 className="text-4xl font-bold text-white mt-2">{tierConfig.name}</h2>
-            <p className="text-xl text-white/90 mt-1">{tierConfig.price}</p>
-            
-            {subscription?.renewalDate && currentTier !== 'starter' && (
-              <p className="text-sm text-white/70 mt-4">
-                Renews on {new Date(subscription.renewalDate).toLocaleDateString()}
+      {/* Telegram Syndicate plan */}
+      {isTelegram && (
+        <div className="bg-charcoal border border-navy rounded-xl p-6 space-y-4">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="space-y-1">
+              <p className="text-xs text-light-gray uppercase tracking-wide">{bc.TELEGRAM_PLAN.label}</p>
+              <h2 className="text-2xl font-bold text-white">{bc.TELEGRAM_PLAN.name}</h2>
+              <p className="text-lg font-semibold text-electric-blue">{bc.TELEGRAM_PLAN.price}</p>
+              <p className="text-sm text-light-gray">
+                Next billing: <span className="text-white">{nextBillingDate}</span>
               </p>
-            )}
-            
-            {subscription?.status === 'past_due' && (
-              <div className="mt-4 bg-bold-red/20 border border-bold-red text-white px-4 py-2 rounded">
-                ⚠️ Payment failed. Please update your payment method.
-              </div>
-            )}
-          </div>
-          
-          <div className="flex flex-col space-y-2">
-            <button
-              onClick={handleManageSubscription}
-              className="bg-white text-navy font-semibold px-6 py-3 rounded-lg hover:bg-opacity-90 transition-colors"
-            >
-              Manage Subscription
-            </button>
-            {currentTier === 'starter' && (
+              {billing?.status && (
+                <p className="text-sm text-light-gray">
+                  {bc.TELEGRAM_PLAN.statusLabel}:{' '}
+                  <span className={`font-semibold ${billing.status === 'ACTIVE' ? 'text-neon-green' : 'text-bold-red'}`}>
+                    {billing.status.charAt(0) + billing.status.slice(1).toLowerCase()}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => window.location.href = '/upgrade'}
-                className="bg-electric-blue text-white font-semibold px-6 py-3 rounded-lg hover:bg-opacity-90 transition-colors"
+                className="px-5 py-2 rounded-lg font-semibold bg-electric-blue hover:bg-electric-blue/90 text-white transition-all"
               >
-                Upgrade Plan
+                {bc.TELEGRAM_PLAN.ctaUpgrade}
               </button>
-            )}
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="px-5 py-2 rounded-lg text-sm text-light-gray hover:text-white border border-navy hover:border-light-gray/50 transition-all"
+              >
+                {bc.TELEGRAM_PLAN.ctaCancel}
+              </button>
+            </div>
+          </div>
+          <div className="border-t border-navy pt-4 grid md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Included</p>
+              <p className="text-light-gray">{bc.TELEGRAM_PLAN.included}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-light-gray/50 uppercase tracking-wide mb-2">Not included</p>
+              <p className="text-light-gray/50">{bc.TELEGRAM_PLAN.notIncluded}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Platform plan */}
+      {isPlatform && (
+        <div className="bg-charcoal border border-gold/30 rounded-xl p-6 space-y-4">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="space-y-1">
+              <p className="text-xs text-light-gray uppercase tracking-wide">{bc.PLATFORM_PLAN.label}</p>
+              <h2 className="text-2xl font-bold text-white">{bc.PLATFORM_PLAN.name}</h2>
+              <p className="text-lg font-semibold text-gold">{bc.PLATFORM_PLAN.price}</p>
+              <p className="text-sm text-light-gray">
+                Next billing: <span className="text-white">{nextBillingDate}</span>
+              </p>
+              {billing?.status && (
+                <p className="text-sm text-light-gray">
+                  {bc.PLATFORM_PLAN.statusLabel}:{' '}
+                  <span className={`font-semibold ${billing.status === 'ACTIVE' ? 'text-neon-green' : 'text-bold-red'}`}>
+                    {billing.status.charAt(0) + billing.status.slice(1).toLowerCase()}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleManageSubscription}
+                className="px-5 py-2 rounded-lg font-semibold bg-electric-blue hover:bg-electric-blue/90 text-white transition-all"
+              >
+                {bc.PLATFORM_PLAN.ctaHistory}
+              </button>
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="px-5 py-2 rounded-lg text-sm text-light-gray hover:text-white border border-navy hover:border-light-gray/50 transition-all"
+              >
+                {bc.PLATFORM_PLAN.ctaCancel}
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t border-navy pt-4 space-y-3">
+            <p className="text-xs font-semibold text-white uppercase tracking-wide">Usage this period</p>
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-light-gray">{bc.PLATFORM_PLAN.cyclesLabel}</span>
+                <span className="text-white font-medium">{cyclesRemaining.toLocaleString()} / 100,000 remaining</span>
+              </div>
+              <div className="w-full h-1.5 bg-navy rounded-full">
+                <div className="h-1.5 bg-electric-blue rounded-full" style={{ width: `${Math.min(100, (cyclesRemaining / 100_000) * 100)}%` }} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-light-gray">{bc.PLATFORM_PLAN.tokensLabel}</span>
+                <span className="text-white font-medium">{tokensRemaining.toLocaleString()} / 1,500 remaining</span>
+              </div>
+              <div className="w-full h-1.5 bg-navy rounded-full">
+                <div className="h-1.5 bg-gold rounded-full" style={{ width: `${Math.min(100, (tokensRemaining / 1_500) * 100)}%` }} />
+              </div>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-light-gray">{bc.PLATFORM_PLAN.overageLabel}</span>
+              <span className="text-white font-medium">${overageCharges.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-light-gray">{bc.PLATFORM_PLAN.overageCapLabel}</span>
+              <span className="text-white font-medium">$200.00</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-light-gray">{bc.PLATFORM_PLAN.capRemaining}</span>
+              <span className="text-white font-medium">${capRemaining.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-light-gray">Resets</span>
+              <span className="text-white font-medium">{resetDate}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Payment Method */}
-      {subscription?.paymentMethod && (
-        <div className="bg-charcoal rounded-lg shadow-lg p-6">
-          <h3 className="text-xl font-bold text-white mb-4">Payment Method</h3>
+      {billing?.paymentMethod && (
+        <div className="bg-charcoal border border-navy rounded-xl p-6">
+          <h3 className="text-lg font-bold text-white mb-4">Payment Method</h3>
           <div className="flex items-center justify-between p-4 bg-navy/50 rounded-lg">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-4">
               <div className="w-12 h-8 bg-white rounded flex items-center justify-center">
-                <span className="text-xs font-bold text-navy uppercase">
-                  {subscription.paymentMethod.brand}
-                </span>
+                <span className="text-xs font-bold text-navy uppercase">{billing.paymentMethod.brand}</span>
               </div>
               <div>
-                <p className="font-semibold text-white">•••• •••• •••• {subscription.paymentMethod.last4}</p>
+                <p className="font-semibold text-white">•••• •••• •••• {billing.paymentMethod.last4}</p>
                 <p className="text-sm text-light-gray">Primary payment method</p>
               </div>
             </div>
-            <button
-              onClick={handleManageSubscription}
-              className="text-electric-blue hover:underline font-semibold"
-            >
+            <button onClick={handleManageSubscription} className="text-electric-blue hover:underline text-sm font-semibold">
               Update
             </button>
           </div>
         </div>
       )}
 
-      {/* Plan Features */}
-      <div className="bg-charcoal rounded-lg shadow-lg p-6">
-        <h3 className="text-xl font-bold text-white mb-4">Your Plan Includes</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {currentTier === 'starter' && (
-            <>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Unlimited Simulations</p>
-                  <p className="text-sm text-light-gray">10,000 iterations per analysis</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Basic Analytics</p>
-                  <p className="text-sm text-light-gray">Win probability & spread distribution</p>
-                </div>
-              </div>
-            </>
-          )}
-          {currentTier === 'core' && (
-            <>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Unlimited Simulations</p>
-                  <p className="text-sm text-light-gray">25,000 iterations per analysis</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Advanced Analytics</p>
-                  <p className="text-sm text-light-gray">Volatility scoring & prop analysis</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Creator Marketplace Access</p>
-                  <p className="text-sm text-light-gray">Follow expert analysts</p>
-                </div>
-              </div>
-            </>
-          )}
-          {currentTier === 'pro' && (
-            <>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Unlimited Simulations</p>
-                  <p className="text-sm text-light-gray">50,000 iterations per analysis</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Premium Analytics</p>
-                  <p className="text-sm text-light-gray">Full decision command center</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Parlay Correlation Engine</p>
-                  <p className="text-sm text-light-gray">Cross-sport analysis</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Priority Support</p>
-                  <p className="text-sm text-light-gray">24/7 email support</p>
-                </div>
-              </div>
-            </>
-          )}
-          {currentTier === 'elite' && (
-            <>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Unlimited Simulations</p>
-                  <p className="text-sm text-light-gray">100,000 iterations per analysis</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">Elite Analytics Suite</p>
-                  <p className="text-sm text-light-gray">Real-time model performance tracking</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">API Access</p>
-                  <p className="text-sm text-light-gray">Programmatic simulation access</p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <span className="text-neon-green text-xl">✓</span>
-                <div>
-                  <p className="text-white font-semibold">White Glove Support</p>
-                  <p className="text-sm text-light-gray">Dedicated account manager</p>
-                </div>
-              </div>
-            </>
-          )}
+      {/* Cancellation confirm */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80" onClick={() => setShowCancelConfirm(false)} />
+          <div className="relative bg-charcoal border border-navy rounded-xl p-8 max-w-md w-full space-y-4">
+            <h3 className="text-xl font-bold text-white">{bc.CANCELLATION.title}</h3>
+            <p className="text-sm text-light-gray">{bc.CANCELLATION.accessNote(resetDate)}</p>
+            <p className="text-sm text-light-gray">{bc.CANCELLATION.afterNote}</p>
+            <p className="text-xs text-light-gray/60">{bc.CANCELLATION.noRefundNote}</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={handleManageSubscription}
+                className="w-full py-3 rounded-lg font-bold bg-bold-red/80 hover:bg-bold-red text-white transition-all"
+              >
+                {bc.CANCELLATION.ctaConfirm}
+              </button>
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                className="w-full py-2 rounded-lg text-sm text-light-gray hover:text-white border border-navy transition-all"
+              >
+                {bc.CANCELLATION.ctaKeep}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Compliance Notice */}
-      <div className="bg-navy/30 border border-electric-blue/30 rounded-lg p-4">
-        <p className="text-sm text-light-gray">
-          <span className="text-electric-blue font-semibold">📊 Analysis Platform:</span> BeatVegas provides sports analytics and intelligence. We do not accept wagers or hold funds for betting purposes. All payments are for subscription access only.
+      <div className="bg-navy/30 border border-electric-blue/20 rounded-lg p-4">
+        <p className="text-xs text-light-gray">
+          <span className="text-electric-blue font-semibold">Analysis Platform:</span> BeatVegas provides sports analytics and intelligence. We do not accept wagers or hold funds for betting purposes. All payments are for subscription access only.
         </p>
       </div>
     </div>

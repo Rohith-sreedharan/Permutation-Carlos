@@ -27,8 +27,8 @@ class FakeObservability:
 
 def make_service() -> PublishingService:
     service = PublishingService()
-    service.published_collection = FakeCollection()
-    service.predictions_collection = FakeCollection()
+    setattr(service, "published_collection", FakeCollection())
+    setattr(service, "predictions_collection", FakeCollection())
     return service
 
 
@@ -37,7 +37,8 @@ def test_publish_prediction_preserves_lineage_and_locks_market_snapshot(monkeypa
     monkeypatch.setattr(publishing_module, "observability_service", fake_obs)
 
     service = make_service()
-    service.predictions_collection.docs.append(
+    predictions = FakeCollection(
+        docs=[
         {
             "prediction_id": "pred_1",
             "event_id": "event_1",
@@ -48,7 +49,9 @@ def test_publish_prediction_preserves_lineage_and_locks_market_snapshot(monkeypa
             "trace_id": "trace_1",
             "snapshot_hash": "snapshot_hash_1",
         }
+    ]
     )
+    setattr(service, "predictions_collection", predictions)
 
     publish_id = service.publish_prediction(
         prediction_id="pred_1",
@@ -60,8 +63,9 @@ def test_publish_prediction_preserves_lineage_and_locks_market_snapshot(monkeypa
     )
 
     assert publish_id
-    assert len(service.published_collection.docs) == 1
-    published = service.published_collection.docs[0]
+    published_collection = getattr(service, "published_collection")
+    assert len(published_collection.docs) == 1
+    published = published_collection.docs[0]
     assert published["locked_market_snapshot_id"] == "snap_1"
 
     assert len(fake_obs.lifecycle_calls) == 1
@@ -77,7 +81,8 @@ def test_publish_prediction_is_idempotent_for_official_duplicate(monkeypatch):
     monkeypatch.setattr(publishing_module, "observability_service", fake_obs)
 
     service = make_service()
-    service.predictions_collection.docs.append(
+    predictions = FakeCollection(
+        docs=[
         {
             "prediction_id": "pred_2",
             "event_id": "event_2",
@@ -85,15 +90,20 @@ def test_publish_prediction_is_idempotent_for_official_duplicate(monkeypatch):
             "selection": "OVER",
             "market_snapshot_id_used": "snap_2",
         }
+    ]
     )
-    service.published_collection.docs.append(
+    published = FakeCollection(
+        docs=[
         {
             "publish_id": "pub_existing",
             "prediction_id": "pred_2",
             "channel": "TELEGRAM",
             "is_official": True,
         }
+    ]
     )
+    setattr(service, "predictions_collection", predictions)
+    setattr(service, "published_collection", published)
 
     publish_id = service.publish_prediction(
         prediction_id="pred_2",
@@ -105,5 +115,6 @@ def test_publish_prediction_is_idempotent_for_official_duplicate(monkeypatch):
     )
 
     assert publish_id == "pub_existing"
-    assert len(service.published_collection.docs) == 1
+    published_collection = getattr(service, "published_collection")
+    assert len(published_collection.docs) == 1
     assert len(fake_obs.lifecycle_calls) == 0

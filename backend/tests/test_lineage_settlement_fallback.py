@@ -64,68 +64,87 @@ class FakeObservability:
         return kwargs
 
 
-def test_void_settlement_preserves_lineage_and_is_excluded_from_calibration_training(monkeypatch):
+def test_settlement_lineage_falls_back_to_prediction_when_publish_lineage_missing(monkeypatch):
     fake_obs = FakeObservability()
     monkeypatch.setattr(grading_module, "observability_service", fake_obs)
     monkeypatch.setattr(calibration_module, "observability_service", fake_obs)
 
     grading = GradingService()
     grading_records = FakeCollection()
+
+    # Intentionally omit trace_id/snapshot_hash on publish doc to force fallback path.
     published = FakeCollection(
         docs=[
             {
-                "publish_id": "pub_void_1",
-                "prediction_id": "pred_void_1",
-                "event_id": "event_void_1",
+                "publish_id": "pub_settle_1",
+                "prediction_id": "pred_settle_1",
+                "event_id": "event_settle_1",
                 "is_official": True,
-                "trace_id": "trace_void_1",
-                "snapshot_hash": "snapshot_void_1",
                 "published_at_utc": datetime.now(timezone.utc),
+                "ticket_terms": {"line": -3.5, "price": -110},
             }
         ]
     )
     predictions = FakeCollection(
         docs=[
             {
-                "prediction_id": "pred_void_1",
+                "prediction_id": "pred_settle_1",
                 "market_key": "SPREAD:FULL_GAME",
                 "selection": "HOME",
-                "p_cover": 0.59,
-                "decision_id": "decision_void_1",
-                "trace_id": "trace_void_1",
-                "snapshot_hash": "snapshot_void_1",
+                "p_cover": 0.61,
+                "decision_id": "decision_settle_1",
+                "trace_id": "trace_settle_1",
+                "snapshot_hash": "snapshot_settle_1",
+                "market_snapshot_id_used": "snapshot_settle_1",
+                "recommendation_state": "OFFICIAL_EDGE",
             }
         ]
     )
     event_results = FakeCollection(
         docs=[
             {
-                "event_id": "event_void_1",
-                "status": "CANCELLED",
+                "event_id": "event_settle_1",
+                "status": "FINAL",
+                "home_score": 110,
+                "away_score": 100,
+                "total_score": 210,
+                "margin": 10,
             }
         ]
     )
-    odds_snapshots = FakeCollection()
+    odds_snapshots = FakeCollection(
+        docs=[
+            {
+                "snapshot_id": "close_settle_1",
+                "event_id": "event_settle_1",
+                "market_key": "SPREAD:FULL_GAME",
+                "selection": "HOME",
+                "is_close_candidate": True,
+                "price_american": -115,
+            }
+        ]
+    )
     setattr(grading, "grading_collection", grading_records)
     setattr(grading, "published_collection", published)
     setattr(grading, "predictions_collection", predictions)
     setattr(grading, "event_results_collection", event_results)
     setattr(grading, "odds_snapshots_collection", odds_snapshots)
 
-    graded_id = grading.grade_published_prediction("pub_void_1")
+    graded_id = grading.grade_published_prediction("pub_settle_1")
     assert graded_id is not None
 
+    # Settlement metrics must preserve lineage via prediction fallback.
     assert len(fake_obs.settlement_calls) == 1
-    assert fake_obs.settlement_calls[0]["result_code"] == "VOID"
-    assert fake_obs.settlement_calls[0]["trace_id"] == "trace_void_1"
-    assert fake_obs.settlement_calls[0]["snapshot_hash"] == "snapshot_void_1"
+    assert fake_obs.settlement_calls[0]["trace_id"] == "trace_settle_1"
+    assert fake_obs.settlement_calls[0]["snapshot_hash"] == "snapshot_settle_1"
 
-    voided_lifecycle = [c for c in fake_obs.lifecycle_calls if c.get("stage") == "VOIDED"]
-    assert len(voided_lifecycle) == 1
-    assert voided_lifecycle[0]["decision_id"] == "decision_void_1"
-    assert voided_lifecycle[0]["trace_id"] == "trace_void_1"
-    assert voided_lifecycle[0]["snapshot_hash"] == "snapshot_void_1"
+    settled_lifecycle = [c for c in fake_obs.lifecycle_calls if c.get("stage") == "SETTLED"]
+    assert len(settled_lifecycle) == 1
+    assert settled_lifecycle[0]["decision_id"] == "decision_settle_1"
+    assert settled_lifecycle[0]["trace_id"] == "trace_settle_1"
+    assert settled_lifecycle[0]["snapshot_hash"] == "snapshot_settle_1"
 
+    # Calibration training rows must carry the same lineage fields.
     calibration = CalibrationService()
     setattr(calibration, "calibration_versions_collection", FakeCollection())
     setattr(calibration, "calibration_segments_collection", FakeCollection())
@@ -136,5 +155,7 @@ def test_void_settlement_preserves_lineage_and_is_excluded_from_calibration_trai
     now = datetime.now(timezone.utc)
     samples = calibration._get_training_data(now - timedelta(days=3), now + timedelta(days=1))
 
-    # VOID outcomes must not enter calibration training labels.
-    assert samples == []
+    assert len(samples) == 1
+    assert samples[0]["decision_id"] == "decision_settle_1"
+    assert samples[0]["trace_id"] == "trace_settle_1"
+    assert samples[0]["snapshot_hash"] == "snapshot_settle_1"

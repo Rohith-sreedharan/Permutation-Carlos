@@ -38,11 +38,11 @@ class FakeCollection:
 
 def make_service() -> CalibrationService:
     svc = CalibrationService()
-    svc.calibration_versions_collection = FakeCollection()
-    svc.calibration_segments_collection = FakeCollection()
-    svc.grading_collection = FakeCollection()
-    svc.published_collection = FakeCollection()
-    svc.predictions_collection = FakeCollection()
+    setattr(svc, "calibration_versions_collection", FakeCollection())
+    setattr(svc, "calibration_segments_collection", FakeCollection())
+    setattr(svc, "grading_collection", FakeCollection())
+    setattr(svc, "published_collection", FakeCollection())
+    setattr(svc, "predictions_collection", FakeCollection())
     return svc
 
 
@@ -57,7 +57,8 @@ def test_run_calibration_job_returns_none_when_insufficient_training_data():
 
 def test_check_activation_gate_without_active_version_uses_reasonable_ece_threshold():
     svc = make_service()
-    svc.calibration_versions_collection.docs = [
+    versions = FakeCollection(
+        docs=[
         {
             "calibration_version": "v_good",
             "activation_status": "CANDIDATE",
@@ -71,6 +72,8 @@ def test_check_activation_gate_without_active_version_uses_reasonable_ece_thresh
             "overall_brier": 0.20,
         },
     ]
+    )
+    setattr(svc, "calibration_versions_collection", versions)
 
     assert svc._check_activation_gate("v_good") is True
     assert svc._check_activation_gate("v_bad") is False
@@ -89,11 +92,16 @@ def test_calibrate_probability_returns_raw_when_no_active_version():
 def test_calibrate_probability_applies_platt_mapping_for_segment():
     svc = make_service()
     svc.get_active_calibration_version = lambda: "v1"
-    svc.get_calibration_mapping = lambda _version, _segment: {
-        "type": "platt",
-        "coef": 2.0,
-        "intercept": 0.0,
-    }
+
+    def fake_get_calibration_mapping(calibration_version: str, segment_key: str):
+        del calibration_version, segment_key
+        return {
+            "type": "platt",
+            "coef": 2.0,
+            "intercept": 0.0,
+        }
+
+    setattr(svc, "get_calibration_mapping", fake_get_calibration_mapping)
 
     calibrated = svc.calibrate_probability(raw_probability=0.5, league="NBA", market_key="SPREAD:FULL_GAME")
 

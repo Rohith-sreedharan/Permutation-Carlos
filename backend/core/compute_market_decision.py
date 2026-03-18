@@ -131,7 +131,7 @@ class MarketDecisionComputer:
                         pick_team_id, pick_team_name, market_line,
                         spread_lines, game_competitors, home_team_id, inputs_hash,
                         blocked_reason=f"Pick'em symmetry violation: prob_delta={prob_delta:.4f} > 0.0200",
-                        release_status=ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+                        release_status=ReleaseStatus.BLOCKED_BY_INTEGRITY
                     )
             else:
                 # Boundary: 0.25 = PASS, 0.25001 = BLOCK
@@ -140,7 +140,7 @@ class MarketDecisionComputer:
                         pick_team_id, pick_team_name, market_line,
                         spread_lines, game_competitors, home_team_id, inputs_hash,
                         blocked_reason=f"Odds movement: line_delta={line_delta:.4f} > 0.25 (sim={simulation_market_spread}, current={current_market_line_home})",
-                        release_status=ReleaseStatus.BLOCKED_BY_ODDS_MISMATCH
+                        release_status=ReleaseStatus.BLOCKED_BY_INTEGRITY
                     )
         
         # 4c. Freshness Gate (per spec Section 5)
@@ -150,7 +150,7 @@ class MarketDecisionComputer:
                 pick_team_id, pick_team_name, market_line,
                 spread_lines, game_competitors, home_team_id, inputs_hash,
                 blocked_reason="Simulation data stale (> 120 minutes old)",
-                release_status=ReleaseStatus.BLOCKED_BY_STALE_DATA
+                release_status=ReleaseStatus.BLOCKED_BY_INTEGRITY
             )
         
         # 5. Calculate edge
@@ -173,7 +173,7 @@ class MarketDecisionComputer:
             blocked_reason=None
         )
         
-        # 8. Release status (default APPROVED if validations pass)
+        # 8. Release status (default OFFICIAL if validations pass)
         release_status = self._determine_release_status(classification, risk)
         
         # 9. Build decision with canonical fields (inputs_hash already computed)
@@ -355,9 +355,9 @@ class MarketDecisionComputer:
         # Use absolute value for magnitude-based classification (direction agnostic)
         edge_magnitude = abs(edge_points)
         
-        # MARKET_ALIGNED: edge < 0.5 (model and market very close)
+        # NO_ACTION: edge < 0.5 (model and market very close)
         if edge_magnitude < lean_threshold:
-            return Classification.MARKET_ALIGNED
+            return Classification.NO_ACTION
         
         # EDGE: edge >= 2.0 AND strong directional conviction (prob >= 55% or <= 45%)
         elif edge_magnitude >= edge_threshold:
@@ -378,7 +378,7 @@ class MarketDecisionComputer:
         """Generate pre-computed reasons for spread"""
         edge_mag = abs(edge_points)
         
-        if classification == Classification.MARKET_ALIGNED:
+        if classification == Classification.NO_ACTION:
             return ["Model and market consensus detected", "No significant value detected"]
         
         elif classification == Classification.LEAN:
@@ -405,7 +405,7 @@ class MarketDecisionComputer:
         """Generate pre-computed reasons for total"""
         edge_mag = abs(edge_points)
         
-        if classification == Classification.MARKET_ALIGNED:
+        if classification == Classification.NO_ACTION:
             return ["Model and market consensus on total", "No significant value detected"]
         
         elif classification == Classification.LEAN:
@@ -420,11 +420,11 @@ class MarketDecisionComputer:
         """
         Determine release status - per spec Section 9
         
-        APPROVED if all validations pass (regardless of classification).
-        BLOCKED_BY_* set by validation gates or fail-closed.
+        OFFICIAL if all validations pass (regardless of classification).
+        BLOCKED_* set by validation gates or fail-closed.
         """
-        # Default to APPROVED - validation gates will override if needed
-        return ReleaseStatus.APPROVED
+        # Default to OFFICIAL - validation gates will override if needed
+        return ReleaseStatus.OFFICIAL
     
     def _grade_edge(self, edge_points: float) -> Optional[Literal["S", "A", "B", "C", "D"]]:
         """Assign grade to edge"""

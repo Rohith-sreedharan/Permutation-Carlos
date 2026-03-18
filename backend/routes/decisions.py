@@ -18,6 +18,8 @@ from core.compute_market_decision import MarketDecisionComputer
 from datetime import datetime
 from db.mongo import db
 from db.decision_audit_logger import get_decision_audit_logger
+from db.decision_record_store import get_decision_record_store
+from services.observability_service import observability_service
 import uuid
 
 router = APIRouter()
@@ -76,7 +78,7 @@ def create_blocked_decision(
             sim_run_id="blocked",
             trace_id=str(uuid.uuid4()),
             config_profile=None,
-            decision_version=1,
+                decision_version="1.0.0",
             computed_at=datetime.utcnow().isoformat()
         ),
         validator_failures=[]
@@ -207,7 +209,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             odds_event_id=f'odds_event_{game_id}',
             market_type=MarketType.SPREAD,
             blocked_reason="sharp_analysis.spread.model_spread",
-            release_status=ReleaseStatus.BLOCKED_BY_MISSING_DATA,
+            release_status=ReleaseStatus.BLOCKED_MISSING_CONTEXT,
             market_line=market_spread_line,
             market_odds=market_spread_odds
         )
@@ -220,7 +222,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             home_team_name=home_team,
             away_team_name=away_team,
             inputs_hash="blocked",
-            decision_version=1,
+            decision_version="1.0.0",
             computed_at=datetime.utcnow().isoformat()
         )
         return decisions
@@ -298,6 +300,34 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     )
     
     # ═══════════════════════════════════════════════════════════════════
+    # PERSIST-FIRST IDENTITY LAW (Phase 1)
+    # ═══════════════════════════════════════════════════════════════════
+    # Persist canonical bundle first and render response from persisted payload.
+    record_store = get_decision_record_store()
+    try:
+        decision_record_id = record_store.persist_game_decisions(
+            league=league,
+            game_id=game_id,
+            odds_event_id=f'odds_event_{game_id}',
+            decisions=decisions,
+        )
+        persisted_payload = record_store.get_record_payload(decision_record_id)
+        if not persisted_payload:
+            raise HTTPException(
+                status_code=500,
+                detail="Decision record payload unavailable after persist"
+            )
+        decisions = GameDecisions(**persisted_payload)
+        decisions.decision_record_id = decision_record_id
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Decision record persistence failed: {str(exc)}"
+        )
+
+    # ═══════════════════════════════════════════════════════════════════
     # AUDIT LOGGING (Section 14 - ENGINE LOCK Specification)
     # ═══════════════════════════════════════════════════════════════════
     # CRITICAL: Audit write MUST succeed - HTTP 500 if fails
@@ -334,6 +364,34 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
                 status_code=500,
                 detail="Decision audit log write failed - institutional compliance violation"
             )
+
+        observability_service.log_decision_audit(
+            event_id=game_id,
+            decision_id=spread_decision.decision_id,
+            market_type="spread",
+            release_status=spread_decision.release_status.value,
+            classification=spread_decision.classification.value if spread_decision.classification else None,
+            model_prob=spread_decision.probabilities.model_prob if spread_decision.probabilities else None,
+            edge_points=spread_decision.edge.edge_points if spread_decision.edge else None,
+            trace_id=spread_decision.debug.trace_id,
+            snapshot_hash=spread_decision.debug.inputs_hash,
+            metadata={
+                "league": league,
+                "decision_record_id": decisions.decision_record_id,
+            },
+        )
+        observability_service.log_prediction_lifecycle(
+            stage="DECISION_COMPUTED",
+            decision_id=spread_decision.decision_id,
+            event_id=game_id,
+            trace_id=spread_decision.debug.trace_id,
+            snapshot_hash=spread_decision.debug.inputs_hash,
+            metadata={
+                "market_type": "spread",
+                "release_status": spread_decision.release_status.value,
+                "classification": spread_decision.classification.value if spread_decision.classification else None,
+            },
+        )
     
     # Log total decision (if computed)
     if total_decision:
@@ -364,6 +422,34 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
                 status_code=500,
                 detail="Decision audit log write failed - institutional compliance violation"
             )
+
+        observability_service.log_decision_audit(
+            event_id=game_id,
+            decision_id=total_decision.decision_id,
+            market_type="total",
+            release_status=total_decision.release_status.value,
+            classification=total_decision.classification.value if total_decision.classification else None,
+            model_prob=total_decision.probabilities.model_prob if total_decision.probabilities else None,
+            edge_points=total_decision.edge.edge_points if total_decision.edge else None,
+            trace_id=total_decision.debug.trace_id,
+            snapshot_hash=total_decision.debug.inputs_hash,
+            metadata={
+                "league": league,
+                "decision_record_id": decisions.decision_record_id,
+            },
+        )
+        observability_service.log_prediction_lifecycle(
+            stage="DECISION_COMPUTED",
+            decision_id=total_decision.decision_id,
+            event_id=game_id,
+            trace_id=total_decision.debug.trace_id,
+            snapshot_hash=total_decision.debug.inputs_hash,
+            metadata={
+                "market_type": "total",
+                "release_status": total_decision.release_status.value,
+                "classification": total_decision.classification.value if total_decision.classification else None,
+            },
+        )
     
-    # Audit logging complete - return decision
+    # Audit logging complete - return persisted decision bundle
     return decisions

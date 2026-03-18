@@ -18,27 +18,26 @@ from enum import Enum
 
 class MarketType(str, Enum):
     """Market types - league-agnostic"""
-    SPREAD = "spread"
-    MONEYLINE = "moneyline"
-    TOTAL = "total"
+    SPREAD = "SPREAD"
+    TOTAL = "TOTAL"
+    MONEYLINE_2WAY = "MONEYLINE_2WAY"
+    MONEYLINE_3WAY = "MONEYLINE_3WAY"
 
 
 class Classification(str, Enum):
     """Edge classification per market"""
-    EDGE = "EDGE"  # Official trade candidate
-    LEAN = "LEAN"  # Info-only / low confidence
-    MARKET_ALIGNED = "MARKET_ALIGNED"  # No edge detected
-    NO_ACTION = "NO_ACTION"  # Blocked by risk/integrity or insufficient signal
+    NO_ACTION = "NO_ACTION"
+    LEAN = "LEAN"
+    EDGE = "EDGE"
 
 
 class ReleaseStatus(str, Enum):
-    """Release eligibility per market - LOCKED per Section 9"""
-    APPROVED = "APPROVED"  # Eligible for release
-    BLOCKED_BY_INTEGRITY = "BLOCKED_BY_INTEGRITY"  # Data integrity violation
-    BLOCKED_BY_ODDS_MISMATCH = "BLOCKED_BY_ODDS_MISMATCH"  # Odds alignment failed
-    BLOCKED_BY_STALE_DATA = "BLOCKED_BY_STALE_DATA"  # Simulation too old
-    BLOCKED_BY_MISSING_DATA = "BLOCKED_BY_MISSING_DATA"  # Required fields missing
-    PENDING_REVIEW = "PENDING_REVIEW"  # Manual review needed
+    """Phase 1 release status enum (closed)."""
+    OFFICIAL = "OFFICIAL"
+    INFO_ONLY = "INFO_ONLY"
+    BLOCKED_BY_RISK = "BLOCKED_BY_RISK"
+    BLOCKED_BY_INTEGRITY = "BLOCKED_BY_INTEGRITY"
+    BLOCKED_MISSING_CONTEXT = "BLOCKED_MISSING_CONTEXT"
 
 
 class PickSpread(BaseModel):
@@ -206,6 +205,7 @@ class GameDecisions(BaseModel):
     away_team_name: str = Field(..., description="Away team display name")
     
     # Meta
+    decision_record_id: Optional[str] = Field(None, description="Persisted decision record identity")
     inputs_hash: str = Field(..., description="Global inputs hash for this snapshot")
     decision_version: str = Field(..., description="SEMVER version (MAJOR.MINOR.PATCH)")
     computed_at: str = Field(..., description="ISO timestamp of computation")

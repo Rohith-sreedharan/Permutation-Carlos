@@ -372,13 +372,13 @@ const DailyBestCards: React.FC = () => {
             <div className="text-6xl mb-4">📭</div>
             <div className="text-2xl text-gold mb-4">No Cards Available</div>
             <div className="text-light-gray mb-6">
-              {(cards as any)?.message || 'No games or simulations available for today\'s slate.'}
+              {(cards as any)?.message || 'No games or decision outputs available for today\'s slate.'}
             </div>
             <div className="text-sm text-light-gray/60">
               This happens when:
               <ul className="mt-2 space-y-1">
                 <li>• No upcoming games in the next 24 hours</li>
-                <li>• Simulations are still processing (check back in 5-10 minutes)</li>
+                <li>• Decision cycles are still processing (check back in 5-10 minutes)</li>
                 <li>• Database was recently cleared</li>
               </ul>
             </div>
@@ -403,7 +403,7 @@ const DailyBestCards: React.FC = () => {
             TODAY'S BEST CARDS
           </h1>
           <p className="text-lightGold text-lg mb-2">
-            6 Flagship Posts • Curated by Monte Carlo Simulation
+            6 Flagship Posts • Curated by BeatVegas Decision Engine
           </p>
           <div className="text-sm text-light-gray">
             Generated at {cards?.generated_at ? new Date(cards.generated_at).toLocaleTimeString() : 'N/A'}
