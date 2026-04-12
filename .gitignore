@@ -35,3 +35,8 @@ test-results/
 *.njsproj
 *.sln
 *.sw?
+
+# MongoDB
+*.wt
+.mongo-local/
+diagnostic.data/
