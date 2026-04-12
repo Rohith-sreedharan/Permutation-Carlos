@@ -120,36 +120,24 @@ def get_rate_limit_policy_indexes() -> List[IndexModel]:
 
 def get_billing_ledger_indexes() -> List[IndexModel]:
     """
-    Billing ledger - source of truth for charges/allowance
+    Billing ledger - append-only source of truth
     
     CRITICAL: No action executes unless billing_ledger write succeeds (idempotent).
               If write fails: reject action + emit BILLING_WRITE_FAIL alert.
     
     Fields:
-    - ledger_id (UUID, PK)
-    - tenant_id (UUID, FK)
+    - id (UUID, PK)
     - user_id (UUID, FK)
-    - action_type (SIM_RUN | PARLAY_GEN | REFRESH | DIAGNOSTIC | EXPORT | OTHER)
-    - pick_id (UUID, nullable)
-    - event_id (UUID, nullable)
-    - amount_credits (int, for PAY_PER_USE tiers)
-    - amount_allowance (int, for SUBSCRIPTION tiers)
-    - currency (string, nullable)
-    - price_cents (int, nullable)
-    - idempotency_key (string, UNIQUE)
-    - status (APPLIED | REVERSED | FAILED)
-    - created_at_utc (datetime)
-    - metadata_json (JSON)
+    - event_type (CHARGE | CREDIT | USAGE)
+    - amount (numeric)
+    - reference_id (parlay_id / execution_id)
+    - created_at (UTC)
     """
     return [
-        IndexModel([("ledger_id", ASCENDING)], unique=True, name="ledger_id_unique"),
-        IndexModel([("idempotency_key", ASCENDING)], unique=True, name="ledger_idempotency_key_unique"),
-        IndexModel([("tenant_id", ASCENDING), ("user_id", ASCENDING), ("created_at_utc", DESCENDING)],
-                   name="tenant_user_created"),
-        IndexModel([("user_id", ASCENDING), ("status", ASCENDING), ("created_at_utc", DESCENDING)],
-                   name="user_status_created"),
-        IndexModel([("action_type", ASCENDING), ("status", ASCENDING)], name="action_status"),
-        IndexModel([("pick_id", ASCENDING)], sparse=True, name="pick_id")
+        IndexModel([("id", ASCENDING)], unique=True, name="billing_ledger_id_unique"),
+        IndexModel([("user_id", ASCENDING), ("created_at", DESCENDING)], name="billing_ledger_user_created"),
+        IndexModel([("reference_id", ASCENDING)], name="billing_ledger_reference_id"),
+        IndexModel([("event_type", ASCENDING), ("created_at", DESCENDING)], name="billing_ledger_event_type_created"),
     ]
 
 

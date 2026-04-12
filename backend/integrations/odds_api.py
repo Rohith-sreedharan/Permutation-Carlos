@@ -215,12 +215,21 @@ def normalize_event(event: dict) -> dict:
     except Exception:
         pass
 
+    # Canonical team naming at data-source normalization layer.
+    # This prevents UI-only overrides and keeps downstream systems aligned.
+    canonical_team_names = {
+        "Utah Mammoth": "Utah Hockey Club",
+    }
+
+    home_team = event.get("home_team")
+    away_team = event.get("away_team")
+
     out = {
         "event_id": event.get("id") or event.get("event_id"),
         "sport_key": event.get("sport_key"),
         "sport_title": event.get("sport_title") or event.get("sport_nice"),
-        "home_team": event.get("home_team"),
-        "away_team": event.get("away_team"),
+        "home_team": canonical_team_names.get(home_team, home_team),
+        "away_team": canonical_team_names.get(away_team, away_team),
         "commence_time": event.get("commence_time"),
         "local_date_est": est_date,
         "local_datetime_est": est_datetime,

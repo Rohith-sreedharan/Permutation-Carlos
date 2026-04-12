@@ -29,6 +29,11 @@ class DecisionRecordStore:
         self.collection.create_index("identity_key", unique=True)
         self.collection.create_index("record_id", unique=True)
         self.collection.create_index([("game_id", 1), ("created_at", -1)])
+        self.collection.create_index(
+            [("event_id", 1), ("inputs_hash", 1), ("decision_version", 1)],
+            unique=True,
+            name="event_inputs_version_unique",
+        )
 
     @staticmethod
     def compute_identity_key(
@@ -67,6 +72,7 @@ class DecisionRecordStore:
             "identity_key": identity_key,
             "league": league,
             "game_id": game_id,
+            "event_id": game_id,
             "odds_event_id": odds_event_id,
             "inputs_hash": decisions.inputs_hash,
             "decision_version": decisions.decision_version,

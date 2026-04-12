@@ -76,7 +76,7 @@ export function useGameEdgeState(
       hasNoAction: true,
       isBlocked: true,
       primaryMarket: null,
-      primaryAction: 'No action',
+      primaryAction: 'No Actionable Signal',
       primaryGrade: null,
       failureReasons: ['No simulation data'],
     };
@@ -138,7 +138,7 @@ export function useGameEdgeState(
         primaryAction = `${homeTeam} Win`;
         break;
       default:
-        primaryAction = 'No action';
+        primaryAction = 'No Actionable Signal';
     }
     
     // Get primary grade
@@ -182,7 +182,7 @@ export function getClassificationText(state: GameEdgeState | null): string {
     case Classification.MARKET_ALIGNED:
       return 'Market Aligned';
     case Classification.NO_ACTION:
-      return 'No Action';
+      return 'No Actionable Signal';
     default:
       return 'Unknown';
   }

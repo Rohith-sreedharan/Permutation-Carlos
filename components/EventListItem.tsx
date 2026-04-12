@@ -1,5 +1,12 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { EventWithPrediction } from '../types';
+import { formatAwayAtHome } from '../utils/matchupLabel';
+import { CANONICAL_PROP_LABEL, getCanonicalPropHeadline } from '../utils/propDisplay';
+import { getSportDisplayName } from '../utils/sportLabels';
+import MarketDecisionCard from './MarketDecisionCard';
+import { fetchGameDecisions } from '../services/api';
+import type { MarketDecision } from '../types/MarketDecision';
+import { compareCardsByClassification, renderMarketSignalCard } from '../utils/cardMarketSignal';
 
 interface EventListItemProps {
   event: EventWithPrediction;
@@ -24,6 +31,60 @@ const shouldSuppressDisplay = (event: EventWithPrediction): boolean => {
 const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = false, onClick }) => {
   const { home_team, away_team, commence_time, top_prop_bet, prediction, sport_key } = event;
   const gameTime = new Date(commence_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).replace(' ', ' ') + ' EST';
+  const matchupLabel = formatAwayAtHome({ away_team, home_team });
+  const canonicalPropHeadline = getCanonicalPropHeadline(event);
+  const [decision, setDecision] = useState<MarketDecision | null>(null);
+  const [decisionLoading, setDecisionLoading] = useState<boolean>(true);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+
+  const mapSportKeyToLeague = (sportKey: string): string => {
+    const key = (sportKey || '').toLowerCase();
+    if (key.includes('basketball_nba')) return 'NBA';
+    if (key.includes('basketball_ncaab')) return 'NCAAB';
+    if (key.includes('americanfootball_nfl')) return 'NFL';
+    if (key.includes('americanfootball_ncaaf')) return 'NCAAF';
+    if (key.includes('icehockey_nhl')) return 'NHL';
+    if (key.includes('baseball_mlb')) return 'MLB';
+    return sportKey?.split('_').pop()?.toUpperCase() || 'NBA';
+  };
+
+  const league = useMemo(() => mapSportKeyToLeague(sport_key), [sport_key]);
+
+  const selectTopDecision = (decisions: {
+    spread: MarketDecision | null;
+    moneyline: MarketDecision | null;
+    total: MarketDecision | null;
+  }): MarketDecision | null => {
+    const candidates = [decisions.spread, decisions.moneyline, decisions.total].filter(Boolean) as MarketDecision[];
+    if (candidates.length === 0) return null;
+    return candidates.sort((a, b) => {
+      const ra = renderMarketSignalCard(a);
+      const rb = renderMarketSignalCard(b);
+      return compareCardsByClassification(ra, rb);
+    })[0];
+  };
+
+  const loadDecision = async () => {
+    if (!event.id) {
+      setDecisionLoading(false);
+      return;
+    }
+    setDecisionLoading(true);
+    setDecisionError(null);
+    try {
+      const data = await fetchGameDecisions(league, event.id);
+      setDecision(selectTopDecision(data));
+    } catch (err: any) {
+      setDecisionError(err?.message || 'Failed to load decision');
+      setDecision(null);
+    } finally {
+      setDecisionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDecision();
+  }, [event.id, league]);
 
   const confidencePercentage = prediction ? Math.round(prediction.confidence * 100) : 0;
   const suppressCertainty = shouldSuppressDisplay(event);
@@ -44,20 +105,31 @@ const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = f
       )}
       
       <div className="flex items-center gap-4 w-full md:w-1/3">
-        <span className="bg-electric-blue/20 text-electric-blue text-xs font-bold px-2 py-1 rounded-full">{sport_key}</span>
+        <span className="bg-electric-blue/20 text-electric-blue text-xs font-bold px-2 py-1 rounded-full">{getSportDisplayName(sport_key)}</span>
         <div>
-          <h3 className="font-bold text-white">{home_team} vs. {away_team}</h3>
+          <h3 className="font-bold text-white">{matchupLabel}</h3>
           <p className="text-sm text-light-gray">{gameTime}</p>
         </div>
       </div>
       
       <div className="w-full md:w-1/3">
+        <div className="mb-2">
+          <MarketDecisionCard
+            decision={decision}
+            league={league}
+            gameId={event.id}
+            isLoading={decisionLoading}
+            isError={!!decisionError}
+            errorMessage={decisionError || undefined}
+            onRetry={loadDecision}
+          />
+        </div>
         <div className="flex items-center gap-2 mb-1">
-          <p className="text-xs text-light-gray font-semibold">MODEL MISPRICING (NOT A BETTING PICK)</p>
+          <p className="text-xs text-light-gray font-semibold">{CANONICAL_PROP_LABEL}</p>
           <span className="cursor-help text-light-gray/60 hover:text-white text-xs" title="BeatVegas identifies statistical deviations between our simulation output and sportsbook odds. This is NOT a list of recommended bets.">ⓘ</span>
         </div>
-        <p className="text-sm font-bold text-white">{top_prop_bet}</p>
-        <p className="text-[10px] text-gray-500 italic mt-1">MODEL MISPRICING — NOT a betting recommendation.</p>
+        <p className="text-sm font-bold text-white">{canonicalPropHeadline}</p>
+        <p className="text-[10px] text-gray-500 italic mt-1">MODEL MISPRICING — INFORMATIONAL ONLY.</p>
       </div>
       
       {prediction && (

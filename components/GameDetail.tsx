@@ -31,7 +31,7 @@ import ConfidenceGauge from './ConfidenceGauge';
 import UpgradePrompt from './UpgradePrompt';
 import { getUserTierInfo, type TierName } from '../utils/tierConfig';
 import { getConfidenceTier, getConfidenceGlow, getConfidenceBadgeStyle } from '../utils/confidenceTiers';
-import { getSportLabels } from '../utils/sportLabels';
+import { getSportLabels, getSportDisplayName } from '../utils/sportLabels';
 import { getImpliedProbability } from '../utils/edgeValidation';
 import { validateSimulationData, getSpreadDisplay, getTeamWinProbability } from '../utils/dataValidation';
 import { useGameEdgeState, getClassificationText } from '../utils/useGameEdgeState';
@@ -47,8 +47,10 @@ import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } fr
 import SimulationDebugPanel from './SimulationDebugPanel';
 import FinalUnifiedSummary from './FinalUnifiedSummary';
 import { IntegrityLogger, validateSnapshotConsistency, handleSnapshotMismatch } from '../utils/integrityLogger';
+import { formatAwayAtHome, getDisplayTeamName } from '../utils/matchupLabel';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+const DEBUG_UI_ENABLED = Boolean((import.meta as any).env?.DEV) && (import.meta as any).env?.VITE_ENABLE_DEBUG_PANEL === 'true';
 
 interface GameDetailProps {
   gameId: string;
@@ -83,6 +85,44 @@ const getUncertaintyLabel = (simulation: MonteCarloSimulation | null): string =>
   return 'Analysis available';
 };
 
+const validateMarketView = (marketView: any, marketType: string): { valid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  if (!marketView || typeof marketView !== 'object') {
+    errors.push(`${marketType} market payload missing`);
+    return { valid: false, errors };
+  }
+
+  if (!Array.isArray(marketView.selections) || marketView.selections.length === 0) {
+    errors.push(`${marketType} selections unavailable`);
+  }
+
+  if (!marketView.edge_class) {
+    errors.push(`${marketType} edge classification missing`);
+  }
+
+  return { valid: errors.length === 0, errors };
+};
+
+const getPreferredSelection = (marketView: any): any | null => {
+  const selections = Array.isArray(marketView?.selections) ? marketView.selections : [];
+  if (selections.length === 0) return null;
+
+  const preferredId =
+    marketView?.model_preference_selection_id ||
+    marketView?.preferred_selection_id ||
+    marketView?.selection_id;
+
+  if (preferredId) {
+    const direct = selections.find((s: any) => s?.selection_id === preferredId || s?.id === preferredId);
+    if (direct) return direct;
+  }
+
+  const ranked = selections
+    .filter((s: any) => typeof s?.model_probability === 'number')
+    .sort((a: any, b: any) => (b.model_probability || 0) - (a.model_probability || 0));
+  return ranked[0] || selections[0] || null;
+};
+
 const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [simulation, setSimulation] = useState<MonteCarloSimulation | null>(null);
   const [firstHalfSimulation, setFirstHalfSimulation] = useState<any | null>(null);
@@ -91,9 +131,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [firstHalfLoading, setFirstHalfLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
+  const [isAutoRetrying, setIsAutoRetrying] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'injuries' | 'props' | 'movement' | 'pulse' | 'firsthalf'>('distribution');
   const [activeMarketTab, setActiveMarketTab] = useState<'spread' | 'moneyline' | 'total'>('spread');
   const [showDebugPayload, setShowDebugPayload] = useState(false);
+  const matchupLabel = event ? formatAwayAtHome({ away_team: event.away_team, home_team: event.home_team }) : 'TBD @ TBD';
   
   // Snapshot tracking for atomic swapping
   const [lastSnapshotHash, setLastSnapshotHash] = useState<Record<string, string>>({});
@@ -103,97 +145,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     state: gameEdgeState,
     canRender: canRenderEdgeState,
     hasOfficialEdge,
-    hasLean,
-    hasNoAction,
-    isBlocked: edgeIsBlocked,
   } = useGameEdgeState(
     simulation,
     gameId,
     event?.home_team || '',
     event?.away_team || ''
   );
-
-  // CANONICAL MARKETVIEW HELPERS
-  const getSelection = (marketView: any, selectionId: string) => {
-    return marketView?.selections?.find((s: any) => s.selection_id === selectionId);
-  };
-
-  const getPreferredSelection = (marketView: any) => {
-    const prefId = marketView?.model_preference_selection_id;
-    if (!prefId || prefId === 'NO_EDGE' || prefId === 'INVALID') return null;
-    return getSelection(marketView, prefId);
-  };
-
-  /**
-   * CANONICAL MARKETVIEW VALIDATION
-   * Enforces non-negotiable rules from Singles Engine Brief
-   * 
-   * REQUIRED FIELDS (missing any = SAFE MODE):
-   * - schema_version, event_id, market_type, snapshot_hash
-   * - selections[2] with selection_id, side, probabilities
-   * - edge_class, model_preference_selection_id, integrity_status
-   * 
-   * OPTIONAL FIELDS (never trigger SAFE MODE):
-   * - labels, grades, tooltips, explanation, confidence_score
-   */
-  const validateMarketView = (marketView: any, marketType: string): { valid: boolean; errors: string[] } => {
-    const errors: string[] = [];
-    
-    // 1. Schema version check (REQUIRED)
-    if (!marketView.schema_version) {
-      errors.push('Missing schema_version');
-    } else if (marketView.schema_version !== 'mv.v1') {
-      errors.push(`Unknown schema_version: ${marketView.schema_version} (expected mv.v1)`);
-    }
-    
-    // 2. Identifiers (REQUIRED)
-    if (!marketView.event_id) errors.push('Missing event_id');
-    if (!marketView.market_type) errors.push('Missing market_type');
-    if (!marketView.snapshot_hash) errors.push('Missing snapshot_hash');
-    
-    // 3. Integrity status (REQUIRED)
-    if (!marketView.integrity_status) {
-      errors.push('Missing integrity_status');
-    } else if (marketView.integrity_status === 'FAIL') {
-      errors.push(`Backend marked ${marketType} as FAIL: ${marketView.integrity_violations?.join(', ') || 'No details'}`);
-    }
-    
-    // 4. Selections (REQUIRED - exactly 2)
-    if (!marketView.selections || !Array.isArray(marketView.selections)) {
-      errors.push('Missing or invalid selections array');
-    } else if (marketView.selections.length !== 2) {
-      errors.push(`Invalid selections count: ${marketView.selections.length} (expected 2)`);
-    } else {
-      marketView.selections.forEach((sel: any, idx: number) => {
-        if (!sel.selection_id) errors.push(`Selection ${idx}: missing selection_id`);
-        if (!sel.side) errors.push(`Selection ${idx}: missing side`);
-        if (typeof sel.market_probability !== 'number') errors.push(`Selection ${idx}: missing market_probability`);
-        if (typeof sel.model_probability !== 'number') errors.push(`Selection ${idx}: missing model_probability`);
-        // market_line_for_selection nullable only for MONEYLINE
-        if (marketType !== 'MONEYLINE' && typeof sel.market_line_for_selection !== 'number') {
-          errors.push(`Selection ${idx}: missing market_line_for_selection`);
-        }
-      });
-    }
-    
-    // 5. Edge classification (REQUIRED)
-    if (!marketView.edge_class) errors.push('Missing edge_class');
-    if (!marketView.model_preference_selection_id) errors.push('Missing model_preference_selection_id');
-    if (typeof marketView.edge_points !== 'number') errors.push('Missing edge_points');
-    
-    // 6. Edge logic consistency
-    if (marketView.edge_class === 'MARKET_ALIGNED' && marketView.model_preference_selection_id !== 'NO_EDGE') {
-      errors.push('MARKET_ALIGNED must have preference=NO_EDGE');
-    }
-    if (['EDGE', 'LEAN'].includes(marketView.edge_class) && !marketView.selections?.some((s: any) => s.selection_id === marketView.model_preference_selection_id)) {
-      errors.push('Preference selection_id must match one of the selections');
-    }
-    
-    return {
-      valid: errors.length === 0,
-      errors
-    };
-  };
+  const edgeIsBlocked = !!gameEdgeState && !hasOfficialEdge;
 
   const renderSAFEMode = (marketType: string, errors: string[]) => {
     return (
@@ -270,12 +228,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     if (!gameId) return;
 
     const MAX_RETRIES = 2;
-    const RETRY_DELAY = 1000; // 1 second base delay
+    const RETRY_DELAY = 1000;
     const startTime = performance.now();
 
     try {
       setLoading(true);
       setRetryAttempt(retryCount);
+      setIsAutoRetrying(retryCount > 0);
       setError(null);
       
       console.log(`🔄 [GameDetail] Fetch attempt ${retryCount + 1}/${MAX_RETRIES + 1} for game ${gameId}`);
@@ -323,12 +282,23 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       setSimulation(simData);
       const gameEvent = eventsData.find((e: EventType) => e.id === gameId);
+      const fallbackEvent: EventType = {
+        id: gameId,
+        sport_key: simData?.market_context?.sport_key || 'basketball_nba',
+        commence_time: simData?.market_context?.commence_time || new Date().toISOString(),
+        home_team: simData?.team_a || 'Home Team',
+        away_team: simData?.team_b || 'Away Team',
+        bets: [],
+        top_prop_bet: '',
+      };
       
       console.log('[GameDetail] Found event:', gameEvent ? '✓' : '✗');
       
-      setEvent(gameEvent || null);
+      setEvent(gameEvent || fallbackEvent);
       setError(null);
       setRetryAttempt(0);
+      setIsAutoRetrying(false);
+      setLoading(false);
     } catch (err: any) {
       const requestDuration = Math.round(performance.now() - startTime);
       const statusCode = err.message?.match(/HTTP (\d+)/)?.[1] || 'unknown';
@@ -351,9 +321,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                           statusCode !== '401';
       
       if (retryCount < MAX_RETRIES && isRetryable) {
-        const retryDelay = RETRY_DELAY * (retryCount + 1); // 1s, 2s, 3s
+        const retryDelay = RETRY_DELAY * Math.pow(2, retryCount); // 1s, 2s, 4s
         console.log(`⏳ [GameDetail] Retrying in ${retryDelay}ms...`);
-        setError(`Loading... (Attempt ${retryCount + 2}/${MAX_RETRIES + 1})`);
+        setIsAutoRetrying(true);
+        setRetryAttempt(retryCount + 1);
         setTimeout(() => loadGameData(retryCount + 1), retryDelay);
         return;
       }
@@ -361,11 +332,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       // All retries exhausted or non-retryable error
       console.error(`🚫 [GameDetail] All retries exhausted or non-retryable error`);
       setError(err.message || 'Failed to load game details');
-      setRetryAttempt(0);
-    } finally {
-      if (retryCount === 0 || error) {
-        setLoading(false);
-      }
+      setIsAutoRetrying(false);
+      setLoading(false);
     }
   };
 
@@ -442,7 +410,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     // FIX: Convert decimal confidence to percentage BEFORE rounding
     const confidence = Math.round((simulation.confidence_score || 0.65) * 100);
 
-    const shareText = `🏀 ${event.away_team} @ ${event.home_team}\n\n📊 Decision Engine Analysis (${(simulation.iterations || 10000).toLocaleString()} Intelligence Cycles):\n• Win Probability: ${winProb}%\n• Outcome Variance: ${volatility}\n• Model Conviction: ${confidence}/100\n\n🚀 Powered by #BeatVegas Decision Engine\nbeatvegas.com/game/${gameId}`;
+    const shareText = `🏀 ${matchupLabel}\n\n📊 Decision Engine Analysis (${(simulation.iterations || 10000).toLocaleString()} Intelligence Cycles):\n• Win Probability: ${winProb}%\n• Outcome Variance: ${volatility}\n• Model Conviction: ${confidence}/100\n\n🚀 Powered by #BeatVegas Decision Engine\nbeatvegas.com/game/${gameId}`;
 
     try {
       await navigator.clipboard.writeText(shareText);
@@ -558,38 +526,48 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       </div>
     );
   };
-  
-  if (error && !error.startsWith('Loading...')) return (
-    <div className="min-h-screen bg-[#0a0e1a] p-6">
-      <div className="text-center space-y-4">
-        <div className="text-bold-red text-xl mb-4">{error}</div>
-        <div className="flex gap-4 justify-center">
-          <button
-            onClick={() => loadGameData(0)}
-            className="bg-electric-blue text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity flex items-center gap-2"
-          >
-            🔄 Retry
-          </button>
-          <button
-            onClick={onBack}
-            className="bg-gold text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity"
-          >
-            ← Back to Dashboard
-          </button>
-        </div>
-        <div className="text-light-gray text-sm mt-4">
-          Check console for detailed error logs
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6">
+        <div className="text-center space-y-4">
+          <div className="text-bold-red text-xl mb-2">{error}</div>
+          {isAutoRetrying && (
+            <div className="text-gold text-sm">
+              Auto-retrying with exponential backoff ({retryAttempt + 1}/3)
+            </div>
+          )}
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => {
+                setError(null);
+                loadGameData(0);
+              }}
+              className="bg-electric-blue text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity flex items-center gap-2"
+            >
+              🔄 Retry
+            </button>
+            <button
+              onClick={onBack}
+              className="bg-gold text-white px-6 py-2 rounded-lg hover:opacity-80 transition-opacity"
+            >
+              ← Back to Dashboard
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (loading) return <LoadingSpinner />;
-  
-  if (error) return (
-    <div className="min-h-screen bg-[#0a0e1a] p-6">
-      <div className="text-center space-y-4">
-        <div className="text-bold-red text-xl mb-4">{error}</div>
+  if (!simulation || !event) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6 text-center space-y-4">
+        <div className="text-white text-xl">Game data unavailable</div>
+        <div className="text-light-gray">The event payload could not be resolved. Try again.</div>
         <div className="flex gap-4 justify-center">
           <button
             onClick={() => loadGameData(0)}
@@ -605,10 +583,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </button>
         </div>
       </div>
-    </div>
-  );
-  if (!simulation || !event) return <div className="text-center text-white p-8">Game not found</div>;
-
+    );
+  }
+  
   // Prepare chart data - handle both array and object formats
   const spreadDistArray = Array.isArray(simulation.spread_distribution) 
     ? simulation.spread_distribution 
@@ -885,10 +862,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       {/* Game Header */}
       <div className="bg-linear-to-b from-navy/30 via-transparent to-transparent pb-4 -mb-4 rounded-t-xl">
-      <PageHeader title={`${event.away_team} @ ${event.home_team}`}>
+      <PageHeader title={matchupLabel}>
         <div className="flex items-center space-x-4">
           <span className="bg-gold/20 text-gold text-xs font-bold px-3 py-1 rounded-full uppercase">
-            {event.sport_key}
+            {getSportDisplayName(event.sport_key)}
           </span>
           <span className="text-light-gray text-sm">
             {new Date(event.commence_time).toLocaleString()}
@@ -924,24 +901,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
       </div>
       {/* END: Header gradient wrapper */}
-
-      {/* BASELINE MODE INFO (Normal Operation) */}
-      {simulation?.simulation_mode === 'BASELINE' && (
-        <div className="mb-6 bg-linear-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-5">
-          <div className="flex items-start gap-4">
-            <div className="text-2xl">📊</div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-blue-300 mb-2">Baseline Mode</h3>
-              <p className="text-white text-sm mb-2">
-                Player-level data unavailable. Analysis generated from team-level historical performance, matchup profiles, and market pricing.
-              </p>
-              <p className="text-gray-400 text-xs">
-                Outputs remain continuous, logged, and auditable with calibrated confidence penalties.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {shareSuccess && (
         <div className="mb-4 bg-neon-green/20 border border-neon-green rounded-lg p-3 text-center text-neon-green text-sm animate-pulse">
@@ -1124,7 +1083,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className={`text-xs font-semibold mt-1 ${
                       gameEdgeState?.classification === Classification.LEAN ? 'text-gold/80' : 'text-light-gray/60'
                     }`}>
-                      {gameEdgeState?.classification === Classification.LEAN ? 'Soft edge — proceed cautious' : `${gameEdgeState?.rules_passed ?? 0}/${gameEdgeState?.rules_total ?? 0} rules passed`}
+                      {gameEdgeState?.classification === Classification.LEAN ? 'Soft edge — proceed cautious' : 'Statistical signal summary'}
                     </div>
                   </div>
                   
@@ -1190,9 +1149,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         
                         // CANONICAL RULE: Model Preference = Side with highest probability
                         if (p_cover_home > p_cover_away) {
-                          return `${event.home_team} ${market_spread >= 0 ? '+' : ''}${market_spread.toFixed(1)}`;
+                          return `${getDisplayTeamName(event.home_team)} ${market_spread >= 0 ? '+' : ''}${market_spread.toFixed(1)}`;
                         } else if (p_cover_away > p_cover_home) {
-                          return `${event.away_team} ${-market_spread >= 0 ? '+' : ''}${(-market_spread).toFixed(1)}`;
+                          return `${getDisplayTeamName(event.away_team)} ${(-market_spread) >= 0 ? '+' : ''}${(-market_spread).toFixed(1)}`;
                         } else {
                           return 'No Edge (50/50)';
                         }
@@ -1291,7 +1250,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       )}
       
       {/* Sharp Analysis - Model vs Market */}
-      {simulation?.sharp_analysis && (simulation.sharp_analysis.total?.has_edge || simulation.sharp_analysis.spread?.has_edge) && (
+      {/* FIX-03: Gate analysis rendering by blocked state - do not render sharp analysis if edge is blocked */}
+      {simulation?.sharp_analysis && (simulation.sharp_analysis.total?.has_edge || simulation.sharp_analysis.spread?.has_edge) && !edgeIsBlocked && (
         <div className="mb-6 p-6 bg-linear-to-br from-purple-900/30 to-blue-900/30 rounded-xl border-2 border-purple-500/50 shadow-2xl">
           <div className="flex items-start gap-4">
             <div className="text-4xl">🎯</div>
@@ -1594,14 +1554,15 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           >
             TOTAL
           </button>
-          {/* Debug Toggle */}
-          <button
-            onClick={() => setShowDebugPayload(!showDebugPayload)}
-            className="ml-auto px-3 py-1 rounded bg-charcoal/50 text-xs text-gray-400 hover:bg-navy hover:text-white transition"
-            title="Toggle debug payload"
-          >
-            🔍 DEBUG
-          </button>
+          {DEBUG_UI_ENABLED && (
+            <button
+              onClick={() => setShowDebugPayload(!showDebugPayload)}
+              className="ml-auto px-3 py-1 rounded bg-charcoal/50 text-xs text-gray-400 hover:bg-navy hover:text-white transition"
+              title="Toggle debug payload"
+            >
+              🔍 DEBUG
+            </button>
+          )}
         </div>
 
         {/* Market-Specific Display - Keyed by snapshot_hash for atomic swapping */}
@@ -1680,7 +1641,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="bg-navy/50 p-4 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
                     <div className="text-sm text-light-gray mb-2">
-                      {event.home_team} {homeSelection?.market_line_for_selection ?? 0 >= 0 ? '+' : ''}{homeSelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
+                      {getDisplayTeamName(event.home_team)} {(homeSelection?.market_line_for_selection ?? 0) >= 0 ? '+' : ''}{homeSelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
                     </div>
                     <div className="text-3xl font-bold text-white font-teko">
                       {(p_cover_home * 100).toFixed(1)}%
@@ -1689,7 +1650,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="bg-navy/50 p-4 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
                     <div className="text-sm text-light-gray mb-2">
-                      {event.away_team} {awaySelection?.market_line_for_selection ?? 0 >= 0 ? '+' : ''}{awaySelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
+                      {getDisplayTeamName(event.away_team)} {(awaySelection?.market_line_for_selection ?? 0) >= 0 ? '+' : ''}{awaySelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
                     </div>
                     <div className="text-3xl font-bold text-white font-teko">
                       {(p_cover_away * 100).toFixed(1)}%
@@ -1971,7 +1932,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           })()}
 
           {/* Debug Payload (Dev Toggle) */}
-          {showDebugPayload && simulation?.sharp_analysis?.debug_payload && (
+          {DEBUG_UI_ENABLED && showDebugPayload && simulation?.sharp_analysis?.debug_payload && (
             <div className="mt-6 p-4 bg-charcoal/80 border border-gold/30 rounded-lg">
               <div className="text-xs text-gold font-bold mb-2 flex items-center gap-2">
                 <span>🔍</span>
@@ -2912,7 +2873,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       </div>
 
       {/* DEV-ONLY: Debug Panel for Simulation Integrity */}
-      {process.env.NODE_ENV === 'development' && simulation && event && (
+      {DEBUG_UI_ENABLED && simulation && event && (
         <SimulationDebugPanel simulation={simulation} event={event} />
       )}
     </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import GameDetail from './GameDetail';
@@ -26,13 +26,33 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
   const [userRole] = useState<'creator' | 'user'>('user');
   const [isAdmin] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gameId = params.get('gameId');
+    if (gameId) {
+      setSelectedGameId(gameId);
+    }
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     window.location.reload();
   };
 
+  const clearSelectedGame = () => {
+    setSelectedGameId(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('gameId')) {
+      url.searchParams.delete('gameId');
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
   const handleGameClick = (gameId: string) => {
     setSelectedGameId(gameId);
+    const url = new URL(window.location.href);
+    url.searchParams.set('gameId', gameId);
+    window.history.replaceState({}, '', url.toString());
     // Stay on current page when viewing game detail
   };
 
@@ -43,7 +63,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
         <div className="p-6">
           <GameDetail 
             gameId={selectedGameId} 
-            onBack={() => setSelectedGameId(null)} 
+            onBack={clearSelectedGame} 
           />
         </div>
       );

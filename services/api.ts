@@ -1,5 +1,6 @@
 
 import type { Event, Prediction, AffiliateStat, Referral, ChatMessage, TopAnalyst, User, Bet, AuthResponse, UserCredentials, UserRegistration, MonteCarloSimulation, CLVDataPoint, CLVStats, PerformanceMetrics } from '../types';
+import type { GameDecisions } from '../types/MarketDecision';
 
 // EXPLICIT PRODUCTION/DEV ROUTING (no guessing)
 export const API_BASE_URL = (() => {
@@ -574,9 +575,8 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     const res = await fetch(`${API_BASE_URL}/api/simulations/${eventId}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (res.status === 404) {
-        // Event not found - likely stale data or invalid game_id
-        const error = await safeJsonParse(res);
-        throw new Error(error.detail || `Event ${eventId} not found. This game may have been removed or is no longer available.`);
+        // Fail closed without exposing internal identifiers
+        throw new Error('Intelligence output unavailable for this game. Retry or check back later.');
     }
     if (res.status === 422) {
         // Handle structural market errors (staleness is now graceful)
@@ -605,6 +605,31 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     }
     
     return data;
+};
+
+/**
+ * Fetch game decisions from the unified decisions endpoint
+ * ZONE 3: Primary API for rendering market signal cards
+ */
+export const fetchGameDecisions = async (league: string, gameId: string): Promise<GameDecisions> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/games/${league}/${gameId}/decisions`, { headers });
+    
+    if (res.status === 401) {
+        removeToken();
+        throw new Error('Session expired. Please log in again.');
+    }
+    
+    if (res.status === 404) {
+        throw new Error('Intelligence output unavailable for this game. Retry or check back later.');
+    }
+    
+    if (!res.ok) {
+        const error = await safeJsonParse(res);
+        throw new Error(error.detail || `Failed to fetch game decisions (${res.status})`);
+    }
+    
+    return safeJsonParse(res);
 };
 
 export const requestSimulation = async (eventId: string, iterations: number = 100000): Promise<MonteCarloSimulation> => {

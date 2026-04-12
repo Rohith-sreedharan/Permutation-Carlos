@@ -29,6 +29,8 @@ class Classification(str, Enum):
     NO_ACTION = "NO_ACTION"
     LEAN = "LEAN"
     EDGE = "EDGE"
+    MARKET_ALIGNED = "MARKET_ALIGNED"
+    BLOCKED = "BLOCKED"
 
 
 class ReleaseStatus(str, Enum):
@@ -174,8 +176,15 @@ class MarketDecision(BaseModel):
     edge: Optional[Edge] = Field(None, description="Edge quantification")
     
     # Classification & status
-    classification: Optional[Classification] = Field(None, description="Edge classification")
+    classification: Optional[Classification] = Field(None, description="Normalized classification for UI/API")
+    market_type_display: str = Field(..., description="Display-safe market type label")
+    selection_label: Optional[str] = Field(None, description="Canonical selection label for cards/detail")
+    edge_points: Optional[float] = Field(None, description="Promoted edge points for API consumers")
+    model_probability: Optional[float] = Field(None, description="Promoted model probability for API consumers")
+    market_implied_probability: Optional[float] = Field(None, description="Promoted market implied probability for API consumers")
     release_status: ReleaseStatus = Field(..., description="Release eligibility")
+    di_pass: bool = Field(..., description="Data integrity gate pass flag")
+    mv_pass: bool = Field(..., description="Market validity gate pass flag")
     
     # Pre-computed UI text
     reasons: list[str] = Field(default_factory=list, description="Pre-written bullets for 'Why This Edge Exists'")

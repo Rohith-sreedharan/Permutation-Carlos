@@ -118,10 +118,10 @@ export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
           </div>
         )}
         
-        {/* NO ACTION badge */}
+        {/* No Actionable Signal badge */}
         {hasNoAction && (
           <div className="ml-auto px-3 py-1 bg-gray-800/50 border border-gray-600 rounded-lg text-gray-400 font-bold text-xs">
-            ⛔ NO ACTION
+            ⛔ No Actionable Signal
           </div>
         )}
       </div>
@@ -251,7 +251,7 @@ const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({
           ) : isLean && team ? (
             <span>⚠️ MODEL LEAN</span>
           ) : (
-            <span>⛔ NO ACTION</span>
+            <span>⛔ No Actionable Signal</span>
           )}
         </div>
       </div>
@@ -331,7 +331,7 @@ const TotalAnalysisCard: React.FC<TotalAnalysisCardProps> = ({
           ) : isLean && side ? (
             <span>⚠️ MODEL LEAN</span>
           ) : (
-            <span>⛔ NO ACTION</span>
+            <span>⛔ No Actionable Signal</span>
           )}
         </div>
       </div>

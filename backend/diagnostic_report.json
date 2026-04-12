@@ -1,0 +1,70 @@
+{
+  "report_timestamp": "2026-04-07T15:21:45.564388",
+  "environment": {
+    "mongo_uri_configured": true,
+    "odds_api_configured": true,
+    "backend_url": "http://localhost:8000"
+  },
+  "diagnostics": {
+    "1_api_response": {
+      "timestamp": "2026-04-07T15:21:45.564633",
+      "description": "Full raw JSON response from GET /api/games/{league}/{game_id}/decisions",
+      "league": "nba",
+      "game_id": null,
+      "api_response": null,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/games/nba/None/decisions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x119e57a10>: Failed to establish a new connection: [Errno 61] Connection refused'))",
+      "notes": []
+    },
+    "2_odds_pipeline": {
+      "timestamp": "2026-04-07T15:21:45.599141",
+      "description": "Status of odds polling job and last successful run",
+      "pipeline_running": false,
+      "last_successful_run": null,
+      "api_status": null,
+      "recent_events": [],
+      "error": "MongoDB not connected",
+      "notes": []
+    },
+    "3_market_snapshots": {
+      "timestamp": "2026-04-07T15:21:45.599261",
+      "description": "SELECT game_id, created_at, status FROM market_snapshots WHERE created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 20",
+      "query": "db.market_snapshots.find({'created_at': {'$gt': ISODate('2026-04-06T15:21:45.599302')}}).sort({'created_at': -1}).limit(20)",
+      "results": [],
+      "total_count": 0,
+      "error": "MongoDB not connected"
+    },
+    "4_decision_records": {
+      "timestamp": "2026-04-07T15:21:45.599358",
+      "description": "Check existence and retrieve DecisionRecord for affected game",
+      "game_id": null,
+      "record_exists": false,
+      "record_data": null,
+      "all_records_count": 0,
+      "error": "MongoDB not connected"
+    },
+    "5_data_providers": {
+      "timestamp": "2026-04-07T15:21:45.599403",
+      "description": "Data provider identification and status for MLB and NHL odds",
+      "primary_provider": "The Odds API",
+      "provider_url": "https://api.the-odds-api.com/v4",
+      "api_key_status": "configured",
+      "sports_status": {
+        "MLB": {
+          "status": "ERROR_422",
+          "data_available": false,
+          "details": {
+            "error": "{\"message\":\"Missing regions or bookmakers key\",\"error_code\":\"MISSING_REGION\",\"details_url\":\"https://the-odds-api.com/liveapi/guides/v4/api-error-codes.html#missing-region\"}\n"
+          }
+        },
+        "NHL": {
+          "status": "DELAYED",
+          "data_available": false,
+          "details": {
+            "error": "Sport not available or out of season"
+          }
+        }
+      },
+      "error": null
+    }
+  }
+}

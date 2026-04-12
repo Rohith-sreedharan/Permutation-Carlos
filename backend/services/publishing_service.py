@@ -189,7 +189,19 @@ class PublishingService:
         Void a published prediction (game cancelled, data error, etc.)
         
         This marks it as not official for grading purposes.
+        Logs VOIDED lifecycle event immediately with lineage preservation.
         """
+        # Fetch published record to extract lineage
+        published = self.published_collection.find_one({"publish_id": publish_id})
+        if not published:
+            return False
+        
+        # Fetch prediction for fallback lineage (consistent with grading)
+        prediction = self.predictions_collection.find_one(
+            {"prediction_id": published.get("prediction_id")}
+        )
+        
+        # Update to mark as voided
         result = self.published_collection.update_one(
             {"publish_id": publish_id},
             {
@@ -202,6 +214,27 @@ class PublishingService:
         )
         
         if result.modified_count > 0:
+            # Log VOIDED lifecycle event with lineage (fallback to prediction if missing)
+            trace_id = published.get("trace_id") or (
+                prediction.get("trace_id") if prediction else None
+            ) or f"trace_void_{publish_id}"
+            snapshot_hash = published.get("snapshot_hash") or (
+                prediction.get("snapshot_hash") if prediction else None
+            ) or (
+                prediction.get("market_snapshot_id_used") if prediction else None
+            ) or published.get("locked_market_snapshot_id")
+            
+            observability_service.log_prediction_lifecycle(
+                stage="VOIDED",
+                decision_id=prediction.get("decision_id") if prediction else None,
+                event_id=published.get("event_id"),
+                prediction_id=published.get("prediction_id"),
+                publish_id=publish_id,
+                trace_id=trace_id,
+                snapshot_hash=snapshot_hash,
+                metadata={"void_reason": reason},
+            )
+            
             logger.warning(f"❌ Voided published prediction: {publish_id} ({reason})")
             return True
         

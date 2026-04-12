@@ -1,92 +1,69 @@
-from services.billing_state_service import BillingStateService
+from services.billing_state_service import BillingLedgerService
 
 
 class FakeCollection:
-    def __init__(self, docs=None):
-        self.docs = docs or []
+    def __init__(self):
+        self.docs = []
+        self.indexes = []
 
-    def find_one(self, query):
-        for doc in self.docs:
-            if all(doc.get(key) == value for key, value in query.items()):
-                return dict(doc)
-        return None
-
-    def update_one(self, query, update, upsert=False):
-        doc = self.find_one(query)
-        if doc is not None:
-            doc.update(update.get("$set", {}))
-            return
-        if upsert:
-            new_doc = dict(query)
-            new_doc.update(update.get("$set", {}))
-            self.docs.append(new_doc)
+    def create_index(self, *args, **kwargs):
+        self.indexes.append((args, kwargs))
 
     def insert_one(self, doc):
         self.docs.append(doc)
-        return type("InsertResult", (), {"inserted_id": doc.get("change_id", "ok")})
+        return type("InsertResult", (), {"inserted_id": doc.get("id", "ok")})
+
+    def aggregate(self, pipeline):
+        user_id = pipeline[0]["$match"]["user_id"]
+        balance = sum(float(doc.get("amount", 0.0)) for doc in self.docs if doc.get("user_id") == user_id)
+        if not any(doc.get("user_id") == user_id for doc in self.docs):
+            return []
+        return [{"_id": None, "balance": balance}]
 
 
-def test_upsert_state_writes_state_and_change_log_per_changed_field():
-    billing_state = FakeCollection(
-        docs=[
-            {
-                "user_id": "user_1",
-                "plan_id": "telegram_syndicate",
-                "platform_access": False,
-            }
-        ]
-    )
-    change_log = FakeCollection()
-    service = BillingStateService(
-        billing_state_collection=billing_state,
-        change_log_collection=change_log,
-    )
+def test_append_ledger_entry_writes_required_contract_fields():
+    ledger = FakeCollection()
+    service = BillingLedgerService(ledger_collection=ledger)
 
-    next_state = service.upsert_state(
+    row = service.append_ledger_entry(
         user_id="user_1",
-        updates={
-            "plan_id": "beatvegas_platform",
-            "platform_access": True,
-            "telegram_access": True,
-        },
-        trace_id="trace_123",
+        event_type="usage",
+        amount=-1.25,
+        reference_id="run_123",
     )
 
-    assert next_state["user_id"] == "user_1"
-    assert next_state["plan_id"] == "beatvegas_platform"
-    assert next_state["platform_access"] is True
-    assert next_state["telegram_access"] is True
-    assert "updated_at_utc" in next_state
-    assert len(change_log.docs) == 3
-    changed_fields = {doc["field_changed"] for doc in change_log.docs}
-    assert changed_fields == {"plan_id", "platform_access", "telegram_access"}
-    assert all(doc["trace_id"] == "trace_123" for doc in change_log.docs)
+    assert row["id"]
+    assert row["user_id"] == "user_1"
+    assert row["event_type"] == "USAGE"
+    assert row["amount"] == -1.25
+    assert row["reference_id"] == "run_123"
+    assert "created_at" in row
+    assert len(ledger.docs) == 1
 
 
-def test_upsert_state_does_not_log_unchanged_fields():
-    billing_state = FakeCollection(
-        docs=[
-            {
-                "user_id": "user_2",
-                "plan_id": "beatvegas_platform",
-                "platform_access": True,
-            }
-        ]
-    )
-    change_log = FakeCollection()
-    service = BillingStateService(
-        billing_state_collection=billing_state,
-        change_log_collection=change_log,
-    )
+def test_get_derived_balance_sums_ledger_without_mutable_state():
+    ledger = FakeCollection()
+    service = BillingLedgerService(ledger_collection=ledger)
 
-    next_state = service.upsert_state(
-        user_id="user_2",
-        updates={
-            "plan_id": "beatvegas_platform",
-            "platform_access": True,
-        },
-        trace_id="trace_same",
-    )
+    service.append_ledger_entry(user_id="user_2", event_type="CREDIT", amount=10.0, reference_id="credit_1")
+    service.append_ledger_entry(user_id="user_2", event_type="USAGE", amount=-2.5, reference_id="run_1")
+    service.append_ledger_entry(user_id="user_2", event_type="CHARGE", amount=-1.5, reference_id="run_2")
 
-    assert next_state["user_id"] == "user_2"
-    assert len(change_log.docs) == 0
+    assert service.get_derived_balance("user_2") == 6.0
+    assert service.get_derived_balance("unknown_user") == 0.0
+
+
+def test_append_ledger_entry_rejects_invalid_event_type():
+    ledger = FakeCollection()
+    service = BillingLedgerService(ledger_collection=ledger)
+
+    try:
+        service.append_ledger_entry(
+            user_id="user_3",
+            event_type="MUTATE",
+            amount=1.0,
+            reference_id="bad",
+        )
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "event_type" in str(exc)

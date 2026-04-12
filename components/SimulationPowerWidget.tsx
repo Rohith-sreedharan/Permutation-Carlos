@@ -39,7 +39,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
   const activeCycles = Math.max(0, engineCyclesLimit);
   const progressPercent = Math.min(100, (activeCycles / MAX_SIMS) * 100);
   const isMaxCapacity = activeCycles >= MAX_SIMS;
-  const capacityLabel = isMaxCapacity ? 'Max Capacity' : 'Limited Capacity';
+  const capacityLabel = isMaxCapacity ? 'Max Capacity' : 'Decision Depth: Preview Mode — Upgrade for full access';
 
   const getUpgradeMessage = () => {
     if (platformAccess && isMaxCapacity) return "You're running BeatVegas at full Decision Depth.";
@@ -54,7 +54,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
         <div>
           <div className="text-xs text-lightGold/70 mb-1">{COPY.decisionDepth}</div>
           <div className={`text-lg font-bold ${platformAccess ? 'text-gold' : telegramAccess ? 'text-electric-blue' : 'text-gray-400'}`}>
-            {capacityLabel} · {activeCycles.toLocaleString()} Intelligence Cycles/period
+            {isMaxCapacity ? `${capacityLabel} · ${activeCycles.toLocaleString()} Intelligence Cycles/period` : capacityLabel}
           </div>
         </div>
         {!isMaxCapacity && onUpgradeClick && (

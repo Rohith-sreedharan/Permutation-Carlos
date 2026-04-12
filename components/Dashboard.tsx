@@ -361,7 +361,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      <PageHeader title="AI Betting Dashboard">
+      <PageHeader title="Sports Intelligence Command Center">
         <div className="flex items-center space-x-2 bg-charcoal p-1 rounded-lg">
           {sports.map(sport => (
             <button
@@ -405,7 +405,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </button>
               ))}
             </div>
-            <span className="text-[11px] text-light-gray/70 ml-2">Times shown in UTC</span>
+            <span className="text-[11px] text-light-gray/70 ml-2">Times shown in Eastern Time (ET)</span>
           </div>
 
           {/* Time Order Toggle */}

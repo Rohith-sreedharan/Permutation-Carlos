@@ -16,6 +16,25 @@ export interface SportLabels {
   physicsFatigue: string;
 }
 
+const SPORT_DISPLAY_NAMES: Record<string, string> = {
+  basketball_nba: 'NBA',
+  basketball_ncaab: 'NCAAB',
+  americanfootball_nfl: 'NFL',
+  americanfootball_ncaaf: 'NCAAF',
+  icehockey_nhl: 'NHL',
+  baseball_mlb: 'MLB',
+};
+
+/**
+ * Normalize sport keys from either raw enum format (BASKETBALL_NBA)
+ * or API format (basketball_nba) and return human-readable labels.
+ */
+export const getSportDisplayName = (sportKey: string): string => {
+  if (!sportKey) return 'SPORT';
+  const normalized = sportKey.toLowerCase();
+  return SPORT_DISPLAY_NAMES[normalized] || sportKey.replace(/_/g, ' ').toUpperCase();
+};
+
 /**
  * Get sport-specific display labels
  * @param sportKey - The sport_key from the event (e.g., "americanfootball_ncaaf", "basketball_nba", "icehockey_nhl", "baseball_mlb")

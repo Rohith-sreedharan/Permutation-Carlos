@@ -25,6 +25,85 @@ import uuid
 router = APIRouter()
 
 
+def _market_type_display(market_type: MarketType) -> str:
+    mapping = {
+        MarketType.SPREAD: "Spread",
+        MarketType.TOTAL: "Total",
+        MarketType.MONEYLINE_2WAY: "Moneyline",
+        MarketType.MONEYLINE_3WAY: "3-Way Moneyline",
+    }
+    return mapping.get(market_type, "Spread")
+
+
+def _is_blocked_status(release_status: ReleaseStatus) -> bool:
+    return release_status in {
+        ReleaseStatus.BLOCKED_BY_RISK,
+        ReleaseStatus.BLOCKED_BY_INTEGRITY,
+        ReleaseStatus.BLOCKED_MISSING_CONTEXT,
+    }
+
+
+def _normalized_classification(decision: MarketDecision) -> Classification:
+    if _is_blocked_status(decision.release_status):
+        return Classification.BLOCKED
+    if decision.classification == Classification.EDGE:
+        return Classification.EDGE
+    if decision.classification == Classification.LEAN:
+        return Classification.LEAN
+    return Classification.MARKET_ALIGNED
+
+
+def _format_spread_line(line: Optional[float]) -> str:
+    if line is None:
+        return ""
+    return f"{line:+g}"
+
+
+def _selection_label(decision: MarketDecision) -> Optional[str]:
+    if _is_blocked_status(decision.release_status):
+        return None
+
+    if decision.market_type == MarketType.TOTAL:
+        side = decision.pick.side if decision.pick else None
+        total_line = decision.market.line if decision.market else None
+        if side and total_line is not None:
+            return f"{side.title()} {total_line:g}"
+        return None
+
+    if decision.market_type in {MarketType.SPREAD, MarketType.MONEYLINE_2WAY, MarketType.MONEYLINE_3WAY}:
+        team_name = decision.pick.team_name if decision.pick and hasattr(decision.pick, "team_name") else None
+        if not team_name:
+            return None
+        if decision.market_type == MarketType.SPREAD:
+            spread_line = decision.market.line if decision.market else None
+            if spread_line is None:
+                return team_name
+            return f"{team_name} {_format_spread_line(spread_line)}"
+        return team_name
+
+    return None
+
+
+def _normalize_decision_for_api(decision: Optional[MarketDecision]) -> Optional[MarketDecision]:
+    if decision is None:
+        return None
+
+    decision.classification = _normalized_classification(decision)
+    decision.market_type_display = _market_type_display(decision.market_type)
+    decision.selection_label = _selection_label(decision)
+    decision.edge_points = decision.edge.edge_points if decision.edge else None
+    decision.model_probability = decision.probabilities.model_prob if decision.probabilities else None
+    decision.market_implied_probability = decision.probabilities.market_implied_prob if decision.probabilities else None
+    return decision
+
+
+def _normalize_game_decisions_for_api(decisions: GameDecisions) -> GameDecisions:
+    decisions.spread = _normalize_decision_for_api(decisions.spread)
+    decisions.moneyline = _normalize_decision_for_api(decisions.moneyline)
+    decisions.total = _normalize_decision_for_api(decisions.total)
+    return decisions
+
+
 def create_blocked_decision(
     league: str,
     game_id: str,
@@ -39,7 +118,7 @@ def create_blocked_decision(
     Create a BLOCKED decision per spec Section 1.4.
     
     When BLOCKED:
-    - classification = null
+    - classification = BLOCKED
     - reasons = []
     - pick = null
     - edge = null
@@ -63,8 +142,15 @@ def create_blocked_decision(
         fair_selection=None,
         probabilities=None,
         edge=None,
-        classification=None,
+        classification=Classification.BLOCKED,
+        market_type_display=_market_type_display(market_type),
+        selection_label=None,
+        edge_points=None,
+        model_probability=None,
+        market_implied_probability=None,
         release_status=release_status,
+        di_pass=False,
+        mv_pass=False,
         reasons=[],
         risk=Risk(
             volatility_flag=None,
@@ -225,7 +311,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             decision_version="1.0.0",
             computed_at=datetime.utcnow().isoformat()
         )
-        return decisions
+        return _normalize_game_decisions_for_api(decisions)
     
     # Build sim_result from MongoDB (using actual monte_carlo_simulations structure)
     # Field mappings based on actual document structure:
@@ -268,8 +354,15 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         'profile': 'balanced',
         'edge_threshold': 2.0,
         'lean_threshold': 0.5,
-        'prob_threshold': 0.55
+        'prob_threshold': 0.55,
+        'min_prob_gap_for_lean': 0.01,
     }
+
+    data_availability_state = (
+        'PLAYER_DATA_UNAVAILABLE'
+        if sim_doc.get('simulation_mode') == 'BASELINE'
+        else 'PLAYER_DATA_AVAILABLE'
+    )
     
     game_competitors = {
         home_id: home_team,
@@ -298,6 +391,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         decision_version=spread_decision.debug.decision_version,
         computed_at=datetime.utcnow().isoformat()
     )
+    decisions = _normalize_game_decisions_for_api(decisions)
     
     # ═══════════════════════════════════════════════════════════════════
     # PERSIST-FIRST IDENTITY LAW (Phase 1)
@@ -319,6 +413,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             )
         decisions = GameDecisions(**persisted_payload)
         decisions.decision_record_id = decision_record_id
+        decisions = _normalize_game_decisions_for_api(decisions)
     except HTTPException:
         raise
     except Exception as exc:
@@ -354,7 +449,9 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
                 "home_team": home_team,
                 "away_team": away_team,
                 "market_line": spread_decision.market.line if spread_decision.market else None,
-                "market_odds": spread_decision.market.odds if spread_decision.market else None
+                "market_odds": spread_decision.market.odds if spread_decision.market else None,
+                "data_availability_state": data_availability_state,
+                "simulation_mode": sim_doc.get('simulation_mode'),
             }
         )
         
@@ -412,7 +509,9 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
                 "home_team": home_team,
                 "away_team": away_team,
                 "market_line": total_decision.market.line if total_decision.market else None,
-                "market_odds": total_decision.market.odds if total_decision.market else None
+                "market_odds": total_decision.market.odds if total_decision.market else None,
+                "data_availability_state": data_availability_state,
+                "simulation_mode": sim_doc.get('simulation_mode'),
             }
         )
         

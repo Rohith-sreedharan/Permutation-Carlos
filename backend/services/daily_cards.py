@@ -8,6 +8,56 @@ from db.mongo import db
 from services.parlay_architect import parlay_architect_service
 from utils.mongo_helpers import sanitize_mongo_doc
 
+# ============================================================================
+# SENTINEL VALUE CONSTANTS & FILTER (FIX-02)
+# ============================================================================
+SENTINEL_ODDS = {-9999, -999, 9999, 999, -9999999, -999999}
+
+def is_sentinel_odds(value: Any) -> bool:
+    """Check if odds value is a sentinel (unavailable) marker."""
+    if value is None:
+        return False
+    try:
+        return int(value) in SENTINEL_ODDS
+    except (ValueError, TypeError):
+        return False
+
+def filter_sentinel_from_card(card: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Remove/mask sentinel values from card for rendering.
+    
+    Purpose: Prevent sentinel placeholders (-9999, -999) from reaching UI.
+    Behavior:
+    - If odds are sentinel: set to None (triggers "OFF BOARD" or row hidden in UI)
+    - If parlay_odds are sentinel: set to None
+    - If all critical fields sentinel: return None (hide entire card)
+    """
+    if card is None:
+        return None
+    
+    card_copy = card.copy()
+    
+    # Check and filter odds fields
+    if is_sentinel_odds(card_copy.get("odds")):
+        card_copy["odds"] = None
+        card_copy["_sentinel_odds_hidden"] = True
+    
+    if is_sentinel_odds(card_copy.get("parlay_odds")):
+        card_copy["parlay_odds"] = None
+        card_copy["_sentinel_odds_hidden"] = True
+    
+    # If core odds field is None/sentinel, optionally suppress entire card
+    # (e.g., if this is a moneyline card with no valid odds)
+    # For now, return card with None odds instead of fully suppressing
+    
+    return card_copy
+
+def get_market_by_key(bookmaker: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
+    for market in bookmaker.get("markets", []):
+        if market.get("key") == key:
+            return market
+    return None
+
 
 class DailyCardsService:
     """
@@ -23,6 +73,30 @@ class DailyCardsService:
     def __init__(self):
         self.min_win_probability = 0.52  # Minimum 52% to be considered
         self.min_confidence = 0.50  # Medium-high confidence required
+    
+    def _apply_sentinel_filter_to_all_cards(self, cards: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Apply sentinel value filter to all cards before rendering.
+        
+        Purpose (FIX-02): Prevent sentinel odds placeholders from reaching UI.
+        This is the single point where all cards pass before DB/API response.
+        """
+        filtered_cards = {}
+        
+        for card_key in ["best_game_overall", "top_nba_game", "top_ncaab_game", "top_ncaaf_game", 
+                        "top_prop_mispricing", "parlay_preview"]:
+            card = cards.get(card_key)
+            if card is not None:
+                filtered_cards[card_key] = filter_sentinel_from_card(card)
+            else:
+                filtered_cards[card_key] = None
+        
+        # Preserve other fields (generated_at, expires_at, etc.)
+        filtered_cards.update({k: v for k, v in cards.items() 
+                              if k not in ["best_game_overall", "top_nba_game", "top_ncaab_game", 
+                                          "top_ncaaf_game", "top_prop_mispricing", "parlay_preview"]})
+        
+        return filtered_cards
     
     def generate_daily_cards(self) -> Dict[str, Any]:
         """
@@ -116,6 +190,9 @@ class DailyCardsService:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": tomorrow.isoformat()
         }
+        
+        # Apply sentinel value filter (FIX-02) before rendering
+        cards = self._apply_sentinel_filter_to_all_cards(cards)
         
         # Sanitize to remove MongoDB ObjectIds
         cards = sanitize_mongo_doc(cards)
@@ -498,23 +575,37 @@ class DailyCardsService:
             
             if "bookmakers" in event and event["bookmakers"]:
                 bookmaker = event["bookmakers"][0]  # Use first bookmaker
-                for market in bookmaker.get("markets", []):
-                    if market["key"] == "h2h":
-                        outcomes = market.get("outcomes", [])
+
+                moneyline_market = get_market_by_key(bookmaker, "h2h")
+                if moneyline_market is None:
+                    home_odds = None
+                    away_odds = None
+                else:
+                    outcomes = moneyline_market.get("outcomes", [])
+                    if len(outcomes) != 2:
+                        # Fail closed for non-2-way moneyline markets.
+                        home_odds = None
+                        away_odds = None
+                    else:
                         for outcome in outcomes:
-                            if outcome["name"] == event["home_team"]:
+                            if outcome.get("name") == event.get("home_team"):
                                 home_odds = outcome.get("price")
-                            elif outcome["name"] == event["away_team"]:
+                            elif outcome.get("name") == event.get("away_team"):
                                 away_odds = outcome.get("price")
-                    elif market["key"] == "spreads":
-                        outcomes = market.get("outcomes", [])
-                        for outcome in outcomes:
-                            if outcome["name"] == event["home_team"]:
-                                spread = outcome.get("point")
-                    elif market["key"] == "totals":
-                        outcomes = market.get("outcomes", [])
-                        if outcomes:
-                            total = outcomes[0].get("point")
+
+                spread_market = get_market_by_key(bookmaker, "spreads")
+                if spread_market is not None:
+                    outcomes = spread_market.get("outcomes", [])
+                    for outcome in outcomes:
+                        if outcome.get("name") == event.get("home_team"):
+                            spread = outcome.get("point")
+                            break
+
+                total_market = get_market_by_key(bookmaker, "totals")
+                if total_market is not None:
+                    outcomes = total_market.get("outcomes", [])
+                    if outcomes:
+                        total = outcomes[0].get("point")
             
             return {
                 "card_type": card_type,

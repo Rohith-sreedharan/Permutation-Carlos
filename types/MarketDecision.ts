@@ -14,13 +14,15 @@ export type Classification =
   | 'EDGE'              // Official trade candidate
   | 'LEAN'              // Info-only / low confidence
   | 'MARKET_ALIGNED'    // No edge
-  | 'NO_ACTION';        // Blocked by risk/integrity
+  | 'NO_ACTION'         // Blocked by risk/integrity
+  | 'BLOCKED';          // Blocked classification
 
 export type ReleaseStatus = 
   | 'OFFICIAL'                // Eligible for release + telegram
   | 'INFO_ONLY'               // Visible but not a pick
   | 'BLOCKED_BY_RISK'         // Blocked by risk flags
-  | 'BLOCKED_BY_INTEGRITY';   // Blocked by integrity violations
+  | 'BLOCKED_BY_INTEGRITY'    // Blocked by integrity violations
+  | 'BLOCKED_MISSING_CONTEXT'; // Missing required context
 
 export interface MarketDecision {
   // Identity
@@ -89,6 +91,11 @@ export interface MarketDecision {
   
   // Classification (backend-computed)
   classification: Classification;
+  market_type_display: string;     // Display-safe market type label (e.g., "Spread", "Moneyline", "Total")
+  selection_label: string | null;  // Canonical selection label for cards/detail
+  edge_points: number | null;      // Promoted edge points for API consumers
+  model_probability: number | null; // Promoted model probability for API consumers
+  market_implied_probability: number | null; // Promoted market implied probability for API consumers
   release_status: ReleaseStatus;
   
   // Reasons (pre-written by backend)

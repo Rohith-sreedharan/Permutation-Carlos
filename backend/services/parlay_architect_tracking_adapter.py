@@ -273,7 +273,11 @@ class ParlayArchitectAdapter:
             is_locked=leg_data.get("is_locked", False),
             injury_stable=leg_data.get("injury_stable", True),
             team_key=leg_data.get("team_key"),
-            canonical_state=leg_data.get("canonical_state")
+            canonical_state=leg_data.get("canonical_state"),
+            decision_id=leg_data.get("decision_id"),
+            snapshot_hash=leg_data.get("snapshot_hash"),
+            true_probability=leg_data.get("true_probability"),
+            american_odds=leg_data.get("american_odds"),
         )
     
     def _market_type_to_key(self, market_type: str) -> str:

@@ -28,9 +28,9 @@ export type PlanId = typeof PLAN_IDS[keyof typeof PLAN_IDS];
 
 export const PRICE_DISPLAY = {
   TELEGRAM_SYNDICATE: '$39/month',
-  BEATVEGAS_PLATFORM: '$149/month',
+  BEATVEGAS_PLATFORM: '$97/month',
   TELEGRAM_PRICE_USD: 39,
-  PLATFORM_PRICE_USD: 149,
+  PLATFORM_PRICE_USD: 97,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ export const UPGRADE_MESSAGING = {
       'Telegram Syndicate continues uninterrupted',
     ],
     billingNote:
-      'Your Telegram Syndicate subscription will be replaced. You will be billed $149/month starting today. Prorated credit applied for remaining Telegram billing period.',
+      'Your Telegram Syndicate subscription will be replaced. You will be billed $97/month starting today. Prorated credit applied for remaining Telegram billing period.',
     ctaConfirm: `Confirm Upgrade — ${PRICE_DISPLAY.BEATVEGAS_PLATFORM}`,
     ctaCancel: 'Cancel',
   },
@@ -354,7 +354,7 @@ export const PRICING_PAGE_COPY = {
     'All prices in USD. Billed monthly.',
   ],
   comparisonRows: [
-    { feature: 'Price', telegram: '$39/month', platform: '$149/month' },
+    { feature: 'Price', telegram: '$39/month', platform: '$97/month' },
     { feature: 'Telegram Syndicate', telegram: '✓', platform: '✓ Included' },
     { feature: 'Official edge alerts', telegram: '✓', platform: '✓' },
     { feature: 'Daily top signals', telegram: '✓', platform: '✓' },
@@ -385,7 +385,7 @@ export const DASHBOARD_COPY = {
   TELEGRAM_SUBSCRIBER: {
     planBadge: 'Telegram Syndicate',
     upgradeNote: 'Add Platform access for engine analysis and Parlay Architect.',
-    upgradePrice: `$149/month — Telegram included.`,
+    upgradePrice: `$97/month — Telegram included.`,
     upgradeCta: 'Upgrade to Platform',
   },
   NO_SUBSCRIPTION: {
@@ -454,7 +454,7 @@ export const BILLING_PAGE_COPY = {
   PLATFORM_PLAN: {
     label: 'Current Plan',
     name: 'BeatVegas Platform',
-    price: '$149/month',
+    price: '$97/month',
     statusLabel: 'Status',
     cyclesLabel: 'Intelligence Cycles',
     tokensLabel: 'Parlay Tokens',

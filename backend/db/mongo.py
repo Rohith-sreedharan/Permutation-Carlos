@@ -2,7 +2,7 @@ import os
 import sys
 from pymongo import MongoClient, UpdateOne
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 import logging
 
@@ -338,24 +338,16 @@ def find_events(collection: str, filter: Optional[Dict[str, Any]] = None, limit:
             for bookmaker in doc['bookmakers']:
                 for market in bookmaker.get('markets', []):
                     if market['key'] == 'h2h':
-                        for outcome in market.get('outcomes', [])[:2]:  # Home and Away
-                            price = outcome['price']
-                            # Convert decimal odds to American format if needed
-                            if abs(price) < 50:  # Likely decimal odds (e.g., 1.02, 2.5)
-                                if price >= 2.0:
-                                    american_odds = int((price - 1) * 100)
-                                elif price > 1.0:  # Prevent division by zero
-                                    american_odds = int(-100 / (price - 1))
-                                else:
-                                    # Handle edge case: price = 1.0 or invalid
-                                    american_odds = 100
-                                formatted_price = f"+{american_odds}" if american_odds > 0 else str(american_odds)
-                            else:  # Already American odds
-                                formatted_price = f"+{int(price)}" if price > 0 else str(int(price))
-                            
+                        normalized_outcomes = _extract_canonical_h2h_outcomes(
+                            market=market,
+                            home_team=doc.get('home_team', ''),
+                            away_team=doc.get('away_team', ''),
+                        )
+                        for outcome_name, american_odds in normalized_outcomes:
+                            formatted_price = f"+{american_odds}" if american_odds > 0 else str(american_odds)
                             bets.append({
                                 'type': 'Moneyline',
-                                'pick': outcome['name'],
+                                'pick': outcome_name,
                                 'value': formatted_price
                             })
                     elif market['key'] == 'spreads' and not top_prop_bet:
@@ -372,6 +364,113 @@ def find_events(collection: str, filter: Optional[Dict[str, Any]] = None, limit:
             doc['top_prop_bet'] = top_prop_bet
     
     return docs
+
+
+def _extract_canonical_h2h_outcomes(
+    market: Dict[str, Any],
+    home_team: str,
+    away_team: str,
+) -> List[Tuple[str, int]]:
+    """Return strict 2-way moneyline outcomes for card rendering."""
+    outcomes = market.get('outcomes', []) or []
+    team_names = {home_team.strip().lower(), away_team.strip().lower()}
+
+    team_outcomes: List[Tuple[str, float]] = []
+    for outcome in outcomes:
+        name = str(outcome.get('name', '')).strip()
+        if not name or name.lower() not in team_names:
+            continue
+        price = _to_numeric(outcome.get('price'))
+        if price is None:
+            continue
+        team_outcomes.append((name, price))
+
+    # Normalize all team-vs-team outcomes to no-vig 2-way probabilities.
+    # This handles both native 2-way h2h and draw-inclusive 3-way h2h consistently.
+    if len(team_outcomes) == 2:
+        team_a_name, team_a_price = team_outcomes[0]
+        team_b_name, team_b_price = team_outcomes[1]
+
+        team_a_prob = _price_to_implied_probability(team_a_price)
+        team_b_prob = _price_to_implied_probability(team_b_price)
+        denom = team_a_prob + team_b_prob
+
+        if denom > 0:
+            team_a_prob_2way = team_a_prob / denom
+            team_b_prob_2way = team_b_prob / denom
+            team_a_american, team_b_american = _to_polarized_two_way_american(
+                team_a_prob_2way,
+                team_b_prob_2way,
+            )
+            return [
+                (team_a_name, team_a_american),
+                (team_b_name, team_b_american),
+            ]
+
+    return [(name, _price_to_american(price)) for name, price in team_outcomes[:2]]
+
+
+def _is_draw_like_name(name: str) -> bool:
+    return name.strip().lower() in {'draw', 'tie', 'x'}
+
+
+def _to_numeric(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _price_to_american(price: float) -> int:
+    # Odds API payloads can be decimal (< 50) or American (>= 50 magnitude)
+    if abs(price) >= 50:
+        return int(round(price))
+
+    if price <= 1.0:
+        return 100
+    if price >= 2.0:
+        return int(round((price - 1.0) * 100.0))
+    return int(round(-100.0 / (price - 1.0)))
+
+
+def _price_to_implied_probability(price: float) -> float:
+    if abs(price) >= 50:
+        if price > 0:
+            return 100.0 / (price + 100.0)
+        return abs(price) / (abs(price) + 100.0)
+
+    if price <= 1.0:
+        return 0.0
+    return 1.0 / price
+
+
+def _implied_probability_to_american(probability: float) -> int:
+    p = max(0.0001, min(0.9999, probability))
+    if p >= 0.5:
+        return int(round(-(p / (1.0 - p)) * 100.0))
+    return int(round(((1.0 - p) / p) * 100.0))
+
+
+def _to_polarized_two_way_american(probability_a: float, probability_b: float) -> Tuple[int, int]:
+    """
+    Convert two complementary probabilities to opposite-sign American odds for display.
+    """
+    if abs(probability_a - probability_b) < 1e-9:
+        return -100, 100
+
+    odds_a = _implied_probability_to_american(probability_a)
+    odds_b = _implied_probability_to_american(probability_b)
+
+    # Enforce opposite polarity for card display consistency.
+    if (odds_a > 0 and odds_b > 0) or (odds_a < 0 and odds_b < 0):
+        if probability_a > probability_b:
+            odds_a = -abs(odds_a)
+            odds_b = abs(odds_b)
+        else:
+            odds_b = -abs(odds_b)
+            odds_a = abs(odds_a)
+
+    return odds_a, odds_b
 
 
 def insert_log_entry(entry: Dict[str, Any]):

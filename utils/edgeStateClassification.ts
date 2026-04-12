@@ -533,7 +533,7 @@ export function getEdgeStateStyling(state: EdgeState): {
         bgColor: 'bg-gray-600/5',
         textColor: 'text-gray-400',
         icon: '⛔',
-        label: 'NO ACTION'
+        label: 'No Actionable Signal'
       };
   }
 }

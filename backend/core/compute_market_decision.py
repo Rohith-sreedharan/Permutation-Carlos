@@ -157,7 +157,8 @@ class MarketDecisionComputer:
         edge_points = abs(market_line - model_fair_line)
         
         # 6. Classify
-        classification = self._classify_spread(edge_points, model_prob, config)
+        market_implied_prob = self._get_implied_prob(spread_lines.get(pick_team_id, {}).get('odds', -110))
+        classification = self._classify_spread(edge_points, model_prob, market_implied_prob, config)
         
         # 6. Generate reasons
         reasons = self._generate_reasons_spread(classification, edge_points, model_prob)
@@ -215,11 +216,18 @@ class MarketDecisionComputer:
             },
             probabilities=Probabilities(
                 model_prob=model_prob,
-                market_implied_prob=self._get_implied_prob(spread_lines.get(pick_team_id, {}).get('odds', -110))
+                market_implied_prob=market_implied_prob
             ),
             edge=Edge(edge_points=edge_points, edge_ev=None, edge_grade=self._grade_edge(edge_points)),
             classification=classification,
+            market_type_display="Spread",
+            selection_label=None,
+            edge_points=edge_points,
+            model_probability=model_prob,
+            market_implied_probability=market_implied_prob,
             release_status=release_status,
+            di_pass=True,
+            mv_pass=True,
             reasons=reasons,
             risk=risk,
             debug=Debug(
@@ -239,6 +247,8 @@ class MarketDecisionComputer:
         is_valid, violations = validate_market_decision(decision, game_competitors)
         if not is_valid:
             decision.release_status = ReleaseStatus.BLOCKED_BY_INTEGRITY
+            decision.di_pass = False
+            decision.mv_pass = False
             decision.validator_failures = violations
         
         return decision
@@ -271,7 +281,8 @@ class MarketDecisionComputer:
             model_prob = under_prob
         
         edge_points = abs(model_fair_total - market_total)
-        classification = self._classify_total(edge_points, model_prob, config)
+        market_implied_prob = self._get_implied_prob(total_lines.get('odds', -110))
+        classification = self._classify_total(edge_points, model_prob, market_implied_prob, config)
         reasons = self._generate_reasons_total(classification, edge_points, pick_side)
         
         risk = Risk(
@@ -319,11 +330,18 @@ class MarketDecisionComputer:
             },
             probabilities=Probabilities(
                 model_prob=model_prob,
-                market_implied_prob=self._get_implied_prob(total_lines.get('odds', -110))
+                market_implied_prob=market_implied_prob
             ),
             edge=Edge(edge_points=edge_points, edge_ev=None, edge_grade=self._grade_edge(edge_points)),
             classification=classification,
+            market_type_display="Total",
+            selection_label=None,
+            edge_points=edge_points,
+            model_probability=model_prob,
+            market_implied_probability=market_implied_prob,
             release_status=release_status,
+            di_pass=True,
+            mv_pass=True,
             reasons=reasons,
             risk=risk,
             debug=Debug(
@@ -342,15 +360,27 @@ class MarketDecisionComputer:
         is_valid, violations = validate_market_decision(decision, game_competitors)
         if not is_valid:
             decision.release_status = ReleaseStatus.BLOCKED_BY_INTEGRITY
+            decision.di_pass = False
+            decision.mv_pass = False
             decision.validator_failures = violations
         
         return decision
     
-    def _classify_spread(self, edge_points: float, model_prob: float, config: Dict) -> Classification:
+    def _classify_spread(self, edge_points: float, model_prob: float, market_implied_prob: float, config: Dict) -> Classification:
         """Classify spread decision using magnitude-based thresholds"""
         edge_threshold = config.get('edge_threshold', 2.0)
         lean_threshold = config.get('lean_threshold', 0.5)
         prob_threshold = config.get('prob_threshold', 0.55)
+        min_prob_gap_for_lean = config.get('min_prob_gap_for_lean', 0.01)
+
+        # Hard integrity gate: cannot classify as EDGE/LEAN when model does not exceed market.
+        if model_prob <= market_implied_prob:
+            return Classification.NO_ACTION
+
+        # Lean integrity gate: require a minimum probability gap above market to avoid zero-gap LEAN.
+        prob_gap = model_prob - market_implied_prob
+        if prob_gap < min_prob_gap_for_lean:
+            return Classification.MARKET_ALIGNED
         
         # Use absolute value for magnitude-based classification (direction agnostic)
         edge_magnitude = abs(edge_points)
@@ -370,9 +400,9 @@ class MarketDecisionComputer:
         else:
             return Classification.LEAN
     
-    def _classify_total(self, edge_points: float, model_prob: float, config: Dict) -> Classification:
+    def _classify_total(self, edge_points: float, model_prob: float, market_implied_prob: float, config: Dict) -> Classification:
         """Classify total decision"""
-        return self._classify_spread(edge_points, model_prob, config)
+        return self._classify_spread(edge_points, model_prob, market_implied_prob, config)
     
     def _generate_reasons_spread(self, classification: Classification, edge_points: float, model_prob: float) -> List[str]:
         """Generate pre-computed reasons for spread"""
@@ -556,8 +586,15 @@ class MarketDecisionComputer:
             fair_selection=None,  # null per spec
             probabilities=None,  # null per spec
             edge=None,  # null per spec
-            classification=None,  # null per spec
+            classification=Classification.BLOCKED,
+            market_type_display="Spread",
+            selection_label=None,
+            edge_points=None,
+            model_probability=None,
+            market_implied_probability=None,
             release_status=release_status,
+            di_pass=False,
+            mv_pass=False,
             reasons=[],  # empty per spec
             risk=Risk(
                 volatility_flag=None,
