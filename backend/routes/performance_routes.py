@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/performance", tags=["performance"])
 @router.get("/clv")
 async def get_clv_data(
     user_id: str = Query(...),
-    range: str = Query("30d", regex="^(7d|30d|90d|all)$")
+    range: str = Query("30d", pattern="^(7d|30d|90d|all)$")
 ):
     """Get CLV tracking data"""
     # Calculate date range
@@ -101,7 +101,7 @@ async def get_clv_data(
 @router.get("/report")
 async def get_performance_report(
     user_id: str = Query(...),
-    range: str = Query("30d", regex="^(7d|30d|90d|season)$")
+    range: str = Query("30d", pattern="^(7d|30d|90d|season)$")
 ):
     """Get comprehensive performance metrics report"""
     # Find most recent performance report
