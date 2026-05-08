@@ -374,7 +374,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         
         setFirstHalfSimulation(data);
       } else {
-        console.warn('First half simulation not available');
+        let detail = 'First half simulation not available';
+        try {
+          const error = await response.json();
+          detail = error?.detail?.message || error?.detail || detail;
+        } catch {
+          // Keep the fallback message if the body is not JSON.
+        }
+        console.warn(`First half simulation not available (HTTP ${response.status}): ${detail}`);
       }
     } catch (err) {
       console.error('Failed to load first half data:', err);

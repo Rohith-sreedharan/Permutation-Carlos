@@ -576,17 +576,21 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (res.status === 404) {
         // Fail closed without exposing internal identifiers
-        throw new Error('Intelligence output unavailable for this game. Retry or check back later.');
+        throw new Error(`HTTP 404: Intelligence output unavailable for this game. Retry or check back later.`);
     }
     if (res.status === 422) {
         // Handle structural market errors (staleness is now graceful)
         const error = await safeJsonParse(res);
         if (error.detail?.error === 'STRUCTURAL_MARKET_ERROR') {
-            throw new Error(error.detail.message || 'Market data has structural errors');
+            throw new Error(`HTTP 422: ${error.detail.message || 'Market data has structural errors'}`);
         }
-        throw new Error(error.detail?.message || 'Cannot generate simulation');
+        throw new Error(`HTTP 422: ${error.detail?.message || 'Cannot generate simulation'}`);
     }
-    if (!res.ok) throw new Error('Failed to fetch simulation');
+    if (!res.ok) {
+        const error = await safeJsonParse(res).catch(() => null);
+        const detail = error?.detail?.message || error?.detail || 'Failed to fetch simulation';
+        throw new Error(`HTTP ${res.status}: ${detail}`);
+    }
     
     const data = await safeJsonParse(res);
     
