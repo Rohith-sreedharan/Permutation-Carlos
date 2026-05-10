@@ -483,7 +483,7 @@ export function runPreRenderAssertions(state: GameEdgeState): PreRenderAssertion
     (state.render_flags.show_edge_banner && state.classification === Classification.EDGE) ||
     (state.render_flags.show_lean_banner && state.classification === Classification.LEAN) ||
     (state.render_flags.show_market_aligned_banner && state.classification === Classification.MARKET_ALIGNED) ||
-    (state.render_flags.show_blocked_banner && state.classification === Classification.BLOCKED) ||
+    (state.render_flags.show_blocked_banner && (state.classification === Classification.BLOCKED || state.classification === Classification.NO_ACTION)) ||
     (!state.render_flags.show_edge_banner && !state.render_flags.show_lean_banner && 
      !state.render_flags.show_market_aligned_banner && !state.render_flags.show_blocked_banner &&
      state.classification === Classification.NO_ACTION)
