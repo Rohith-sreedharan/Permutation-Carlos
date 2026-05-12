@@ -100,7 +100,7 @@ const SubscriptionPlans: React.FC<SubscriptionPlansProps> = ({ currentPlan, onSe
             <div>
               <h3 className="text-xl font-bold text-white">{platform.name}</h3>
               <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-white">$149</span>
+                <span className="text-4xl font-bold text-white">$97</span>
                 <span className="text-light-gray">/month</span>
               </div>
               <p className="text-sm text-light-gray mt-2">{platform.oneLiner}</p>
