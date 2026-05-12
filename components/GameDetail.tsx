@@ -1058,7 +1058,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="text-3xl">{gameEdgeState?.classification === Classification.EDGE ? '🎯' : gameEdgeState?.classification === Classification.LEAN ? '⚡' : '✅'}</div>
+                  <div className="text-3xl">{gameEdgeState?.classification === Classification.EDGE ? '🎯' : gameEdgeState?.classification === Classification.LEAN ? '⚡' : '⚖️'}</div>
                   <div>
                     <h3 className={`text-2xl font-bold font-teko leading-none ${
                       gameEdgeState?.classification === Classification.EDGE ? 'text-neon-green' :
