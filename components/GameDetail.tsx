@@ -926,7 +926,19 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         />
       </div>
 
-      {/* KEY DRIVERS BOX - Critical Context */}
+      
+        {gameEdgeState?.classification === Classification.BLOCKED || !canRenderEdgeState ? (
+          simulation && (
+            <FinalUnifiedSummary
+              simulation={simulation}
+              eventId={gameId}
+              homeTeam={event?.home_team || ''}
+              awayTeam={event?.away_team || ''}
+            />
+          )
+        ) : (
+          <>
+{/* KEY DRIVERS BOX - Critical Context */}
       {simulation && (
         <div className="mb-6 bg-linear-to-br from-purple-900/20 to-blue-900/20 border-2 border-purple-500/40 rounded-xl p-4 shadow-lg shadow-purple-500/5">
           <div className="flex items-start gap-3">
@@ -1085,7 +1097,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       gameEdgeState?.classification === Classification.LEAN ? 'text-gold' :
                       'text-electric-blue'
                     }`}>
-                      {gameEdgeState?.classification || 'NO_EDGE'}
+                      {gameEdgeState?.classification === Classification.NO_ACTION ? 'No Actionable Signal' : gameEdgeState?.classification || 'NO_EDGE'}
                     </div>
                     <div className={`text-xs font-semibold mt-1 ${
                       gameEdgeState?.classification === Classification.LEAN ? 'text-gold/80' : 'text-light-gray/60'
@@ -2879,7 +2891,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         )}
       </div>
 
-      {/* DEV-ONLY: Debug Panel for Simulation Integrity */}
+      
+          </>
+        )}
+{/* DEV-ONLY: Debug Panel for Simulation Integrity */}
       {DEBUG_UI_ENABLED && simulation && event && (
         <SimulationDebugPanel simulation={simulation} event={event} />
       )}

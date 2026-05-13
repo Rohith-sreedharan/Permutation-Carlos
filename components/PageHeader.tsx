@@ -31,7 +31,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
     return (
         <div className="flex flex-col sm:flex-row justify-between sm:items-center space-y-4 sm:space-y-0 pb-2">
                         <h1
-                            className="text-4xl font-bold text-white font-teko tracking-tight leading-tight max-w-full sm:max-w-[56vw] truncate"
+                            className="text-4xl font-bold text-white font-teko tracking-tight leading-tight max-w-full sm:max-w-[56vw] sm:truncate"
                             title={title}
                         >
                             {title}

@@ -50,7 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, onLogout
 
   return (
     <>
-      <aside className="w-64 bg-charcoal p-4 flex-col space-y-2 sticky top-0 h-screen hidden sm:flex overflow-y-auto">
+      <aside className="w-64 bg-charcoal p-4 flex-col space-y-2 sticky top-0 h-screen flex overflow-y-auto">
         <div className="text-center py-4 flex flex-col items-center">
         <img 
           src="/logo.png" 

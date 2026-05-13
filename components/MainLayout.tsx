@@ -25,6 +25,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [userRole] = useState<'creator' | 'user'>('user');
   const [isAdmin] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -119,18 +120,45 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
   };
 
   return (
-    <div className="flex h-screen bg-linear-to-br from-darkNavy via-navy to-black">
-      {/* Sidebar */}
-      <Sidebar
-        currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
-        onLogout={handleLogout}
-        userRole={userRole}
-        isAdmin={isAdmin}
-      />
+    <div className="flex h-screen bg-linear-to-br from-darkNavy via-navy to-black relative flex-col md:flex-row w-full overflow-hidden">
+      {/* Mobile Top Bar */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-charcoal border-b border-white/10 shrink-0 w-full">
+        <div className="flex items-center space-x-2">
+          <img src="/logo.png" alt="Logo" className="h-8 w-auto object-contain" />
+          <h1 className="text-2xl font-bold text-white font-teko tracking-wider">BEATVEGAS</h1>
+        </div>
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+          className="text-white text-2xl p-2 focus:outline-none"
+        >
+          {isSidebarOpen ? '✖' : '☰'}
+        </button>
+      </div>
+
+      {/* Overlay for mobile sidebar */}
+      {isSidebarOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-black/70 z-40" 
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - responsive wrapper */}
+      <div className={`fixed inset-y-0 left-0 z-50 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition duration-200 ease-in-out`}>
+        <Sidebar
+          currentPage={currentPage}
+          setCurrentPage={(page) => {
+             setCurrentPage(page);
+             setIsSidebarOpen(false);
+          }}
+          onLogout={handleLogout}
+          userRole={userRole}
+          isAdmin={isAdmin}
+        />
+      </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 w-full relative z-0">
         {renderContent()}
       </div>
     </div>
