@@ -31,12 +31,12 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
     return (
         <div className="flex flex-col sm:flex-row justify-between sm:items-center space-y-4 sm:space-y-0 pb-2">
                         <h1
-                            className="text-4xl font-bold text-white font-teko tracking-tight leading-tight max-w-full sm:max-w-[56vw] sm:truncate"
+                            className="text-2xl sm:text-4xl font-bold text-white font-teko tracking-tight leading-tight max-w-full wrap-break-word"
                             title={title}
                         >
                             {title}
                         </h1>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 w-full sm:w-auto">
                 {children}
                 {user && (
                     <div className="flex items-center space-x-3">

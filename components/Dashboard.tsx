@@ -362,12 +362,12 @@ const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       <PageHeader title="Sports Intelligence Command Center">
-        <div className="flex items-center space-x-2 bg-charcoal p-1 rounded-lg">
+        <div className="flex items-center gap-2 bg-charcoal p-1 rounded-lg overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden">
           {sports.map(sport => (
             <button
               key={sport}
               onClick={() => setActiveSport(sport)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
                 activeSport === sport ? 'bg-electric-blue text-white' : 'text-light-gray hover:bg-navy'
               }`}
             >
@@ -379,13 +379,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       
       {/* DATE & TIME SORT CONTROLS - Command Center Vibe */}
       <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-xl p-5 border border-electric-blue/20 shadow-xl">
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-5">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
           {/* Date Filter */}
-          <div className="flex items-center space-x-3">
-            <span className="text-xs text-neon-green uppercase font-bold tracking-wider flex items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            <span className="text-xs text-neon-green uppercase font-bold tracking-wider flex items-center gap-1 shrink-0">
               📅 FILTER:
             </span>
-            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-electric-blue/10">
+            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-electric-blue/10 overflow-x-auto [&::-webkit-scrollbar]:hidden">
               {[
                 { value: 'today', label: 'Today' },
                 { value: 'tomorrow', label: 'Tomorrow' },
@@ -395,7 +395,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <button
                   key={value}
                   onClick={() => setDateFilter(value as DateFilter)}
-                  className={`px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
+                  className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
                     dateFilter === value 
                       ? 'bg-electric-blue text-white shadow-lg shadow-electric-blue/50 scale-105' 
                       : 'text-light-gray hover:bg-charcoal hover:text-white'
@@ -405,18 +405,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </button>
               ))}
             </div>
-            <span className="text-[11px] text-light-gray/70 ml-2">Times shown in Eastern Time (ET)</span>
+            <span className="text-[11px] text-light-gray/70 sm:ml-2">Times shown in Eastern Time (ET)</span>
           </div>
 
           {/* Time Order Toggle */}
-          <div className="flex items-center space-x-3">
-            <span className="text-xs text-vibrant-yellow uppercase font-bold tracking-wider flex items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            <span className="text-xs text-vibrant-yellow uppercase font-bold tracking-wider flex items-center gap-1 shrink-0">
               ⏱ ORDER:
             </span>
-            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-vibrant-yellow/10">
+            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-vibrant-yellow/10 overflow-x-auto [&::-webkit-scrollbar]:hidden">
               <button
                 onClick={() => setTimeOrder('soonest')}
-                className={`px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
                   timeOrder === 'soonest' 
                     ? 'bg-neon-green text-navy shadow-lg shadow-neon-green/50 scale-105' 
                     : 'text-light-gray hover:bg-charcoal hover:text-white'
@@ -426,7 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </button>
               <button
                 onClick={() => setTimeOrder('latest')}
-                className={`px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
                   timeOrder === 'latest' 
                     ? 'bg-vibrant-yellow text-navy shadow-lg shadow-vibrant-yellow/50 scale-105' 
                     : 'text-light-gray hover:bg-charcoal hover:text-white'
@@ -439,7 +439,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-2">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 py-2">
         <div className="relative w-full md:max-w-sm">
           <input
             type="text"
@@ -450,7 +450,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           />
           <svg className="w-5 h-5 text-light-gray absolute left-3 top-1/2 -translate-y-1/2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         </div>
-        <div className="flex items-center space-x-2 bg-charcoal p-1 rounded-lg">
+        <div className="flex items-center justify-center md:justify-start space-x-2 bg-charcoal p-1 rounded-lg w-full md:w-auto">
           <button onClick={() => setLayout('grid')} className={`p-2 rounded-md transition-colors ${layout === 'grid' ? 'bg-electric-blue text-white' : 'text-light-gray hover:bg-navy'}`}>
             <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
           </button>

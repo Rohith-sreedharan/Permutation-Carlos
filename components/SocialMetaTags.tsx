@@ -43,7 +43,7 @@ const SocialMetaTags: React.FC<SocialMetaTagsProps> = ({ event, pageType = 'dash
       if (pred?.recommended_bet && typeof pred.recommended_bet === 'string') {
         title = `${sportName}: ${away_team} @ ${home_team} - ${pred.recommended_bet} | BeatVegas AI`;
       } else {
-        title = `${sportName}: ${away_team} @ ${home_team} | BeatVegas AI Predictions`;
+        title = `${sportName}: ${away_team} @ ${home_team} | BeatVegas Sports Intelligence`;
       }
 
       // Build description with key metrics

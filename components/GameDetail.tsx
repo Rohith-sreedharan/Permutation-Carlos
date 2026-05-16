@@ -123,6 +123,20 @@ const getPreferredSelection = (marketView: any): any | null => {
   return ranked[0] || selections[0] || null;
 };
 
+const getEdgeClassificationLabel = (classification: Classification | string | null | undefined): string => {
+  if (!classification) return 'No Edge';
+
+  if (classification === Classification.NO_ACTION || classification === 'NO_ACTION') {
+    return 'No Actionable Signal';
+  }
+
+  if (classification === Classification.MARKET_ALIGNED || classification === 'MARKET_ALIGNED') {
+    return 'MARKET ALIGNED';
+  }
+
+  return String(classification);
+};
+
 const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [simulation, setSimulation] = useState<MonteCarloSimulation | null>(null);
   const [firstHalfSimulation, setFirstHalfSimulation] = useState<any | null>(null);
@@ -145,12 +159,16 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     state: gameEdgeState,
     canRender: canRenderEdgeState,
     hasOfficialEdge,
+    isBlocked,
   } = useGameEdgeState(
     simulation,
     gameId,
     event?.home_team || '',
     event?.away_team || ''
   );
+  const analysisBlocked =
+    !canRenderEdgeState ||
+    gameEdgeState?.classification === Classification.BLOCKED;
   const edgeIsBlocked = !!gameEdgeState && !hasOfficialEdge;
 
   const renderSAFEMode = (marketType: string, errors: string[]) => {
@@ -927,7 +945,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       </div>
 
       
-        {gameEdgeState?.classification === Classification.BLOCKED || !canRenderEdgeState ? (
+        {analysisBlocked ? (
           simulation && (
             <FinalUnifiedSummary
               simulation={simulation}
@@ -968,7 +986,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 {simulation.outcome?.confidence && (
                   <div className="flex items-start gap-2">
                     <span className="text-lg shrink-0">📊</span>
-                    <div><span className="text-gold font-semibold">Stability:</span> {getConfidenceTier((simulation.outcome.confidence || 0.65) * 100).label} ({((simulation.outcome.confidence || 0.65) * 100).toFixed(0)}% engine convergence)</div>
+                    <div><span className="text-gold font-semibold">Stability:</span> {getConfidenceTier((simulation.outcome.confidence || 0.65) * 100).label}</div>
                   </div>
                 )}
                 {simulation.metadata?.iterations_run && (
@@ -1049,15 +1067,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             <UpgradePrompt variant="feature_engine" />
           </div>
           
-          {/* Simulation Power Tier Badge */}
-          <div className="mt-4 pt-4 border-t border-white/10">
-            <div 
-              className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold"
-              style={getConfidenceBadgeStyle((simulation.outcome?.confidence || 0.65) * 100)}
-            >
-              {getConfidenceTier((simulation.outcome?.confidence || 0.65) * 100).label}
-            </div>
-          </div>
         </div>
       )}
 
@@ -1079,7 +1088,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     }`}>
                       {gameEdgeState?.classification === Classification.EDGE ? 'BEATVEGAS EDGE DETECTED' :
                        gameEdgeState?.classification === Classification.LEAN ? 'MODERATE LEAN IDENTIFIED' :
-                        'MARKET ALIGNED - NO PLAY'}
+                        'MARKET ALIGNED'}
                     </h3>
                     <p className="text-xs text-light-gray mt-1">
                       {gameEdgeState?.classification === Classification.EDGE ? 'High-Conviction Quantitative Signal' :
@@ -1097,7 +1106,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       gameEdgeState?.classification === Classification.LEAN ? 'text-gold' :
                       'text-electric-blue'
                     }`}>
-                      {gameEdgeState?.classification === Classification.NO_ACTION ? 'No Actionable Signal' : gameEdgeState?.classification || 'NO_EDGE'}
+                      {getEdgeClassificationLabel(gameEdgeState?.classification)}
                     </div>
                     <div className={`text-xs font-semibold mt-1 ${
                       gameEdgeState?.classification === Classification.LEAN ? 'text-gold/80' : 'text-light-gray/60'
@@ -1172,7 +1181,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         } else if (p_cover_away > p_cover_home) {
                           return `${getDisplayTeamName(event.away_team)} ${(-market_spread) >= 0 ? '+' : ''}${(-market_spread).toFixed(1)}`;
                         } else {
-                          return 'No Edge (50/50)';
+                          return 'No Detectable Edge';
                         }
                       })()}
                     </div>
@@ -1542,10 +1551,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       {/* Market-Scoped Probability Display (OUTPUT CONSISTENCY FIX) */}
       <div className="mb-6">
         {/* Market Selector Tabs */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => setActiveMarketTab('spread')}
-            className={`px-4 py-2 rounded-lg font-semibold transition ${
+            className={`shrink-0 px-4 py-2 rounded-lg font-semibold transition ${
               activeMarketTab === 'spread'
                 ? 'bg-purple-600 text-white shadow-lg'
                 : 'bg-charcoal text-light-gray hover:bg-navy'
@@ -1555,7 +1564,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </button>
           <button
             onClick={() => setActiveMarketTab('moneyline')}
-            className={`px-4 py-2 rounded-lg font-semibold transition ${
+            className={`shrink-0 px-4 py-2 rounded-lg font-semibold transition ${
               activeMarketTab === 'moneyline'
                 ? 'bg-purple-600 text-white shadow-lg'
                 : 'bg-charcoal text-light-gray hover:bg-navy'
@@ -1565,7 +1574,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           </button>
           <button
             onClick={() => setActiveMarketTab('total')}
-            className={`px-4 py-2 rounded-lg font-semibold transition ${
+            className={`shrink-0 px-4 py-2 rounded-lg font-semibold transition ${
               activeMarketTab === 'total'
                 ? 'bg-purple-600 text-white shadow-lg'
                 : 'bg-charcoal text-light-gray hover:bg-navy'
@@ -1576,7 +1585,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {DEBUG_UI_ENABLED && (
             <button
               onClick={() => setShowDebugPayload(!showDebugPayload)}
-              className="ml-auto px-3 py-1 rounded bg-charcoal/50 text-xs text-gray-400 hover:bg-navy hover:text-white transition"
+              className="ml-auto shrink-0 px-3 py-1 rounded bg-charcoal/50 text-xs text-gray-400 hover:bg-navy hover:text-white transition"
               title="Toggle debug payload"
             >
               🔍 DEBUG

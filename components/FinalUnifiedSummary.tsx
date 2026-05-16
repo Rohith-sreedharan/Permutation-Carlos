@@ -76,9 +76,6 @@ export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
             ))}
           </ul>
         )}
-        <div className="mt-4 text-xs text-gray-500">
-          Resolver v{state?.resolver_version || 'N/A'} | Snapshot: {state?.snapshot_hash?.slice(0, 8) || 'N/A'}
-        </div>
       </div>
     );
   }

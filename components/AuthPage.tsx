@@ -190,13 +190,13 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
       {/* Auth card */}
       <div className="relative z-10 w-full max-w-md mx-4">
-        {/* AIBETS logo */}
+        {/* Brand header */}
         <div className="text-center mb-8">
           <h1 className="text-6xl font-black mb-2 bg-linear-to-r from-gold via-yellow-300 to-gold bg-clip-text text-transparent animate-pulse">
-            AIBETS
+            BEATVEGAS
           </h1>
           <p className="text-sm text-gray-400 tracking-wider uppercase">
-            Powered by OMNI AI
+            Sports Intelligence
           </p>
         </div>
 
