@@ -23,6 +23,22 @@ if cors_origins.strip() == "*":
 else:
     allow_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
 
+# Always include both production origins so CORS is correct regardless of
+# what is set in .env on the server (the .env is not git-tracked).
+# If env is wildcard, convert to an explicit list so credentials can be used.
+_production_origins = [
+    "https://beatvegas.app",
+    "https://beta.beatvegas.app",
+    "https://www.beatvegas.app",
+]
+if allow_origins == ["*"]:
+    # Wildcard + credentials is invalid per CORS spec; use explicit list instead
+    allow_origins = list(_production_origins)
+else:
+    for _origin in _production_origins:
+        if _origin not in allow_origins:
+            allow_origins.append(_origin)
+
 # Add common localhost variations for development
 if allow_origins != ["*"]:
     # Ensure both localhost and 127.0.0.1 with common ports are allowed
