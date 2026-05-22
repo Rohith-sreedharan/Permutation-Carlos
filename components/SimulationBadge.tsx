@@ -53,16 +53,7 @@ export default function SimulationBadge({
         <span>{COPY.poweredByCycles(formattedCount)}</span>
       </div>
 
-      {/* Variance Stability Badge */}
-      {variance !== undefined && ciRange !== null && (
-        <div className="text-[10px] text-gray-400 flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1">
-            <span className="text-gray-500">σ={variance.toFixed(1)}</span>
-            <span className="text-gray-600">•</span>
-            <span className="text-gray-500">±{ciRange.toFixed(1)} pts (95% CI)</span>
-          </span>
-        </div>
-      )}
+      {/* Variance Stability Badge — raw σ / CI notation intentionally suppressed for user-facing display */}
 
       {showUpgradeHint && tier === 'free' && (
         <span className="text-xs text-gray-400 italic">

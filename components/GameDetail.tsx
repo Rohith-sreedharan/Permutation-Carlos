@@ -435,7 +435,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     // FIX: Convert decimal confidence to percentage BEFORE rounding
     const confidence = Math.round((simulation.confidence_score || 0.65) * 100);
 
-    const shareText = `🏀 ${matchupLabel}\n\n📊 Decision Engine Analysis (${(simulation.iterations || 10000).toLocaleString()} Intelligence Cycles):\n• Win Probability: ${winProb}%\n• Outcome Variance: ${volatility}\n• Model Conviction: ${confidence}/100\n\n🚀 Powered by #BeatVegas Decision Engine\nbeatvegas.com/game/${gameId}`;
+    const shareText = `� ${matchupLabel}\n\n📊 BeatVegas Decision Engine — ${(simulation.iterations || 10000).toLocaleString()} Intelligence Cycles:\n• Outcome Signal: ${winProb}% model confidence\n• Variance Profile: ${volatility}\n• Conviction Score: ${confidence}/100\n\nAnalysis powered by #BeatVegas\nbeatvegas.app/game/${gameId}`;
 
     try {
       await navigator.clipboard.writeText(shareText);
@@ -1192,11 +1192,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         const p_cover_away = probabilities?.p_cover_away || 0.5;
                         
                         if (p_cover_home > p_cover_away) {
-                          return `${(p_cover_home * 100).toFixed(1)}% cover probability`;
+                          return `Edge Conviction: ${(p_cover_home * 100).toFixed(1)}%`;
                         } else if (p_cover_away > p_cover_home) {
-                          return `${(p_cover_away * 100).toFixed(1)}% cover probability`;
+                          return `Edge Conviction: ${(p_cover_away * 100).toFixed(1)}%`;
                         } else {
-                          return 'Both sides equal';
+                          return 'No Detectable Edge';
                         }
                       })()}
                     </div>
@@ -1664,10 +1664,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   )}
                 </h3>
 
-                {/* Cover Probability Display (SPREAD-SCOPED ONLY) */}
+                {/* Spread Edge Display (SPREAD-SCOPED ONLY) */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="bg-navy/50 p-4 rounded-lg">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
+                    <div className="text-xs text-gray-400 uppercase mb-1">Spread Edge</div>
                     <div className="text-sm text-light-gray mb-2">
                       {getDisplayTeamName(event.home_team)} {(homeSelection?.market_line_for_selection ?? 0) >= 0 ? '+' : ''}{homeSelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
                     </div>
@@ -1676,7 +1676,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     </div>
                   </div>
                   <div className="bg-navy/50 p-4 rounded-lg">
-                    <div className="text-xs text-gray-400 uppercase mb-1">Cover Probability</div>
+                    <div className="text-xs text-gray-400 uppercase mb-1">Spread Edge</div>
                     <div className="text-sm text-light-gray mb-2">
                       {getDisplayTeamName(event.away_team)} {(awaySelection?.market_line_for_selection ?? 0) >= 0 ? '+' : ''}{awaySelection?.market_line_for_selection?.toFixed(1) ?? '0.0'}
                     </div>

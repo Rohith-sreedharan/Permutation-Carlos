@@ -380,8 +380,9 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
-    """Health check for load balancers"""
+    """Health check for load balancers — accessible at /health and /api/health"""
     from db.mongo import db
     try:
         # Test MongoDB connection
