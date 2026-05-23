@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """
 Capture complete live screenshot proof package against local frontend/backend.
@@ -62,7 +63,7 @@ def map_league(sport_key: str | None) -> str | None:
 
 def ensure_auth_token() -> str:
     email = f"prooflive_{random.randint(10000, 99999)}@example.com"
-    password = "ProofPass123!"
+    password = os.getenv("PROOF_PASS", "")
 
     reg = requests.post(
         f"{BACKEND_URL}/api/auth/register",

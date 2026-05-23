@@ -16,7 +16,7 @@ AGENT_CONFIG: dict = {
         "rate_limit_window_seconds": int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60")),
     },
 
-    # ── Auth anomaly detection ───────────────────────────────────────────────
+    # ── Auth ──────────────────────────────────────────────────────────────
     "auth": {
         # Failed auth attempts within the window before alerting operator
         "failed_auth_alert_threshold": int(os.getenv("AUTH_FAIL_THRESHOLD", "10")),
@@ -24,6 +24,8 @@ AGENT_CONFIG: dict = {
         # JWT settings
         "jwt_access_token_expire_minutes": int(os.getenv("JWT_ACCESS_EXPIRE_MIN", "60")),
         "jwt_algorithm": os.getenv("JWT_ALGORITHM", "HS256"),
+        # Apple Sign In
+        "apple_client_id": os.getenv("APPLE_CLIENT_ID", ""),
     },
 
     # ── Geographic enforcement ───────────────────────────────────────────────

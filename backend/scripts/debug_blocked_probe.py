@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 import asyncio
 import random
@@ -12,7 +13,7 @@ GAME_ID = "8071f80d106d512c88016b240e766d84"
 
 def make_token() -> str:
     email = f"dbg_{random.randint(10000,99999)}@example.com"
-    password = "ProofPass123!"
+    password = os.getenv("PROOF_PASS", "")
     r = requests.post(
         f"{BACKEND}/api/auth/register",
         json={"email": email, "username": email.split("@")[0], "password": password},

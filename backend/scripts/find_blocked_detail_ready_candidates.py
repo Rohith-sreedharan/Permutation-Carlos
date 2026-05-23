@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 import random
 import requests
@@ -31,7 +32,7 @@ def has_blocked(decisions: dict) -> bool:
 
 
 email = f"blkready_{random.randint(1000,9999)}@example.com"
-password = "ProofPass123!"
+password = os.getenv("PROOF_PASS", "")
 requests.post(
     f"{BASE}/api/auth/register",
     json={"email": email, "username": email.split("@")[0], "password": password},

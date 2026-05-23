@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 import random
 import requests
@@ -6,7 +7,7 @@ BASE = "http://localhost:8000"
 EVENT_ID = "107fec52e1d9d6f2f6e74f47eb1d520b"
 
 email = f"siminspect_{random.randint(1000,9999)}@example.com"
-password = "ProofPass123!"
+password = os.getenv("PROOF_PASS", "")
 requests.post(
     f"{BASE}/api/auth/register",
     json={"email": email, "username": email.split("@")[0], "password": password},

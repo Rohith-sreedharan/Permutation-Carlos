@@ -175,6 +175,250 @@ def verify_2fa_login(temp_token: str, code: str):
     return {"access_token": token_value, "token_type": "bearer"}
 
 
+# ── Apple Sign In — Phase 2A.2 ────────────────────────────────────────────────
+
+class AppleSignInRequest(BaseModel):
+    identity_token: str          # JWT from Apple's Sign in with Apple
+    authorization_code: str      # one-time code from Apple
+    full_name: Optional[str] = None  # only sent on first sign-in
+
+
+@router.post("/auth/apple")
+def apple_sign_in(payload: AppleSignInRequest):
+    """
+    Verify Apple Sign In identity_token, then issue a BeatVegas JWT.
+
+    Apple's identity_token is a signed JWT whose public key lives at
+    https://appleid.apple.com/auth/keys  (cached here via PyJWT's JWKS support).
+
+    Steps:
+      1. Fetch Apple's public keys (JWKS endpoint)
+      2. Verify identity_token signature + exp + aud (must match APPLE_CLIENT_ID)
+      3. Extract sub (Apple user ID) and email from claims
+      4. Upsert the user in MongoDB (create if first sign-in)
+      5. Return a BeatVegas JWT
+    """
+    import jwt as _jwt
+    import requests as _req
+
+    apple_client_id = os.getenv("APPLE_CLIENT_ID", "")
+    if not apple_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Apple Sign In not configured (APPLE_CLIENT_ID missing)",
+        )
+
+    # ── 1. Fetch Apple's public keys ──────────────────────────────────────────
+    try:
+        jwks_resp = _req.get("https://appleid.apple.com/auth/keys", timeout=10)
+        jwks_resp.raise_for_status()
+        jwks = jwks_resp.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to fetch Apple public keys",
+        )
+
+    # ── 2. Identify key from token header and verify ──────────────────────────
+    try:
+        unverified_header = _jwt.get_unverified_header(payload.identity_token)
+        kid = unverified_header.get("kid")
+        alg = unverified_header.get("alg", "RS256")
+
+        apple_key = None
+        for key_data in jwks.get("keys", []):
+            if key_data.get("kid") == kid:
+                apple_key = _jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+                break
+
+        if not apple_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Apple public key not found for token",
+            )
+
+        claims = _jwt.decode(
+            payload.identity_token,
+            apple_key,
+            algorithms=[alg],
+            audience=apple_client_id,
+            issuer="https://appleid.apple.com",
+        )
+    except _jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Apple identity token expired",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Apple identity token verification failed",
+        )
+
+    apple_sub = claims.get("sub")        # stable Apple user ID
+    apple_email = claims.get("email")    # may be private relay address
+
+    if not apple_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Apple identity token: missing sub",
+        )
+
+    # ── 3. Upsert user ────────────────────────────────────────────────────────
+    from bson import ObjectId
+
+    existing_user = db["users"].find_one({"apple_sub": apple_sub})
+
+    if existing_user:
+        user = existing_user
+    else:
+        # First sign-in — create account
+        email_to_store = apple_email or f"apple_{apple_sub}@privaterelay.appleid.com"
+        new_user = {
+            "email": email_to_store,
+            "apple_sub": apple_sub,
+            "username": payload.full_name or email_to_store.split("@")[0],
+            "tier": "free",
+            "auth_provider": "apple",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = db["users"].insert_one(new_user)
+        new_user["_id"] = result.inserted_id
+        user = new_user
+
+    # ── 4. Issue BeatVegas JWT ─────────────────────────────────────────────────
+    token_value = create_access_token(
+        user_id=str(user.get("_id")),
+        email=str(user.get("email", "")),
+        tier=str(user.get("tier", "free")),
+    )
+    return {"access_token": token_value, "token_type": "bearer"}
+
+
+# ── Apple Sign In — Phase 2A.2 ───────────────────────────────────────────────
+
+class AppleSignInRequest(BaseModel):
+    identity_token: str          # JWT issued by Apple's auth server
+    authorization_code: str      # Single-use code for server-side validation
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+@router.post("/auth/apple")
+def apple_sign_in(payload: AppleSignInRequest):
+    """
+    Apple Sign In for Web — RFC-compliant server-side verification.
+
+    1. Fetches Apple's public JWKS from https://appleid.apple.com/auth/keys
+    2. Validates the identity_token signature, iss, aud, exp claims
+    3. Finds or creates a user record (no plaintext password stored)
+    4. Issues a BeatVegas JWT
+
+    Env vars required:
+      APPLE_CLIENT_ID   — Service ID (e.g. app.beatvegas.web)
+      APPLE_TEAM_ID     — 10-char Apple Team ID
+    """
+    import json as _json
+    import urllib.request
+
+    client_id = os.getenv("APPLE_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Apple Sign In not configured on this server (APPLE_CLIENT_ID missing)",
+        )
+
+    # ── 1. Fetch Apple's public keys ─────────────────────────────────────────
+    try:
+        with urllib.request.urlopen(
+            "https://appleid.apple.com/auth/keys", timeout=10
+        ) as resp:
+            jwks = _json.loads(resp.read())
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not reach Apple auth server: {exc}",
+        )
+
+    # ── 2. Decode + verify identity token ────────────────────────────────────
+    try:
+        import jwt as pyjwt
+        from jwt.algorithms import RSAAlgorithm  # type: ignore
+
+        # Find the matching key by 'kid' in the token header
+        unverified_header = pyjwt.get_unverified_header(payload.identity_token)
+        kid = unverified_header.get("kid")
+        matching_key = next(
+            (k for k in jwks.get("keys", []) if k.get("kid") == kid), None
+        )
+        if not matching_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Apple public key not found for token kid",
+            )
+
+        public_key = RSAAlgorithm.from_jwk(_json.dumps(matching_key))
+        claims = pyjwt.decode(
+            payload.identity_token,
+            public_key,
+            algorithms=["RS256"],
+            audience=client_id,
+            issuer="https://appleid.apple.com",
+        )
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Apple identity token has expired",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Apple identity token validation failed: {type(exc).__name__}",
+        )
+
+    apple_user_id: str = claims.get("sub", "")
+    email: str = claims.get("email", "")
+    if not apple_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Apple identity token missing subject claim",
+        )
+
+    # ── 3. Find or create user ────────────────────────────────────────────────
+    user = db["users"].find_one({"apple_user_id": apple_user_id})
+    if not user:
+        # First sign-in — create account (no password; Apple-only auth)
+        from bson import ObjectId
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        new_user = {
+            "apple_user_id": apple_user_id,
+            "email": email,
+            "username": payload.first_name or email.split("@")[0],
+            "tier": "free",
+            "auth_provider": "apple",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        result = db["users"].insert_one(new_user)
+        new_user["_id"] = result.inserted_id
+        user = new_user
+
+    # ── 4. Issue BeatVegas JWT ────────────────────────────────────────────────
+    token_value = create_access_token(
+        user_id=str(user.get("_id")),
+        email=str(user.get("email", "")),
+        tier=str(user.get("tier", "free")),
+    )
+    return {
+        "access_token": token_value,
+        "token_type": "bearer",
+        "is_new_user": "apple_user_id" not in (user or {}),
+    }
+
+
+# ── Passkey ───────────────────────────────────────────────────────────────────
+
 @router.post("/passkey/login-begin")
 def begin_passkey_login(email: str):
     """Start passkey login (passwordless authentication)"""

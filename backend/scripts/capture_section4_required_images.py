@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 """
 Capture Section 4 required screenshots from the running local app.
@@ -60,7 +61,7 @@ def map_league(sport_key: str | None) -> str | None:
 
 def ensure_auth_token() -> str:
     email = f"prooflive_section4_{random.randint(10000, 99999)}@example.com"
-    password = "ProofPass123!"
+    password = os.getenv("PROOF_PASS", "")
 
     reg = requests.post(
         f"{BACKEND_URL}/api/auth/register",

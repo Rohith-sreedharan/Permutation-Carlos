@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 import asyncio
 import random
@@ -29,7 +30,7 @@ def map_league(sport_key: str | None) -> str | None:
 
 def make_token() -> str:
     email = f"findblk_{random.randint(10000,99999)}@example.com"
-    password = "ProofPass123!"
+    password = os.getenv("PROOF_PASS", "")
     r = requests.post(
         f"{BACKEND}/api/auth/register",
         json={"email": email, "username": email.split("@")[0], "password": password},

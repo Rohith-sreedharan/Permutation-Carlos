@@ -23,7 +23,6 @@ Every block is logged to sentinel_event_log within 60 seconds.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import uuid

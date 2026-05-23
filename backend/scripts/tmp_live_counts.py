@@ -1,3 +1,4 @@
+import os
 #!/usr/bin/env python3
 import random
 
@@ -25,7 +26,7 @@ def map_league(sport_key: str | None) -> str | None:
 def main() -> int:
     base = "http://localhost:8000"
     email = f"proof_{random.randint(10000, 99999)}@example.com"
-    password = "ProofPass123!"
+    password = os.getenv("PROOF_PASS", "")
 
     register = requests.post(
         f"{base}/api/auth/register",

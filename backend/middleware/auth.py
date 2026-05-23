@@ -157,14 +157,6 @@ def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Op
     except HTTPException:
         return None
 
-            return None
-        
-        # Look up user in database
-        user = db.users.find_one({"_id": ObjectId(user_id)})
-        return user
-    except Exception:
-        return None
-
 
 # Additional auth dependencies for route protection
 async def require_user(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
