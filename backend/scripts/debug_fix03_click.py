@@ -9,7 +9,7 @@ FRONT='http://localhost:3000'
 
 async def main():
     email=f'dbg_{random.randint(1000,9999)}@example.com'
-    pw='ProofPass123!'
+    pw=os.getenv('PROOF_PASS', '')
     requests.post(f'{BASE}/api/auth/register',json={'email':email,'username':email.split('@')[0],'password':pw},timeout=10)
     lg=requests.post(f'{BASE}/api/token',headers={'Content-Type':'application/x-www-form-urlencoded'},data={'username':email,'password':pw},timeout=10)
     tok=lg.json().get('access_token')
