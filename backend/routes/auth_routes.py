@@ -1,12 +1,45 @@
+import os
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import bcrypt
 
 from db.mongo import db
 from middleware.auth import get_current_user
+
+
+# ── JWT helpers ──────────────────────────────────────────────────────────────
+
+def _get_jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET_KEY", "")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET_KEY is not set. Set it in backend/.env before starting."
+        )
+    return secret
+
+
+def create_access_token(user_id: str, email: str, tier: str) -> str:
+    """Create a signed JWT access token.  Expiry from agent_config."""
+    try:
+        from config.agent_config import AGENT_CONFIG
+        expire_min = int(AGENT_CONFIG["auth"]["jwt_access_token_expire_minutes"])
+        algorithm = AGENT_CONFIG["auth"]["jwt_algorithm"]
+    except Exception:
+        expire_min = 60
+        algorithm = "HS256"
+
+    import jwt  # PyJWT
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "tier": tier,
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=expire_min),
+    }
+    return jwt.encode(payload, _get_jwt_secret(), algorithm=algorithm)
 
 
 class UserRegistration(BaseModel):
@@ -88,8 +121,11 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
             "message": "Two-factor authentication required"
         }
     
-    # Simple token for development: not a JWT, just a placeholder string
-    token_value = f"user:{str(user.get('_id'))}"
+    token_value = create_access_token(
+        user_id=str(user.get("_id")),
+        email=user.get("email", ""),
+        tier=user.get("tier", "free"),
+    )
     return {"access_token": token_value, "token_type": "bearer"}
 
 
@@ -130,8 +166,12 @@ def verify_2fa_login(temp_token: str, code: str):
             detail="2FA not available"
         )
     
-    # Issue real token
-    token_value = f"user:{str(user.get('_id'))}"
+    # Issue real JWT token after 2FA
+    token_value = create_access_token(
+        user_id=str(user.get("_id")),
+        email=user.get("email", ""),
+        tier=user.get("tier", "free"),
+    )
     return {"access_token": token_value, "token_type": "bearer"}
 
 

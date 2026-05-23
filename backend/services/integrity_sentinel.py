@@ -32,6 +32,15 @@ from pymongo.database import Database
 logger = logging.getLogger(__name__)
 
 
+def _load_threshold(agent_config_key: str, default: float) -> float:
+    """Read a threshold from agent_config; fall back to default if absent."""
+    try:
+        from config.agent_config import AGENT_CONFIG
+        return float(AGENT_CONFIG.get("sentinel", {}).get(agent_config_key, default))
+    except Exception:
+        return default
+
+
 @dataclass
 class MetricThreshold:
     """Threshold definition for a metric."""
@@ -63,6 +72,11 @@ class IntegritySentinel:
         MetricThreshold("post_validation_fail_rate", 0.01, 5, "DISABLE_TELEGRAM"),
         MetricThreshold("simulation_fetch_fail_rate", 0.05, 5, "ALERT"),
         MetricThreshold("edge_rate_collapse", 0.9, 30, "ALERT"),
+        # ── Phase 2C security event monitors (thresholds from agent_config) ──
+        MetricThreshold("geo_violation_rate", _load_threshold("GEO_VIOLATION_ALERT_COUNT", 50), 15, "ALERT"),
+        MetricThreshold("auth_anomaly_rate", _load_threshold("AUTH_ANOMALY_THRESHOLD", 10), 5, "ALERT"),
+        MetricThreshold("rate_limit_breach_rate", _load_threshold("RATE_LIMIT_BREACH_ALERT_THRESHOLD", 100), 15, "ALERT"),
+        MetricThreshold("duplicate_decision_record_rate", _load_threshold("DUPLICATE_DR_ALERT_COUNT", 5), 60, "ALERT"),
     ]
 
     def __init__(self, db: Database, alert_webhook_url: Optional[str] = None):
@@ -234,6 +248,15 @@ class IntegritySentinel:
             value = self._compute_simulation_fetch_fail_rate(window_start)
         elif threshold.metric_name == "edge_rate_collapse":
             value = self._compute_edge_rate_collapse(window_start)
+        # ── Phase 2C security event metrics ──────────────────────────────────
+        elif threshold.metric_name == "geo_violation_rate":
+            value = self._compute_sentinel_event_count("GEO_VIOLATION", window_start)
+        elif threshold.metric_name == "auth_anomaly_rate":
+            value = self._compute_sentinel_event_count("AUTH_ANOMALY", window_start)
+        elif threshold.metric_name == "rate_limit_breach_rate":
+            value = self._compute_sentinel_event_count("RATE_LIMIT_BREACH", window_start)
+        elif threshold.metric_name == "duplicate_decision_record_rate":
+            value = self._compute_sentinel_event_count("DUPLICATE_DECISION_RECORD", window_start)
         else:
             logger.warning("Unknown metric: %s", threshold.metric_name)
             value = 0.0
@@ -383,6 +406,23 @@ class IntegritySentinel:
 
         collapse_ratio = 1.0 - (current_edge_rate / self.baseline_edge_rate)
         return max(0.0, collapse_ratio)
+
+    # ── Phase 2C: sentinel_event_log counters ─────────────────────────────────
+
+    def _compute_sentinel_event_count(self, event_type: str, window_start: datetime) -> float:
+        """
+        Count events of the given type in sentinel_event_log within the window.
+        Returns raw count (not a rate) — thresholds are absolute counts, not fractions.
+        """
+        return float(
+            self._count_documents(
+                ["sentinel_event_log"],
+                {
+                    "event_type": event_type,
+                    **self._window_query("timestamp", window_start),
+                },
+            )
+        )
 
     def _disable_telegram_autopublish(self) -> bool:
         from services.feature_flags import FeatureFlagService

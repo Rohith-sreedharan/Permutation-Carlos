@@ -15,6 +15,19 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# ── Phase 2A.3: Security headers — applied before all route handlers ──────────
+from middleware.security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── Phase 2A.1: GeoIP enforcement — applied before CORSMiddleware ─────────────
+from middleware.geoip import GeoIPMiddleware
+_geoip_enabled = os.getenv("GEOIP_ENABLED", "true").lower() not in ("false", "0", "no")
+app.add_middleware(GeoIPMiddleware, enabled=_geoip_enabled)
+
+# ── Phase 2A.3: Rate limiting ─────────────────────────────────────────────────
+from middleware.rate_limiter import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
 # Read CORS configuration from environment
 # Example values in backend/.env.example
 cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")

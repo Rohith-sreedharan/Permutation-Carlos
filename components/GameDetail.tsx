@@ -46,6 +46,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } from '../types';
 import SimulationDebugPanel from './SimulationDebugPanel';
 import FinalUnifiedSummary from './FinalUnifiedSummary';
+import LegalDisclaimer from './LegalDisclaimer';
 import { IntegrityLogger, validateSnapshotConsistency, handleSnapshotMismatch } from '../utils/integrityLogger';
 import { formatAwayAtHome, getDisplayTeamName } from '../utils/matchupLabel';
 
@@ -2919,6 +2920,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       
           </>
         )}
+{/* Responsible gaming disclosure — visible on every pick surface */}
+      <LegalDisclaimer variant="full" className="mt-6 mb-2" />
+
 {/* DEV-ONLY: Debug Panel for Simulation Integrity */}
       {DEBUG_UI_ENABLED && simulation && event && (
         <SimulationDebugPanel simulation={simulation} event={event} />

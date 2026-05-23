@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import MainLayout from './components/MainLayout';
 import AuthPage from './components/AuthPage';
+import TermsOfService from './components/TermsOfService';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import WaitlistPage from './components/WaitlistPage';
+
+// Public routes — accessible without authentication
+const PUBLIC_ROUTES: Record<string, React.FC> = {
+  '/terms': TermsOfService,
+  '/privacy': PrivacyPolicy,
+  '/waitlist': WaitlistPage,
+};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check for existing auth token on mount
     const token = localStorage.getItem('authToken');
     setIsAuthenticated(!!token);
   }, []);
@@ -21,6 +30,13 @@ export default function App() {
     setIsAuthenticated(true);
   };
 
+  // Public routes — no auth gate, rendered immediately
+  const pathname = window.location.pathname;
+  const PublicPage = PUBLIC_ROUTES[pathname];
+  if (PublicPage) {
+    return <PublicPage />;
+  }
+
   // Show loading while checking auth state
   if (isAuthenticated === null) {
     return (
@@ -30,10 +46,10 @@ export default function App() {
     );
   }
 
-  // Show auth page if not authenticated
   if (!isAuthenticated) {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
   return <MainLayout onAuthError={handleAuthError} />;
 }
+
