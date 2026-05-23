@@ -429,13 +429,29 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const handleShare = async () => {
     if (!simulation || !event) return;
 
-    const winProb = ((simulation.team_a_win_probability || simulation.win_probability || 0.5) * 100).toFixed(1);
-    const volatility = typeof simulation.volatility_index === 'string' ? simulation.volatility_index.toUpperCase() : 
-                      simulation.volatility_score || 'MODERATE';
-    // FIX: Convert decimal confidence to percentage BEFORE rounding
-    const confidence = Math.round((simulation.confidence_score || 0.65) * 100);
+    const classification = gameEdgeState?.classification;
+    const isBlocked = classification === Classification.BLOCKED || analysisBlocked;
 
-    const shareText = `� ${matchupLabel}\n\n📊 BeatVegas Decision Engine — ${(simulation.iterations || 10000).toLocaleString()} Intelligence Cycles:\n• Outcome Signal: ${winProb}% model confidence\n• Variance Profile: ${volatility}\n• Conviction Score: ${confidence}/100\n\nAnalysis powered by #BeatVegas\nbeatvegas.app/game/${gameId}`;
+    // Map classification to institutional decision label — no raw model stats exposed
+    const decisionLabel = (() => {
+      if (isBlocked) return null; // blocked games do not share analysis
+      if (classification === Classification.EDGE) return 'Edge Detected';
+      if (classification === Classification.LEAN) return 'Moderate Lean';
+      if (classification === Classification.MARKET_ALIGNED || classification === 'MARKET_ALIGNED') return 'Market Aligned';
+      if (classification === Classification.NO_ACTION || classification === 'NO_ACTION') return 'No Actionable Signal';
+      return 'Analysis Complete';
+    })();
+
+    // Confidence score → band label — no raw percentage shared
+    const confidenceScore = simulation.confidence_score ?? 0.65;
+    const confidenceBand = confidenceScore >= 0.75 ? 'High' : confidenceScore >= 0.55 ? 'Medium' : 'Low';
+
+    const cycleCount = (simulation.iterations || 10000).toLocaleString();
+    const gameUrl = `beatvegas.app/game/${gameId}`;
+
+    const shareText = isBlocked
+      ? `🏆 ${matchupLabel}\n\nThis matchup did not qualify for a BeatVegas Decision Engine recommendation.\n\nbeatvegas.app\n#BeatVegas`
+      : `🏆 ${matchupLabel}\n\nBeatVegas Decision Engine — ${cycleCount} Intelligence Cycles\n\nDecision: ${decisionLabel}\nConfidence: ${confidenceBand}\n\nFull analysis: ${gameUrl}\n#BeatVegas`;
 
     try {
       await navigator.clipboard.writeText(shareText);
