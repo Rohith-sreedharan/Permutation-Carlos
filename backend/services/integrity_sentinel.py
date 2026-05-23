@@ -77,6 +77,13 @@ class IntegritySentinel:
         MetricThreshold("auth_anomaly_rate", _load_threshold("AUTH_ANOMALY_THRESHOLD", 10), 5, "ALERT"),
         MetricThreshold("rate_limit_breach_rate", _load_threshold("RATE_LIMIT_BREACH_ALERT_THRESHOLD", 100), 15, "ALERT"),
         MetricThreshold("duplicate_decision_record_rate", _load_threshold("DUPLICATE_DR_ALERT_COUNT", 5), 60, "ALERT"),
+        # ── Phase 3C billing monitors (all thresholds from agent_config) ──────
+        MetricThreshold("billing_write_fail_rate", _load_threshold("BILLING_WRITE_FAIL_ALERT_THRESHOLD", 1), 5, "ALERT"),
+        MetricThreshold("entitlement_violation_rate", _load_threshold("ENTITLEMENT_VIOLATION_ALERT_THRESHOLD", 3), 15, "ALERT"),
+        MetricThreshold("overage_warn_rate", _load_threshold("OVERAGE_WARN_PCT", 80), 60, "ALERT"),
+        MetricThreshold("overage_block_rate", _load_threshold("OVERAGE_BLOCK_PCT", 100), 60, "ALERT"),
+        MetricThreshold("subscription_expiry_rate", _load_threshold("SUBSCRIPTION_EXPIRY_CHECK_WINDOW_MIN", 5), 5, "ALERT"),
+        MetricThreshold("webhook_failure_rate", _load_threshold("WEBHOOK_FAIL_ALERT_THRESHOLD", 3), 15, "ALERT"),
     ]
 
     def __init__(self, db: Database, alert_webhook_url: Optional[str] = None):
@@ -257,6 +264,19 @@ class IntegritySentinel:
             value = self._compute_sentinel_event_count("RATE_LIMIT_BREACH", window_start)
         elif threshold.metric_name == "duplicate_decision_record_rate":
             value = self._compute_sentinel_event_count("DUPLICATE_DECISION_RECORD", window_start)
+        # ── Phase 3C billing metrics ──────────────────────────────────────────
+        elif threshold.metric_name == "billing_write_fail_rate":
+            value = self._compute_sentinel_event_count("BILLING_WRITE_FAIL", window_start)
+        elif threshold.metric_name == "entitlement_violation_rate":
+            value = self._compute_sentinel_event_count("ENTITLEMENT_VIOLATION", window_start)
+        elif threshold.metric_name == "overage_warn_rate":
+            value = self._compute_sentinel_event_count("OVERAGE_WARN", window_start)
+        elif threshold.metric_name == "overage_block_rate":
+            value = self._compute_sentinel_event_count("OVERAGE_BLOCK", window_start)
+        elif threshold.metric_name == "subscription_expiry_rate":
+            value = self._compute_sentinel_event_count("SUBSCRIPTION_EXPIRED", window_start)
+        elif threshold.metric_name == "webhook_failure_rate":
+            value = self._compute_sentinel_event_count("WEBHOOK_FAILURE", window_start)
         else:
             logger.warning("Unknown metric: %s", threshold.metric_name)
             value = 0.0

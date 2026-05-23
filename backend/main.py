@@ -137,6 +137,7 @@ from routes.tracking_routes import router as tracking_router
 from routes.war_room_routes import router as war_room_router
 from routes.telegram_routes import router as telegram_router
 from routes.stripe_webhook_routes import router as stripe_webhook_router
+from routes.phase3_webhook_routes import router as phase3_webhook_router  # Phase 3A.2
 from routes.signal_routes import router as signal_router
 from routes.autonomous_edge_routes import router as autonomous_edge_router
 from routes.ncaab_routes import router as ncaab_router
@@ -174,6 +175,7 @@ app.include_router(mlb_router)  # NEW: MLB Edge Evaluation - Locked spec (moneyl
 app.include_router(analyzer_router)  # NEW: AI Analyzer - LLM-powered game explanations
 app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
 app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
+app.include_router(phase3_webhook_router)  # Phase 3A.2 idempotent billing webhook
 app.include_router(meta_router)  # NEW: Build/version metadata for validation
 app.include_router(audit_router)  # NEW: Decision Audit Log Query Endpoint (Section 14 compliance)
 app.include_router(distribution_router)  # NEW: Distribution Governance internal endpoint

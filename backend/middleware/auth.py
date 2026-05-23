@@ -113,6 +113,20 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
 
     # ── Legacy user:<id> path (transition period only) ───────────────────────
     if token.startswith("user:"):
+        # CF-2: Hard removal date enforcement — no grace period after deadline.
+        from config.agent_config import AGENT_CONFIG
+        from datetime import date
+        removal_date_str = AGENT_CONFIG.get("auth", {}).get("legacy_token_hard_removal_date", "")
+        if removal_date_str:
+            try:
+                removal_date = date.fromisoformat(removal_date_str)
+                if date.today() >= removal_date:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Legacy tokens are no longer accepted. Please log in again to receive a JWT.",
+                    )
+            except ValueError:
+                pass  # malformed date in config — allow through with warning
         logger.warning(
             "[Auth] Legacy user:<id> token in use — client should upgrade to JWT"
         )
