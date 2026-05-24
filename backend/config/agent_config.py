@@ -89,9 +89,9 @@ AGENT_CONFIG: dict = {
     "billing": {
         # Overage rate per token shortfall (cents → stored as float USD)
         "overage_rate_per_token": float(os.getenv("OVERAGE_RATE_PER_TOKEN", "0.02")),
-        # Stripe product/price IDs — set via env on server; defaults are test IDs
-        "stripe_price_id_syndicate": os.getenv("STRIPE_PRICE_SYNDICATE", "price_syndicate_39_monthly"),
-        "stripe_price_id_platform": os.getenv("STRIPE_PRICE_PLATFORM", "price_platform_97_monthly"),
+        # Stripe product/price IDs — set via env on server; defaults are empty (must be set in production)
+        "stripe_price_id_syndicate": os.getenv("STRIPE_PRICE_ID_SYNDICATE", ""),
+        "stripe_price_id_platform": os.getenv("STRIPE_PRICE_ID_PLATFORM", ""),
         # Monthly token allocations per tier (used for overage calculation)
         "tier_token_allocation": {
             "intelligence_preview": int(os.getenv("TOKENS_PREVIEW", "0")),

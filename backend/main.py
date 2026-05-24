@@ -415,9 +415,13 @@ def root():
 def health_check():
     """Health check for load balancers — accessible at /health and /api/health"""
     from db.mongo import db
+    geoip_enabled = os.getenv("GEOIP_ENABLED", "true").lower() not in ("false", "0", "no")
+    geoip_db_path = os.getenv("GEOIP_COUNTRY_DB", "")
+    geoip_active = geoip_enabled and bool(geoip_db_path) and os.path.isfile(geoip_db_path)
+    geoip_status = "active" if geoip_active else ("disabled" if not geoip_enabled else "misconfigured")
     try:
         # Test MongoDB connection
         db.command("ping")
-        return {"status": "healthy", "database": "connected"}
+        return {"status": "healthy", "database": "connected", "geoip": geoip_status}
     except Exception as e:
-        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+        return {"status": "unhealthy", "database": "disconnected", "geoip": geoip_status, "error": str(e)}

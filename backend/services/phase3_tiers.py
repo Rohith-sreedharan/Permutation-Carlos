@@ -10,6 +10,7 @@ SimSports API         — not marketed externally — schema defined per spec re
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ TIERS: Dict[str, Dict[str, Any]] = {
         "display_name": "Syndicate",
         "price_monthly_usd": 39.00,
         "stripe_product_id": "prod_syndicate",   # resolved from env on server
-        "stripe_price_id": "price_syndicate_39_monthly",
+        "stripe_price_id": os.getenv("STRIPE_PRICE_ID_SYNDICATE", ""),
         "features": {
             "web_platform": False,            # no web platform access
             "intelligence_outputs": True,
@@ -51,7 +52,7 @@ TIERS: Dict[str, Dict[str, Any]] = {
         "display_name": "Platform",
         "price_monthly_usd": 97.00,
         "stripe_product_id": "prod_platform",
-        "stripe_price_id": "price_platform_97_monthly",
+        "stripe_price_id": os.getenv("STRIPE_PRICE_ID_PLATFORM", ""),
         "features": {
             "web_platform": True,             # full platform
             "intelligence_outputs": True,
