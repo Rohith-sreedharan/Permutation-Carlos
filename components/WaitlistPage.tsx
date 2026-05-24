@@ -68,21 +68,10 @@ export default function WaitlistPage() {
         )}
       </div>
 
-      {/* Responsible gaming disclaimer */}
-      <div className="mt-12 max-w-md text-center text-xs text-gray-500 leading-relaxed">
-        <p>
-          BeatVegas is a <strong>sports analytics platform</strong>, not a sportsbook. No bets are
-          placed or facilitated. Analytical outputs are for informational purposes only.
-          If gambling is affecting your life, call{' '}
-          <a href="tel:1-800-522-4700" className="text-yellow-400 underline">
-            1-800-522-4700
-          </a>{' '}
-          (NCPG Helpline, free &amp; confidential, 24/7).
-        </p>
-        <div className="flex justify-center gap-4 mt-3">
-          <a href="/terms" className="text-yellow-400 hover:underline">Terms of Service</a>
-          <a href="/privacy" className="text-yellow-400 hover:underline">Privacy Policy</a>
-        </div>
+      {/* Footer links */}
+      <div className="mt-6 flex justify-center gap-4 text-xs">
+        <a href="/terms" className="text-yellow-400 hover:underline">Terms of Service</a>
+        <a href="/privacy" className="text-yellow-400 hover:underline">Privacy Policy</a>
       </div>
     </div>
   );
@@ -148,6 +137,16 @@ function FormState({
         {errorMessage && (
           <p className="text-red-400 text-xs">{errorMessage}</p>
         )}
+
+        {/* NCPG disclaimer — must be visible without scrolling */}
+        <p className="text-xs text-gray-500 leading-relaxed text-center">
+          BeatVegas is a <strong>sports analytics platform</strong>, not a sportsbook.
+          If gambling is affecting your life, call{' '}
+          <a href="tel:1-800-522-4700" className="text-yellow-400 underline">
+            1-800-522-4700
+          </a>{' '}
+          (NCPG Helpline, 24/7).
+        </p>
 
         <button
           type="submit"
