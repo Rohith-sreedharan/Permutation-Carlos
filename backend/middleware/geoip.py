@@ -45,7 +45,20 @@ _BYPASS_PATHS: set[str] = set()
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract real client IP, honouring common reverse-proxy headers."""
+    """Extract real client IP, honouring common reverse-proxy headers.
+
+    Priority order:
+      1. CF-Connecting-IP  — set by Cloudflare with the real visitor IP (most reliable)
+      2. X-Forwarded-For   — leftmost non-private IP (nginx/ALB chains)
+      3. X-Real-IP         — set by some nginx configs
+      4. Direct ASGI client host
+    """
+    # Cloudflare always sets this to the actual client IP (cannot be spoofed
+    # when requests go through Cloudflare's network)
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        return cf_ip.strip()
+
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
         # Take the first (leftmost) address — the actual client
