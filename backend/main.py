@@ -154,6 +154,9 @@ from routes.decisions import router as decisions_router  # NEW: Unified MarketDe
 from routes.audit import router as audit_router  # NEW: Decision Audit Log Query Endpoint (Section 14)
 from routes.distribution_routes import router as distribution_router  # NEW: Distribution Governance endpoint
 from routes.integrity_routes import router as integrity_router  # NEW: Integrity Sentinel internal endpoint
+from routes.phase4_replay_routes import router as phase4_replay_router  # Phase 4E: Replay Harness
+from routes.phase4_grading_agent_routes import router as phase4_grading_router  # Phase 4F: Grading Agent
+from routes.phase4_calibration_agent_routes import router as phase4_calibration_router  # Phase 4G: Calibration Agent
 
 app.include_router(auth_router)
 app.include_router(whoami_router)
@@ -212,6 +215,9 @@ app.include_router(market_state_router)  # Market State Registry - Single source
 app.include_router(parlay_architect_router)  # NEW: Parlay Architect - Tiered pool system
 app.include_router(calibration_router)  # NEW: Logging & Calibration System - Exit-grade dataset
 app.include_router(decisions_router, prefix="/api", tags=["decisions"])  # NEW: Unified MarketDecision endpoint
+app.include_router(phase4_replay_router)        # Phase 4E: Replay Harness
+app.include_router(phase4_grading_router)       # Phase 4F: Grading Agent (agent.grading.v1)
+app.include_router(phase4_calibration_router)   # Phase 4G: Calibration Agent (agent.calibration.v1)
 
 
 @app.websocket("/ws")
@@ -356,6 +362,31 @@ async def startup_event():
         print(f"⚠️ Calibration Scheduler startup error: {e}")
         print("   Manual calibration triggers still available")
 
+    # ── Phase 4: Run DB migrations ────────────────────────────────────────────
+    try:
+        from db.migrations.phase4_001_truth_dataset_v1_view import create_view
+        create_view(db=db)
+        print("✓ Phase 4C: truth_dataset_v1 view created")
+    except Exception as e:
+        print(f"⚠️ Phase 4C migration warning: {e}")
+
+    try:
+        from db.migrations.phase4_002_calibration_immutability import run_migration, start_watcher
+        run_migration(db=db)
+        start_watcher(db=db)
+        print("✓ Phase 4D: Calibration immutability enforcement active")
+    except Exception as e:
+        print(f"⚠️ Phase 4D migration warning: {e}")
+
+    # ── Phase 4A: Daily Simulation Scheduler ──────────────────────────────────
+    try:
+        from services.phase4_simulation_scheduler import start_phase4_simulation_scheduler
+        start_phase4_simulation_scheduler()
+        print("✓ Phase 4A: Simulation Scheduler active (agent.simulation.v1)")
+    except Exception as e:
+        print(f"⚠️ Phase 4A Simulation Scheduler startup error: {e}")
+        print("   Manual simulation triggers still available")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -384,6 +415,22 @@ async def shutdown_event():
         from services.calibration_scheduler import stop_calibration_scheduler
         stop_calibration_scheduler()
         print("✓ Calibration Scheduler shutdown complete")
+    except Exception:
+        pass
+
+    # Phase 4A: Shutdown simulation scheduler
+    try:
+        from services.phase4_simulation_scheduler import stop_phase4_simulation_scheduler
+        stop_phase4_simulation_scheduler()
+        print("✓ Phase 4A: Simulation Scheduler shutdown complete")
+    except Exception:
+        pass
+
+    # Phase 4D: Stop calibration change-stream watcher
+    try:
+        from db.migrations.phase4_002_calibration_immutability import stop_watcher
+        stop_watcher()
+        print("✓ Phase 4D: Calibration immutability watcher stopped")
     except Exception:
         pass
 
