@@ -593,6 +593,69 @@ def complete_passkey_login(payload: PasskeyLoginRequest):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed")
 
 
+# ── Password reset ───────────────────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/auth/forgot-password", status_code=status.HTTP_200_OK)
+def forgot_password(payload: ForgotPasswordRequest):
+    """
+    Request a password reset link.
+    Always returns 200 to prevent email enumeration — no error if email not found.
+    """
+    from services.transactional_email_service import send_password_reset
+
+    user = db["users"].find_one({"email": payload.email}, {"_id": 1, "email": 1})
+    if user:
+        send_password_reset(
+            user_id=str(user["_id"]),
+            user_email=str(user["email"]),
+        )
+    return {"status": "ok", "message": "If that email is registered you will receive a reset link shortly."}
+
+
+@router.post("/auth/reset-password", status_code=status.HTTP_200_OK)
+def reset_password(payload: ResetPasswordRequest):
+    """
+    Consume a one-time reset token and set a new password.
+    Token must be unused and not expired (15-minute window).
+    """
+    from services.transactional_email_service import consume_reset_token
+
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be at least 8 characters.",
+        )
+
+    user_id = consume_reset_token(payload.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reset link is invalid or has expired.",
+        )
+
+    try:
+        from bson import ObjectId
+        oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token.")
+
+    db["users"].update_one(
+        {"_id": oid},
+        {"$set": {"hashed_password": hash_password(payload.new_password),
+                   "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"status": "ok", "message": "Password updated. You can now sign in."}
+
+
 @router.get("/users/me")
 def get_current_user_profile(user: dict = Depends(get_current_user)):
     """

@@ -437,8 +437,43 @@ def _handle_charge_dispute_created(event: Dict[str, Any]) -> None:
 # Webhook endpoint
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _handle_invoice_upcoming(event: Dict[str, Any]) -> None:
+    """
+    invoice.upcoming — fires ~7 days before the next renewal charge.
+    Sends a renewal reminder email with the upcoming amount and date.
+    """
+    from services.transactional_email_service import send_renewal_reminder
+
+    invoice = event["data"]["object"]
+    customer_id = invoice.get("customer")
+    user_id = _user_id_for_customer(customer_id)
+    if not user_id:
+        logger.debug("[Webhook] invoice.upcoming: unknown customer=%s (ignored)", customer_id)
+        return
+
+    amount_usd = invoice.get("amount_due", 0) / 100
+    # next_payment_attempt is a Unix timestamp when the charge fires
+    next_ts = invoice.get("next_payment_attempt")
+    if next_ts:
+        from datetime import datetime, timezone
+        renewal_date = datetime.fromtimestamp(next_ts, tz=timezone.utc).strftime("%B %d, %Y")
+    else:
+        renewal_date = "your next billing date"
+
+    try:
+        send_renewal_reminder(
+            user_id=user_id,
+            amount_usd=amount_usd,
+            renewal_date=renewal_date,
+        )
+        logger.info("[Webhook] renewal reminder sent user=%s amount=$%.2f", user_id, amount_usd)
+    except Exception as exc:
+        logger.error("[Webhook] renewal reminder failed user=%s: %s", user_id, exc)
+
+
 EVENT_HANDLERS = {
     "invoice.created": _handle_invoice_created,
+    "invoice.upcoming": _handle_invoice_upcoming,
     "invoice.payment_succeeded": _handle_payment_succeeded,
     "invoice.payment_failed": _handle_payment_failed,
     "customer.subscription.updated": _handle_subscription_updated,
