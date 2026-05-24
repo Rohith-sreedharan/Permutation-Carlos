@@ -1,15 +1,17 @@
 """
 Stripe Webhook Routes — Phase 3A.2
 
-Handles all four required events. All handlers are idempotent:
+Handles all required events. All handlers are idempotent:
 duplicate delivery never creates duplicate state changes (guarded by
 the Stripe event_id written to webhook_event_log before processing).
 
 Events handled:
-  invoice.payment_succeeded    → activate entitlement + billing_state_change_log
-  invoice.payment_failed       → send failure email + log (no immediate revoke)
+  invoice.created               → acknowledge + log (no entitlement change; pre-payment)
+  invoice.payment_succeeded     → activate entitlement + billing_state_change_log
+  invoice.payment_failed        → send failure email + log (no immediate revoke)
   customer.subscription.updated → update tier + log
   customer.subscription.deleted → revoke entitlement + invalidate session + log
+  charge.dispute.created        → suspend entitlement + log CHARGEBACK_INITIATED + alert sentinel
 """
 
 from __future__ import annotations
@@ -312,15 +314,136 @@ def _handle_subscription_deleted(event: Dict[str, Any]) -> None:
         logger.error("[Webhook] cancellation email failed for user=%s: %s", user_id, exc)
 
 
+def _handle_invoice_created(event: Dict[str, Any]) -> None:
+    """
+    invoice.created — PF-8 (Phase 3 canonical spec requirement).
+
+    Fires when Stripe generates a new invoice draft (before payment is attempted).
+    Entitlement is NOT changed — payment has not been confirmed.
+    Action: acknowledge event, log to billing_state_change_log for audit trail.
+    """
+    invoice = event["data"]["object"]
+    customer_id = invoice.get("customer")
+    trace_id = str(uuid4())
+
+    user_id = _user_id_for_customer(customer_id)
+    if not user_id:
+        logger.debug("[Webhook] invoice.created: unknown customer=%s (ignored)", customer_id)
+        return
+
+    billing_ledger.log_state_change(
+        user_id=user_id,
+        event_type="INVOICE_CREATED",
+        trace_id=trace_id,
+        metadata={
+            "stripe_invoice_id": invoice.get("id"),
+            "amount_due_usd": invoice.get("amount_due", 0) / 100,
+            "status": invoice.get("status"),
+        },
+    )
+    logger.info("[Webhook] invoice.created acknowledged for user=%s invoice=%s", user_id, invoice.get("id"))
+
+
+def _handle_charge_dispute_created(event: Dict[str, Any]) -> None:
+    """
+    charge.dispute.created — PF-7 Chargeback Handling Protocol.
+
+    On dispute:
+      1. Suspend entitlement immediately (active=False, revoke_reason=CHARGEBACK_DISPUTE)
+      2. Invalidate all active sessions
+      3. Log CHARGEBACK_INITIATED to sentinel_event_log (ALERT threshold=1)
+      4. Log state change to billing_state_change_log
+      5. Do NOT delete user data — suspension only, pending dispute resolution
+    See: backend/docs/CHARGEBACK_HANDLING_PROTOCOL.md
+    """
+    dispute = event["data"]["object"]
+    charge_id = dispute.get("charge")
+    dispute_id = dispute.get("id")
+    amount = dispute.get("amount", 0) / 100
+    trace_id = str(uuid4())
+
+    # Resolve user from charge → payment_intent → customer
+    user_id = None
+    customer_id = dispute.get("customer") or dispute.get("payment_intent_customer")
+
+    # Try to resolve via charge if customer not directly available
+    if not customer_id and charge_id:
+        try:
+            import stripe
+            charge = stripe.Charge.retrieve(charge_id)
+            customer_id = charge.get("customer")
+        except Exception:
+            pass
+
+    if customer_id:
+        user_id = _user_id_for_customer(customer_id)
+
+    if not user_id:
+        logger.warning("[Chargeback] dispute=%s charge=%s — could not resolve user, logging unlinked", dispute_id, charge_id)
+
+    # 1. Suspend entitlement immediately
+    if user_id:
+        db["user_entitlements"].update_one(
+            {"user_id": user_id},
+            {"$set": {
+                "active": False,
+                "revoked_at": _now_iso(),
+                "revoke_reason": "CHARGEBACK_DISPUTE",
+                "dispute_id": dispute_id,
+            }},
+        )
+
+        # 2. Invalidate all active sessions
+        db["user_sessions"].update_many(
+            {"user_id": user_id, "revoked": {"$ne": True}},
+            {"$set": {
+                "revoked": True,
+                "revoked_at": _now_iso(),
+                "revoke_reason": "CHARGEBACK_DISPUTE",
+            }},
+        )
+
+    # 3. Log CHARGEBACK_INITIATED to sentinel (immediate alert — threshold=1)
+    db["sentinel_event_log"].insert_one({
+        "event_type": "CHARGEBACK_INITIATED",
+        "user_id": user_id or "UNKNOWN",
+        "dispute_id": dispute_id,
+        "charge_id": charge_id,
+        "amount_usd": amount,
+        "trace_id": trace_id,
+        "timestamp": _now_iso(),
+    })
+
+    # 4. Log state change
+    if user_id:
+        billing_ledger.log_state_change(
+            user_id=user_id,
+            event_type="CHARGEBACK_INITIATED",
+            trace_id=trace_id,
+            metadata={
+                "dispute_id": dispute_id,
+                "charge_id": charge_id,
+                "amount_usd": amount,
+            },
+        )
+
+    logger.warning(
+        "[Chargeback] ENTITLEMENT SUSPENDED user=%s dispute=%s amount=$%.2f",
+        user_id or "UNKNOWN", dispute_id, amount,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Webhook endpoint
 # ─────────────────────────────────────────────────────────────────────────────
 
 EVENT_HANDLERS = {
+    "invoice.created": _handle_invoice_created,
     "invoice.payment_succeeded": _handle_payment_succeeded,
     "invoice.payment_failed": _handle_payment_failed,
     "customer.subscription.updated": _handle_subscription_updated,
     "customer.subscription.deleted": _handle_subscription_deleted,
+    "charge.dispute.created": _handle_charge_dispute_created,
 }
 
 

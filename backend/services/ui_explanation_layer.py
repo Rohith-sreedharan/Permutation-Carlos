@@ -131,7 +131,7 @@ def render_key_drivers(simulation_data: dict) -> dict:
     # Simulation depth
     total_sims = simulation_data.get('total_sims', 0)
     if total_sims > 0:
-        drivers.append(f"Simulation depth: {total_sims:,} Monte Carlo iterations")
+        drivers.append(f"Intelligence Cycles: {total_sims:,} cycles processed")
     
     return {
         'title': 'Key Drivers',

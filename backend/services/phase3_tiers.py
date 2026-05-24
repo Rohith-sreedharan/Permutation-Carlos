@@ -1,10 +1,11 @@
 """
 Phase 3 Tier Definitions — Source of Truth
-Three purchasable tiers as per Phase 3A.4 directive.
+Purchasable tiers as per Phase 3A.4 directive + PF-5 SimSports API schema.
 
 Intelligence Preview  — $0/month  — track record only, zero intelligence outputs
 Syndicate             — $39/month — Telegram channel access only, no web platform
 Platform              — $97/month — full platform + Parlay Architect, all features
+SimSports API         — not marketed externally — schema defined per spec requirement
 """
 
 from __future__ import annotations
@@ -58,8 +59,25 @@ TIERS: Dict[str, Dict[str, Any]] = {
             "telegram_signals": True,
             "parlay_architect": True,         # Parlay Architect included
             "api_access": True,
+            "simsports_api_access": False,
         },
         "description": "Full platform. Parlay Architect included. All features. No holdbacks.",
+    },
+    "simsports_api": {
+        "display_name": "SimSports API",
+        "price_monthly_usd": 0.00,
+        "stripe_product_id": None,            # not marketed externally
+        "stripe_price_id": None,
+        "features": {
+            "web_platform": False,
+            "intelligence_outputs": True,
+            "track_record": True,
+            "telegram_signals": False,
+            "parlay_architect": False,
+            "api_access": True,
+            "simsports_api_access": True,     # direct SimSports API access
+        },
+        "description": "SimSports API entitlement. Schema required by spec. Not marketed to end users.",
     },
 }
 

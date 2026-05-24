@@ -49,7 +49,7 @@ export default function TermsOfService() {
         <Section title="2. Nature of the Platform — No Wagering">
           <p>
             BeatVegas is an <strong>analytics intelligence platform</strong>. The Platform uses
-            Monte Carlo simulation, statistical modeling, and algorithmic decision engines to
+            Intelligence Cycle analysis, statistical modeling, and algorithmic decision engines to
             generate analytical outputs about sporting events. These outputs include probability
             estimates, edge classifications, and confidence indicators.
           </p>

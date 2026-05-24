@@ -395,7 +395,7 @@ def root():
         "service": "BeatVegas & Omni Edge AI Platform",
         "version": "2.0.0",
         "features": [
-            "Monte Carlo Simulations (10K-100K iterations)",
+            "Intelligence Cycles (10K-100K iterations)",
             "Multi-Agent AI System (7 specialized agents)",
             "Tiered Subscriptions (Starter/Pro/Sharps Room/Founder)",
             "CLV Tracking (Pro+)",
