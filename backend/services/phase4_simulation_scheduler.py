@@ -244,7 +244,7 @@ def _write_phase4_decision_record(result: Dict[str, Any], run_id: str) -> Option
         }
 
         # Atomic idempotency: one record per (event_id, run_id)
-        existing = db["phase4_decision_records"].find_one_and_update(
+        existing = _db["phase4_decision_records"].find_one_and_update(
             {"event_id": result["event_id"], "run_id": run_id},
             {"$setOnInsert": doc},
             upsert=True,
