@@ -359,7 +359,7 @@ export const getTopAnalysts = async (): Promise<TopAnalyst[]> => {
 export const getUserProfile = async () => {
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/account/profile`, { headers });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch profile');
     const data = await safeJsonParse(res);
     return data.profile || data;
