@@ -100,7 +100,7 @@ _TEMPLATES: dict = {
         "subject":     "Welcome to BeatVegas",
         "body": (
             "Welcome to BeatVegas — the agentic simulation intelligence platform. "
-            "BeatVegas is not a sportsbook. No bet placement. No wagering. "
+            "BeatVegas does not facilitate bet placement. All outputs are informational only. "
             "Institutional-grade analytics, delivered by autonomous agents. "
             "Complete your onboarding to unlock your intelligence dashboard."
         ),
