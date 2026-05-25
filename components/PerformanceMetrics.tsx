@@ -1,5 +1,26 @@
 import React, { useEffect, useState } from 'react';
 
+// Inline tooltip helper
+const TT: React.FC<{ tip: string; children: React.ReactNode }> = ({ tip, children }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex items-center gap-1">
+      {children}
+      <span
+        className="cursor-help text-light-gray/60 hover:text-light-gray text-[10px]"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onTouchStart={() => setShow(v => !v)}
+      >&#9432;</span>
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-64 text-xs text-white bg-charcoal rounded px-3 py-2 shadow-xl pointer-events-none whitespace-normal border border-navy">
+          {tip}
+        </span>
+      )}
+    </span>
+  );
+};
+
 export interface PerformanceMetrics {
   brier_score: number;
   log_loss: number;
@@ -144,7 +165,11 @@ const PerformanceMetricsDashboard: React.FC<PerformanceMetricsProps> = ({ userId
       {/* Core Metrics Grid */}
       <div className="grid md:grid-cols-4 gap-4">
         <div className="bg-navy rounded-lg p-4">
-          <div className="text-sm text-light-gray mb-1">Brier Score</div>
+          <div className="text-sm text-light-gray mb-1">
+            <TT tip="Mean squared error between predicted probabilities and outcomes. Lower is better. Elite threshold: &lt;0.20. Perfect calibration = 0.">
+              Brier Score
+            </TT>
+          </div>
           <div className={`text-2xl font-bold ${metrics.brier_score < 0.20 ? 'text-neon-green' : metrics.brier_score < 0.25 ? 'text-gold' : 'text-bold-red'}`}>
             {metrics.brier_score.toFixed(4)}
           </div>
@@ -174,7 +199,11 @@ const PerformanceMetricsDashboard: React.FC<PerformanceMetricsProps> = ({ userId
         </div>
 
         <div className="bg-navy rounded-lg p-4">
-          <div className="text-sm text-light-gray mb-1">CLV</div>
+          <div className="text-sm text-light-gray mb-1">
+            <TT tip="Closing Line Value: compares the line you captured vs. the closing line. Positive CLV means you consistently found better prices than the final market. Strong long-run edge indicator.">
+              CLV
+            </TT>
+          </div>
           <div className={`text-2xl font-bold ${metrics.clv > 3 ? 'text-neon-green' : metrics.clv > 0 ? 'text-electric-blue' : 'text-bold-red'}`}>
             {metrics.clv > 0 ? '+' : ''}{metrics.clv.toFixed(2)}%
           </div>

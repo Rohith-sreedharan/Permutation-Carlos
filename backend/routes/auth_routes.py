@@ -89,11 +89,26 @@ def register_user(payload: UserRegistration):
         "iteration_limit": 10000,  # FREE tier gets 10,000 iterations
         "simulations_today": 0,  # Track daily simulation count
         "last_simulation_date": None,  # Track last simulation date
+        "onboarding_complete": False,  # Phase 5A: gates dashboard access
+        "credits_used": 0,  # Phase 5B: tracks credit usage for upgrade prompt
         "created_at": now,
     }
 
     res = users.insert_one(user_doc)
-    return {"status": "ok", "user_id": str(res.inserted_id), "email": payload.email}
+    user_id = str(res.inserted_id)
+
+    # Phase 5B AC-1: Trigger Growth Agent onboarding sequence within 60 seconds
+    try:
+        from services.phase5_growth_agent import growth_agent
+        growth_agent.trigger_onboarding_sequence(user_id=user_id)
+    except Exception as _ga_exc:
+        # Non-fatal — registration succeeds even if growth agent call fails
+        import logging
+        logging.getLogger(__name__).error(
+            f"[auth_routes] Growth Agent onboarding trigger failed for user_id={user_id}: {_ga_exc}"
+        )
+
+    return {"status": "ok", "user_id": user_id, "email": payload.email}
 
 
 @router.post("/token")

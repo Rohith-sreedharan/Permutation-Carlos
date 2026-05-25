@@ -365,6 +365,27 @@ export const getUserProfile = async () => {
     return data.profile || data;
 };
 
+// Phase 5A: Onboarding status and completion —————————————————————————————————
+/** Returns { onboarding_complete, user_id, email, tier }. Does NOT clear token on 401. */
+export const getOnboardingStatus = async (): Promise<{ onboarding_complete: boolean; user_id: string; email: string; tier: string }> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/onboarding/status`, { headers });
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch onboarding status');
+    return safeJsonParse(res);
+};
+
+/** Marks onboarding as complete on the server. Called only from OnboardingWizard screen 3. */
+export const completeOnboarding = async (): Promise<void> => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/onboarding/complete`, {
+        method: 'POST',
+        headers,
+    });
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to complete onboarding');
+};
+
 export const getUserWallet = async () => {
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/account/wallet`, { headers });

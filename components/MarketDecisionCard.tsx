@@ -6,10 +6,44 @@
  * Uses cardMarketSignal.ts renderer - NO per-component logic.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertCircle, RotateCw } from 'lucide-react';
 import { MarketDecision } from '../types/MarketDecision';
 import { renderMarketSignalCard, getSportLabel } from '../utils/cardMarketSignal';
+
+// ── Inline tooltip ────────────────────────────────────────────────────────────
+const TT: React.FC<{ tip: string; children: React.ReactNode }> = ({ tip, children }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex items-center gap-1">
+      {children}
+      <span
+        className="cursor-help text-gray-400 hover:text-gray-600 text-[10px] select-none"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onTouchStart={() => setShow(v => !v)}
+        aria-label="More info"
+      >ⓘ</span>
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 w-60 text-xs text-white bg-gray-900 rounded px-3 py-2 shadow-xl pointer-events-none whitespace-normal border border-gray-700">
+          {tip}
+        </span>
+      )}
+    </span>
+  );
+};
+
+// ── Classification tooltip copy ───────────────────────────────────────────────
+const CLASSIFICATION_TIPS: Record<string, string> = {
+  EDGE: 'Model probability exceeds market-implied probability by a meaningful threshold — a statistically significant divergence.',
+  LEAN: 'Directional signal present: model diverges from market, but gap is below the EDGE threshold. Informational only.',
+  MARKET_ALIGNED: 'Model and market agree. No divergence detected. No actionable signal.',
+};
+
+function getClassificationTip(label: string): string {
+  const key = Object.keys(CLASSIFICATION_TIPS).find(k => label.toUpperCase().includes(k));
+  return key ? CLASSIFICATION_TIPS[key] : 'Intelligence classification produced by the simulation agent.';
+}
 
 interface MarketDecisionCardProps {
   decision: MarketDecision | null;
@@ -89,7 +123,9 @@ const MarketDecisionCard: React.FC<MarketDecisionCardProps> = ({
               rendered.classificationColor.bg
             } ${rendered.classificationColor.text}`}
           >
-            {rendered.classificationLabel}
+            <TT tip={getClassificationTip(rendered.classificationLabel)}>
+              {rendered.classificationLabel}
+            </TT>
           </span>
         </div>
         {rendered.isBlocked && rendered.blockedReason && (
@@ -118,11 +154,19 @@ const MarketDecisionCard: React.FC<MarketDecisionCardProps> = ({
       {!rendered.isBlocked && (
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-blue-50 rounded p-2">
-            <p className="text-xs text-gray-600 mb-1">Model Prob</p>
+            <p className="text-xs text-gray-600 mb-1">
+              <TT tip="Probability assigned by the simulation model after running deterministic agent iterations.">
+                Model Prob
+              </TT>
+            </p>
             <p className="text-sm font-bold text-blue-900">{rendered.modelProbDisplay}</p>
           </div>
           <div className="bg-gray-50 rounded p-2">
-            <p className="text-xs text-gray-600 mb-1">Market Prob</p>
+            <p className="text-xs text-gray-600 mb-1">
+              <TT tip="Market-implied probability derived from the closing line, after removing the bookmaker's margin (vig).">
+                Market Prob
+              </TT>
+            </p>
             <p className="text-sm font-bold text-gray-900">{rendered.marketProbDisplay}</p>
           </div>
         </div>

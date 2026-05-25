@@ -103,4 +103,22 @@ AGENT_CONFIG: dict = {
         "email_from_address": os.getenv("EMAIL_FROM", "noreply@beatvegas.app"),
         "password_reset_expiry_minutes": int(os.getenv("PWD_RESET_EXPIRY_MIN", "15")),
     },
+
+    # ── Phase 5 Growth Agent ─────────────────────────────────────────────────
+    "phase5": {
+        # Identity — LOCKED — never change
+        "growth_agent_id": "agent.growth.v1",
+        # Onboarding sequence timing
+        "onboarding_step1_max_delay_seconds": int(os.getenv("P5_STEP1_MAX_DELAY_SEC", "60")),
+        "onboarding_step2_delay_hours": int(os.getenv("P5_STEP2_DELAY_HRS", "24")),
+        "onboarding_step3_delay_hours": int(os.getenv("P5_STEP3_DELAY_HRS", "48")),
+        # Credit usage thresholds — all configurable, zero hardcoded
+        "upgrade_prompt_threshold_pct": int(os.getenv("P5_UPGRADE_THRESHOLD_PCT", "80")),
+        "low_balance_threshold_pct": int(os.getenv("P5_LOW_BALANCE_PCT", "90")),
+        # Re-engagement and expiry thresholds
+        "reengagement_inactivity_days": int(os.getenv("P5_REENGAGEMENT_DAYS", "7")),
+        "credit_expiry_warning_days": int(os.getenv("P5_CREDIT_EXPIRY_WARN_DAYS", "3")),
+        # Platform pricing — shown in upgrade prompt
+        "platform_price_monthly": os.getenv("P5_PLATFORM_PRICE", "$97/month"),
+    },
 }
