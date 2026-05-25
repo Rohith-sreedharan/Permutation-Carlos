@@ -683,7 +683,7 @@ export const getSubscriptionStatus = async (): Promise<{
 }> => {
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/subscription/status`, { headers });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch subscription');
     return safeJsonParse(res);
 };
