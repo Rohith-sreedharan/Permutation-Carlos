@@ -43,6 +43,8 @@ _PROHIBITED_PATTERNS = [
     "pick of the day", "best pick", "lock of the week",
     # Explicit gambling terms
     "gamble", "gambling", "wager",
+    # Monetary betting constructs
+    "bet $", "bet £", "bet €",
 ]
 
 
@@ -208,18 +210,20 @@ class GrowthAgent:
     ) -> str:
         """Append a sent-message record. Returns message_id."""
         message_id = str(uuid.uuid4())
+        body = _TEMPLATES.get(template_id, {}).get("body", "")
         db["outbound_communication_log"].insert_one({
-            "message_id":  message_id,
-            "user_id":     user_id,
-            "campaign_id": campaign_id,
-            "template_id": template_id,
-            "channel":     channel,
-            "sent_at_utc": self._now(),
-            "delivered":   True,
-            "opened":      False,
-            "converted":   False,
-            "agent_id":    self.AGENT_ID,
-            "trace_id":    trace_id,
+            "message_id":   message_id,
+            "user_id":      user_id,
+            "campaign_id":  campaign_id,
+            "template_id":  template_id,
+            "message_body": body,
+            "channel":      channel,
+            "sent_at_utc":  self._now(),
+            "delivered":    True,
+            "opened":       False,
+            "converted":    False,
+            "agent_id":     self.AGENT_ID,
+            "trace_id":     trace_id,
         })
         return message_id
 

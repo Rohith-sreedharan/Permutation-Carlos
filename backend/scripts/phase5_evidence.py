@@ -128,22 +128,15 @@ if user_id:
 section("AC-2 — Dashboard gate enforced (API level, not just UI redirect)")
 
 # Get a valid token for the new user (onboarding_complete=False)
+# Login endpoint is POST /api/token (OAuth2PasswordRequestForm — form data)
 token = None
-login_resp = requests.post(f"{BASE_URL}/api/auth/login", json={
-    "email":    TEST_EMAIL,
-    "password": TEST_PASSWORD,
-}, timeout=10)
-info(f"POST /api/auth/login → HTTP {login_resp.status_code}")
+login_resp = requests.post(f"{BASE_URL}/api/token",
+    data={"username": TEST_EMAIL, "password": TEST_PASSWORD},
+    timeout=10)
+info(f"POST /api/token → HTTP {login_resp.status_code}")
 if login_resp.status_code == 200:
     token = login_resp.json().get("access_token")
     ok(f"Token obtained (token[:40]={str(token)[:40]}…)")
-else:
-    # fallback: try token endpoint
-    tok_resp = requests.post(f"{BASE_URL}/token",
-        data={"username": TEST_EMAIL, "password": TEST_PASSWORD},
-        timeout=10)
-    if tok_resp.status_code == 200:
-        token = tok_resp.json().get("access_token")
 
 if not token:
     fail("Could not obtain JWT — skipping AC-2")
@@ -251,20 +244,21 @@ try:
         else:
             fail(f"ALLOWED — should have been blocked")
 
-    # Confirm CRITICAL sentinel event was logged
+    # Confirm CRITICAL sentinel event was logged (schema: severity, event_type, agent_id)
     time.sleep(0.5)  # brief wait for any async writes
     critical_entries = list(sentinel.find(
-        {"level": "CRITICAL", "component": {"$regex": "growth_agent", "$options": "i"}},
+        {"severity": "CRITICAL", "agent_id": "agent.growth.v1"},
     ).sort("timestamp", -1).limit(3))
 
     if critical_entries:
         ok(f"CRITICAL sentinel event(s) found: {len(critical_entries)}")
         for e in critical_entries:
             dump("Sentinel CRITICAL entry", {
-                "level":     e.get("level"),
-                "component": e.get("component"),
-                "message":   str(e.get("message", ""))[:200],
-                "timestamp": str(e.get("timestamp")),
+                "severity":   e.get("severity"),
+                "event_type": e.get("event_type"),
+                "agent_id":   e.get("agent_id"),
+                "violations": e.get("violations"),
+                "timestamp":  str(e.get("timestamp")),
             })
     else:
         info("No CRITICAL sentinel entries found — may use logger.critical only (check PM2 logs)")
