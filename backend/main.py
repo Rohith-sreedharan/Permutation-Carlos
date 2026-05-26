@@ -221,6 +221,10 @@ app.include_router(phase4_grading_router)       # Phase 4F: Grading Agent (agent
 app.include_router(phase4_calibration_router)   # Phase 4G: Calibration Agent (agent.calibration.v1)
 app.include_router(onboarding_router)           # Phase 5A: Onboarding gate + /api/games (AC-2)
 
+# ── Phase 6: Distribution Agent + Parlay Engine + CI Drift Audit ─────────────
+from routes.phase6_routes import router as phase6_router
+app.include_router(phase6_router)               # Phase 6: agent.distribution.v1 + Parlay engine
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, connection_id: str | None = None):

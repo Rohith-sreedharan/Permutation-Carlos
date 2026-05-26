@@ -121,4 +121,46 @@ AGENT_CONFIG: dict = {
         # Platform pricing — shown in upgrade prompt
         "platform_price_monthly": os.getenv("P5_PLATFORM_PRICE", "$97/month"),
     },
+
+    # ── Phase 6: Distribution Agent + Parlay + CI Drift Audit ────────────────
+    "phase6": {
+        # Identity — LOCKED
+        "distribution_agent_id": "agent.distribution.v1",
+
+        # 6A: Telegram / Distribution
+        "approved_distribution_channels": os.getenv(
+            "APPROVED_TELEGRAM_CHANNELS", ""
+        ).split(","),
+        "autopublish_integrity_violation_sla_seconds": int(
+            os.getenv("P6_INTEGRITY_DISABLE_SLA_SEC", "60")
+        ),
+        "staging_clean_run_hours": int(os.getenv("P6_STAGING_HOURS", "48")),
+
+        # 6A.12: CI Drift Audit thresholds — zero hardcoded values in service files
+        "drift_audit": {
+            "percentile_p75_max_pct": int(os.getenv("P6_DRIFT_P75_MAX_PCT", "80")),
+            "percentile_p25_min_pct": int(os.getenv("P6_DRIFT_P25_MIN_PCT", "10")),
+            "market_type_skew_max_pct": int(os.getenv("P6_DRIFT_MT_SKEW_PCT", "70")),
+            "classification_edge_max_pct": int(os.getenv("P6_DRIFT_EDGE_MAX_PCT", "80")),
+            "volume_variance_min": float(os.getenv("P6_DRIFT_VOL_VARIANCE_MIN", "0.5")),
+            "delay_variance_min": float(os.getenv("P6_DRIFT_DELAY_VARIANCE_MIN", "10.0")),
+        },
+
+        # 6B: Parlay engine
+        "parlay": {
+            "monthly_token_allocation": int(os.getenv("P6_PARLAY_TOKEN_ALLOC", "1500")),
+            "overage_rate_usd_per_token": float(os.getenv("P6_OVERAGE_RATE", "0.02")),
+            "overage_alert_pct": int(os.getenv("P6_OVERAGE_ALERT_PCT", "80")),
+            "max_totals_per_slate": int(os.getenv("P6_MAX_TOTALS_PER_SLATE", "3")),
+            "max_team_exposure": int(os.getenv("P6_MAX_TEAM_EXPOSURE", "2")),
+            # Token cost per leg count (locked)
+            "token_cost": {
+                "2": int(os.getenv("P6_TOKEN_2LEG", "50")),
+                "3": int(os.getenv("P6_TOKEN_3LEG", "75")),
+                "4": int(os.getenv("P6_TOKEN_4LEG", "100")),
+                "5": int(os.getenv("P6_TOKEN_5LEG", "150")),
+                "6": int(os.getenv("P6_TOKEN_6LEG", "200")),
+            },
+        },
+    },
 }
