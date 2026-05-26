@@ -163,4 +163,29 @@ AGENT_CONFIG: dict = {
             },
         },
     },
+
+    # ── Phase 7: Public Trust Record + AOS Trust Monitoring ──────────────────
+    "phase7": {
+        # Sample thresholds — LOCKED, operator-approved.
+        # Hardcoded here once. Referenced from phase7_trust_record.py.
+        # NOT configurable at runtime. NOT overridable via env vars.
+        "N_SEGMENT_MIN": 50,     # Minimum sample per segment before any metric is computed
+        "N_HOMEPAGE_MIN": 200,   # Minimum sample for homepage summary display
+        "N_PROMOTION_MIN": 500,  # Minimum sample for calibration promotion eligibility
+
+        # Sentinel monitoring — configurable, all from env
+        "availability_poll_interval_seconds": int(os.getenv("P7_AVAIL_POLL_SEC", "60")),
+        "availability_response_time_warning_ms": int(os.getenv("P7_AVAIL_WARN_MS", "3000")),
+        "availability_last_known_good_ttl_seconds": int(os.getenv("P7_LKG_TTL_SEC", "86400")),
+
+        # Prohibited language — scanned by AC-5 evidence
+        "prohibited_phrases": [
+            "bet", "betting", "wager", "wagering", "play", "back", "take", "pick",
+            "guaranteed", "lock", "can't lose", "sure thing", "guaranteed winner",
+            "sportsbook", "bookmaker", "bookie", "odds shop",
+            "must bet", "should bet", "hammer", "smash", "load up", "free money",
+            "i recommend", "i'm confident", "trust me", "believe me",
+            "monte carlo simulations",
+        ],
+    },
 }

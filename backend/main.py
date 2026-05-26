@@ -225,6 +225,9 @@ app.include_router(onboarding_router)           # Phase 5A: Onboarding gate + /a
 from routes.phase6_routes import router as phase6_router
 app.include_router(phase6_router)               # Phase 6: agent.distribution.v1 + Parlay engine
 
+from routes.phase7_routes import router as phase7_router
+app.include_router(phase7_router)               # Phase 7: Public Trust Record + AOS Sentinel
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, connection_id: str | None = None):
