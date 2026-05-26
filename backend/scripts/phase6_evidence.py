@@ -405,6 +405,7 @@ overage_user = f"user_ac8_{uuid4().hex[:8]}"
 from datetime import timedelta as _td
 now = datetime.now(timezone.utc)
 period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+_token_ledger = db["parlay_token_ledger"]  # collection shorthand for AC-8
 
 # Insert ledger entry that uses all 1500 tokens
 _token_ledger.insert_one({
