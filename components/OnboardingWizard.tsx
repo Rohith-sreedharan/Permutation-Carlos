@@ -4,7 +4,7 @@
  * Three locked screens. No more. No less. (Phase 5 directive §5A.1)
  *
  * Screen 1 — What BeatVegas Is
- * Screen 2 — Classifications Explained (EDGE, LEAN, MARKET_ALIGNED)
+ * Screen 2 — Classifications Explained (EDGE, LEAN, MARKET_ALIGNED, NO_ACTION, BLOCKED)
  * Screen 3 — Credit System
  *
  * Rules:
@@ -105,10 +105,10 @@ const Screen2: React.FC = () => (
         </svg>
       </div>
       <h2 className="text-2xl font-bold text-white mb-2">Intelligence Classifications</h2>
-      <p className="text-lightGold/70 text-sm">Every decision record carries one of three classifications</p>
+      <p className="text-lightGold/70 text-sm">Every decision record carries one of five classifications</p>
     </div>
 
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="bg-navy/60 border border-green-500/30 rounded-lg p-4">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-bold rounded border border-green-500/40 shrink-0">
@@ -156,6 +156,38 @@ const Screen2: React.FC = () => (
             </p>
             <p className="text-white/50 text-xs mt-1">
               Model and market are aligned — no divergence detected
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-navy/60 border border-blue-400/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-blue-400/20 text-blue-300 text-xs font-bold rounded border border-blue-400/40 shrink-0 whitespace-nowrap">
+            NO_ACTION
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              No material gap detected. Market is efficiently priced for this event.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Divergence below minimum threshold — no signal produced
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-navy/60 border border-red-500/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-red-500/20 text-red-400 text-xs font-bold rounded border border-red-500/40 shrink-0">
+            BLOCKED
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              Analysis unavailable. Triggered by risk controls, integrity check failure, or missing context.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Agent halted — output suppressed by regulatory or integrity controls
             </p>
           </div>
         </div>
