@@ -30,6 +30,7 @@ from services.distribution_agent import (
     get_autopublish_status,
     operator_approve_reenable,
     _set_autopublish_state,
+    _validate_post_candidate,
     AGENT_ID as DIST_AGENT_ID,
 )
 from services.phase6_parlay_engine import (
@@ -90,16 +91,23 @@ candidate_blocked = {
     "classification": "BLOCKED",
 }
 
+# Full path: attempt_post blocks immediately (kill switch OFF in staging — first defence line)
 ac1_result = attempt_post(candidate=candidate_blocked, channel="test_channel", trace_id=str(uuid4()))
 ac1_blocked = ac1_result.get("blocked") is True
-ac1_check = ac1_result.get("validation_check") == "classification_not_blocked"
 ac1_logged = db["distribution_audit_log"].find_one({"decision_id": blocked_decision_id}) is not None
-ac1_pass = ac1_blocked and ac1_logged
 
-print(f"  Post blocked: {ac1_blocked}")
-print(f"  Check name: {ac1_result.get('validation_check')}")
-print(f"  Blocked reason: {ac1_result.get('blocked_reason')}")
-print(f"  Audit log entry: {ac1_logged}")
+# Gate isolation: call _validate_post_candidate directly to prove classification=BLOCKED gate fires
+ac1_gate = _validate_post_candidate(candidate_blocked)
+ac1_gate_check = ac1_gate.get("check") == "classification_not_blocked"
+ac1_gate_invalid = ac1_gate.get("valid") is False
+
+ac1_pass = ac1_blocked and ac1_logged and ac1_gate_check and ac1_gate_invalid
+
+print(f"  attempt_post blocked: {ac1_blocked} (kill switch — first defence line)")
+print(f"  attempt_post audit log entry: {ac1_logged}")
+print(f"  gate isolation check: {ac1_gate.get('check')} (expected: classification_not_blocked)")
+print(f"  gate isolation valid: {ac1_gate.get('valid')} (expected: False)")
+print(f"  gate isolation reason: {ac1_gate.get('reason')}")
 print(f"  attempt_id: {ac1_result.get('attempt_id')}")
 print(f"  AC-1: {PASS if ac1_pass else FAIL}")
 results["AC-1"] = ac1_pass
@@ -185,15 +193,22 @@ candidate_no_id = {
     "generated_at": ts(),
 }
 
+# Full path: attempt_post blocks immediately (kill switch OFF in staging — first defence line)
 ac4_result = attempt_post(candidate=candidate_no_id, channel="test_channel", trace_id=str(uuid4()))
 ac4_blocked = ac4_result.get("blocked") is True
-ac4_reason = "decision_id" in (ac4_result.get("blocked_reason") or "")
 ac4_logged = db["distribution_audit_log"].find_one({"decision_id": None, "validation_result": "FAIL"}) is not None
-ac4_pass = ac4_blocked
 
-print(f"  Post blocked: {ac4_blocked}")
-print(f"  Blocked reason: {ac4_result.get('blocked_reason')}")
-print(f"  validation_check: {ac4_result.get('validation_check')}")
+# Gate isolation: call _validate_post_candidate directly to prove decision_id gate fires
+ac4_gate = _validate_post_candidate(candidate_no_id)
+ac4_gate_check = ac4_gate.get("check") == "decision_id_exists"
+ac4_gate_invalid = ac4_gate.get("valid") is False
+
+ac4_pass = ac4_blocked and ac4_gate_check and ac4_gate_invalid
+
+print(f"  attempt_post blocked: {ac4_blocked} (kill switch — first defence line)")
+print(f"  gate isolation check: {ac4_gate.get('check')} (expected: decision_id_exists)")
+print(f"  gate isolation valid: {ac4_gate.get('valid')} (expected: False)")
+print(f"  gate isolation reason: {ac4_gate.get('reason')}")
 print(f"  Audit log entry: {ac4_logged}")
 print(f"  AC-4: {PASS if ac4_pass else FAIL}")
 results["AC-4"] = ac4_pass
