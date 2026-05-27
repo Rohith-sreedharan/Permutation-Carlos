@@ -82,12 +82,15 @@ class ApprovalCreateRequest(BaseModel):
 
 @router.post("/approvals/create")
 def approvals_create(req: ApprovalCreateRequest, _operator=Depends(require_operator)):
-    return create_approval_request(
-        queue_type=req.queue_type,
-        requested_by_agent=req.requested_by_agent,
-        trace_id=req.trace_id,
-        payload=req.payload,
-    )
+    try:
+        return create_approval_request(
+            queue_type=req.queue_type,
+            requested_by_agent=req.requested_by_agent,
+            trace_id=req.trace_id,
+            payload=req.payload,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/approvals/pending")
