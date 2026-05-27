@@ -496,7 +496,7 @@ class IntegritySentinel:
                 "threshold": metric.threshold,
             },
         }
-        self.db.ops_alerts.insert_one(alert)
+        self.db.ops_alerts.insert_one(alert.copy())
 
         if self.alert_webhook_url:
             try:
