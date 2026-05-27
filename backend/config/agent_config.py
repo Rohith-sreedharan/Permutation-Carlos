@@ -188,4 +188,37 @@ AGENT_CONFIG: dict = {
             "monte carlo simulations",
         ],
     },
+
+    # ── Phase 8: Observability + Full AOS Activation ───────────────────────
+    "phase8": {
+        # Canonical identities
+        "sentinel_agent_id": "agent.sentinel.v1",
+        "response_agent_id": "agent.response.v1",
+        "recovery_agent_id": "agent.recovery.v1",
+        "grading_agent_id": "agent.grading.v1",
+        "calibration_agent_id": "agent.calibration.v1",
+        "distribution_agent_id": "agent.distribution.v1",
+        "growth_agent_id": "agent.growth.v1",
+
+        # Operator auth (separate JWT domain from user auth)
+        "operator_jwt_algorithm": os.getenv("OPERATOR_JWT_ALGORITHM", "HS256"),
+        "operator_jwt_expire_minutes": int(os.getenv("OPERATOR_JWT_EXPIRE_MIN", "60")),
+        "operator_team": [
+            x.strip() for x in os.getenv("OPERATOR_TEAM_IDS", "op_001").split(",") if x.strip()
+        ],
+
+        # Observability thresholds
+        "integrity_violation_rate_critical_pct": float(os.getenv("P8_INTEGRITY_CRIT_PCT", "0.5")),
+        "snapshot_mismatch_rate_warning": float(os.getenv("P8_SNAPSHOT_MISMATCH_WARN", "0")),
+        "decision_write_failures_critical": int(os.getenv("P8_DECISION_WRITE_FAIL_CRIT", "1")),
+        "publish_failure_rate_critical_pct": float(os.getenv("P8_PUBLISH_FAIL_CRIT_PCT", "1")),
+        "feed_staleness_warning_minutes": int(os.getenv("P8_FEED_STALENESS_WARN_MIN", "15")),
+        "api_p95_latency_warning_ms": int(os.getenv("P8_API_P95_WARN_MS", "2000")),
+        "billing_write_fail_critical": int(os.getenv("P8_BILLING_FAIL_CRIT", "1")),
+        "agent_heartbeat_silence_warning_minutes": int(os.getenv("P8_HEARTBEAT_WARN_MIN", "5")),
+
+        # Severity response windows
+        "critical_escalate_minutes": int(os.getenv("P8_CRITICAL_ESCALATE_MIN", "15")),
+        "warning_response_minutes": int(os.getenv("P8_WARNING_RESPONSE_MIN", "30")),
+    },
 }

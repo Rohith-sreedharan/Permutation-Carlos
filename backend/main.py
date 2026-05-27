@@ -228,6 +228,9 @@ app.include_router(phase6_router)               # Phase 6: agent.distribution.v1
 from routes.phase7_routes import router as phase7_router
 app.include_router(phase7_router)               # Phase 7: Public Trust Record + AOS Sentinel
 
+from routes.phase8_routes import router as phase8_router
+app.include_router(phase8_router)               # Phase 8: Recovery Agent + Operator approvals + AOS activation
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, connection_id: str | None = None):
