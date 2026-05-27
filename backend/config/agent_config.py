@@ -203,6 +203,10 @@ AGENT_CONFIG: dict = {
         # Operator auth (separate JWT domain from user auth)
         "operator_jwt_algorithm": os.getenv("OPERATOR_JWT_ALGORITHM", "HS256"),
         "operator_jwt_expire_minutes": int(os.getenv("OPERATOR_JWT_EXPIRE_MIN", "60")),
+        "OPERATOR_TEAM": [
+            x.strip() for x in os.getenv("OPERATOR_TEAM_IDS", "op_001").split(",") if x.strip()
+        ],
+        # Backward-compatible alias
         "operator_team": [
             x.strip() for x in os.getenv("OPERATOR_TEAM_IDS", "op_001").split(",") if x.strip()
         ],

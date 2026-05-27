@@ -6,6 +6,7 @@ import TermsOfService from './components/TermsOfService';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import WaitlistPage from './components/WaitlistPage';
 import PerformancePage from './components/PerformancePage';
+import OpsDashboard from './components/OpsDashboard';
 import { getOnboardingStatus } from './services/api';
 
 // Public routes — accessible without authentication
@@ -14,6 +15,7 @@ const PUBLIC_ROUTES: Record<string, React.FC> = {
   '/privacy': PrivacyPolicy,
   '/waitlist': WaitlistPage,
   '/performance': PerformancePage,
+  '/ops/dashboard': OpsDashboard,
 };
 
 export default function App() {

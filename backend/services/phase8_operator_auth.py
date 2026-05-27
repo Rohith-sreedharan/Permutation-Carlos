@@ -24,6 +24,11 @@ def _secret() -> str:
     return secret
 
 
+def _operator_team() -> list[str]:
+    cfg = AGENT_CONFIG["phase8"]
+    return cfg.get("OPERATOR_TEAM", cfg.get("operator_team", []))
+
+
 def create_operator_token(operator_id: str, role: str = "operator") -> str:
     cfg = AGENT_CONFIG["phase8"]
     now = datetime.now(timezone.utc)
@@ -36,6 +41,12 @@ def create_operator_token(operator_id: str, role: str = "operator") -> str:
     return pyjwt.encode(payload, _secret(), algorithm=cfg["operator_jwt_algorithm"])
 
 
+def decode_operator_token(token: str) -> Dict:
+    cfg = AGENT_CONFIG["phase8"]
+    payload = pyjwt.decode(token, _secret(), algorithms=[cfg["operator_jwt_algorithm"]])
+    return payload
+
+
 def require_operator(authorization: str = Header(default="")) -> Dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Operator Authorization header required")
@@ -44,8 +55,18 @@ def require_operator(authorization: str = Header(default="")) -> Dict:
     cfg = AGENT_CONFIG["phase8"]
 
     try:
-        payload = pyjwt.decode(token, _secret(), algorithms=[cfg["operator_jwt_algorithm"]])
+        payload = decode_operator_token(token)
     except Exception:
+        # If this looks like a valid regular user JWT, return 403 (wrong token domain).
+        user_secret = os.getenv("JWT_SECRET_KEY", "")
+        if user_secret:
+            try:
+                pyjwt.decode(token, user_secret, algorithms=[cfg["operator_jwt_algorithm"]])
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Regular user JWT is not allowed for operator endpoints")
+            except HTTPException:
+                raise
+            except Exception:
+                pass
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid operator token")
 
     operator_id = payload.get("operator_id")
@@ -53,7 +74,7 @@ def require_operator(authorization: str = Header(default="")) -> Dict:
     if role != "operator" or not operator_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operator token missing required claims")
 
-    if operator_id not in cfg["operator_team"]:
+    if operator_id not in _operator_team():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operator is not authorized")
 
     return payload

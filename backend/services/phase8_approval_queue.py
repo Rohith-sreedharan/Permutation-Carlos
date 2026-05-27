@@ -49,9 +49,9 @@ def decide_approval(
     trace_id: Optional[str] = None,
     note: Optional[str] = None,
 ) -> Dict[str, Any]:
-    normalized = decision.upper().strip()
-    if normalized not in {"APPROVED", "REJECTED"}:
-        raise ValueError("decision must be APPROVED or REJECTED")
+    normalized = decision.strip().lower()
+    if normalized not in {"approved", "rejected"}:
+        raise ValueError("decision must be approved or rejected")
 
     base = _approval_col.find_one({"approval_id": approval_id}, {"_id": 0}, sort=[("logged_at_utc", 1)])
     if not base:
