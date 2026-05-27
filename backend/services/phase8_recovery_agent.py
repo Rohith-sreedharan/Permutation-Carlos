@@ -97,9 +97,9 @@ def evaluate_recovery(
         "created_at_utc": now,
     }
 
-    _recovery_log.insert_one(row)
+    _recovery_log.insert_one({**row})
     logger.info("[%s] recovery evaluation logged recovery_id=%s severity=%s status=%s", AGENT_ID, recovery_id, sev, status)
-    return row
+    return {k: v for k, v in row.items() if k != "_id"}
 
 
 def operator_approve_recovery(
@@ -135,8 +135,8 @@ def operator_approve_recovery(
         "details": {"approved_from_recovery_id": recovery_id},
         "created_at_utc": now,
     }
-    _recovery_log.insert_one(approval_event)
-    return approval_event
+    _recovery_log.insert_one({**approval_event})
+    return {k: v for k, v in approval_event.items() if k != "_id"}
 
 
 def latest_recovery(limit: int = 20) -> list:

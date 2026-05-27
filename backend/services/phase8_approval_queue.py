@@ -37,8 +37,8 @@ def create_approval_request(
         "payload": payload or {},
         "logged_at_utc": _now_iso(),
     }
-    _approval_col.insert_one(row)
-    return row
+    _approval_col.insert_one({**row})
+    return {k: v for k, v in row.items() if k != "_id"}
 
 
 def decide_approval(
@@ -69,8 +69,8 @@ def decide_approval(
         "payload": {"note": note} if note else {},
         "logged_at_utc": _now_iso(),
     }
-    _approval_col.insert_one(row)
-    return row
+    _approval_col.insert_one({**row})
+    return {k: v for k, v in row.items() if k != "_id"}
 
 
 def get_pending_approvals(limit: int = 100) -> List[Dict[str, Any]]:
