@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from db.mongo import db
 
@@ -17,6 +17,16 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _require_uuid_trace_id(trace_id: str) -> str:
+    value = (trace_id or "").strip()
+    if not value:
+        raise ValueError("trace_id is required and must be a UUID")
+    try:
+        return str(UUID(value))
+    except Exception as exc:
+        raise ValueError("trace_id must be a valid UUID") from exc
+
+
 def create_approval_request(
     *,
     queue_type: str,
@@ -24,6 +34,7 @@ def create_approval_request(
     trace_id: str,
     payload: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    normalized_trace_id = _require_uuid_trace_id(trace_id)
     approval_id = str(uuid4())
     row = {
         "event_id": str(uuid4()),
@@ -33,7 +44,7 @@ def create_approval_request(
         "requested_by_agent": requested_by_agent,
         "decision": "PENDING",
         "operator_id": None,
-        "trace_id": trace_id,
+        "trace_id": normalized_trace_id,
         "payload": payload or {},
         "logged_at_utc": _now_iso(),
     }
@@ -57,6 +68,9 @@ def decide_approval(
     if not base:
         raise ValueError(f"approval_id not found: {approval_id}")
 
+    resolved_trace_id = trace_id if trace_id is not None else base.get("trace_id", "")
+    normalized_trace_id = _require_uuid_trace_id(resolved_trace_id)
+
     row = {
         "event_id": str(uuid4()),
         "event_type": "APPROVAL_DECIDED",
@@ -65,7 +79,7 @@ def decide_approval(
         "requested_by_agent": base.get("requested_by_agent"),
         "decision": normalized,
         "operator_id": operator_id,
-        "trace_id": trace_id or base.get("trace_id"),
+        "trace_id": normalized_trace_id,
         "payload": {"note": note} if note else {},
         "logged_at_utc": _now_iso(),
     }

@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { API_BASE_URL } from '../services/api';
 
 interface DashboardPayload {
   agent_status_grid: Array<{
     agent_id: string;
     status: string;
+    last_heartbeat_utc: string | null;
     recent_event_count: number;
     latest_event?: Record<string, unknown> | null;
   }>;
@@ -48,16 +50,25 @@ export default function OpsDashboard() {
 
   useEffect(() => {
     if (!token) return;
-    fetch('/api/phase8/dashboard/overview', {
+    fetch(`${API_BASE_URL}/api/phase8/dashboard/overview`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(async (r) => {
         setStatus(r.status);
-        if (!r.ok) {
-          const txt = await r.text();
-          throw new Error(`HTTP ${r.status}: ${txt}`);
+        const bodyText = await r.text();
+        if (bodyText.trim().startsWith('<')) {
+          throw new Error(`HTTP ${r.status}: Received HTML instead of JSON from ${API_BASE_URL}/api/phase8/dashboard/overview`);
         }
-        return r.json();
+        let json: unknown;
+        try {
+          json = JSON.parse(bodyText);
+        } catch {
+          throw new Error(`HTTP ${r.status}: Invalid JSON payload from dashboard endpoint`);
+        }
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}: ${JSON.stringify(json)}`);
+        }
+        return json;
       })
       .then((json) => {
         setData(json as DashboardPayload);
@@ -103,11 +114,21 @@ export default function OpsDashboard() {
                 'Agent Status Grid',
                 <div className="space-y-2 text-sm">
                   {data.agent_status_grid.map((a) => (
-                    <div key={a.agent_id} className="flex items-center justify-between rounded border border-slate-700 p-2">
-                      <span>{a.agent_id}</span>
-                      <span className={a.status === 'ACTIVE' ? 'text-emerald-400' : 'text-amber-400'}>
-                        {a.status} ({a.recent_event_count})
-                      </span>
+                    <div key={a.agent_id} className="grid grid-cols-1 gap-2 rounded border border-slate-700 p-3 md:grid-cols-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Agent</p>
+                        <p className="font-medium text-slate-100">{a.agent_id}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Last Heartbeat</p>
+                        <p className="font-mono text-xs text-slate-200">{a.last_heartbeat_utc || 'N/A'}</p>
+                      </div>
+                      <div className="md:text-right">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Current Status</p>
+                        <p className={a.status === 'ACTIVE' ? 'font-semibold text-emerald-400' : 'font-semibold text-amber-400'}>
+                          {a.status} ({a.recent_event_count})
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
