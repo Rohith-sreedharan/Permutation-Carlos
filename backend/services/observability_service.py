@@ -304,6 +304,7 @@ class ObservabilityService:
 
         doc = {
             "calibration_record_id": calibration_record_id,
+            "agent_id": "agent.calibration.v1",
             "calibration_version": calibration_version,
             "method": method,
             "trained_on_start": trained_on_start,
@@ -318,6 +319,7 @@ class ObservabilityService:
             "metadata": metadata or {},
             "timestamp": now_iso,
             "created_at_utc": now_iso,
+            "created_at": now_iso,
         }
         self.calibration_collection.insert_one(doc)
         return calibration_record_id
