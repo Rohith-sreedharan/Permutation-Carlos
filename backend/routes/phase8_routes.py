@@ -13,6 +13,7 @@ from services.phase8_approval_queue import (
     get_pending_approvals,
     get_recent_approval_events,
 )
+from services.phase8_response_agent import log_response_action
 
 router = APIRouter(prefix="/api/phase8", tags=["phase8"])
 
@@ -104,3 +105,23 @@ def approvals_decide(approval_id: str, req: ApprovalDecisionRequest, operator=De
 @router.get("/approvals/events")
 def approvals_events(limit: int = Query(default=50, le=500), _operator=Depends(require_operator)):
     return {"rows": get_recent_approval_events(limit=limit)}
+
+
+class ResponseActionRequest(BaseModel):
+    action: str
+    reason: str
+    trace_id: str
+    source_agent_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+@router.post("/response/log-action")
+def response_log_action(req: ResponseActionRequest):
+    """Writes a canonical response_action_log entry as agent.response.v1."""
+    return log_response_action(
+        action=req.action,
+        reason=req.reason,
+        trace_id=req.trace_id,
+        source_agent_id=req.source_agent_id,
+        metadata=req.metadata,
+    )

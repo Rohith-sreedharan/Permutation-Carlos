@@ -209,15 +209,15 @@ def _auto_disable_autopublish(reason: str, trace_id: str) -> None:
     Fires within 60 seconds of detection. Cannot be bypassed.
     """
     _set_autopublish_state(enabled=False, reason=reason)
-    _response_action_col.insert_one({
-        "action_id": str(uuid4()),
-        "agent_id": AGENT_ID,
-        "action": "AUTOPUBLISH_DISABLED",
-        "reason": reason,
-        "trace_id": trace_id,
-        "timestamp_utc": _now_iso(),
-        "re_enable_requires_operator": True,
-    })
+    # Phase 8: response_action_log must use canonical response agent identity.
+    from services.phase8_response_agent import log_response_action
+    log_response_action(
+        action="AUTOPUBLISH_DISABLED",
+        reason=reason,
+        trace_id=trace_id,
+        source_agent_id=AGENT_ID,
+        metadata={"re_enable_requires_operator": True},
+    )
     logger.critical("[%s] AUTOPUBLISH DISABLED — reason=%s", AGENT_ID, reason)
 
 
