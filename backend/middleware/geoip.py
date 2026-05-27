@@ -146,6 +146,11 @@ class GeoIPMiddleware(BaseHTTPMiddleware):
         if not self.enabled:
             return await call_next(request)
 
+        # Phase 8 observability: allow internal metrics scraping regardless of source IP.
+        # This endpoint is read-only and required for Prometheus/Grafana health monitoring.
+        if str(request.url.path) == "/api/phase8/metrics":
+            return await call_next(request)
+
         ip = _get_client_ip(request)
 
         # Always allow localhost (dev / health checks from same host)
