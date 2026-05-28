@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -24,8 +25,19 @@ router = APIRouter(prefix="/api/phase8", tags=["phase8"])
 def _extract_heartbeat_utc(event: Optional[Dict[str, Any]]) -> Optional[str]:
     if not event:
         return None
-    for key in ("heartbeat_at_utc", "timestamp_utc", "created_at_utc", "logged_at_utc", "timestamp"):
+    for key in (
+        "heartbeat_at_utc",
+        "timestamp_utc",
+        "created_at_utc",
+        "logged_at_utc",
+        "timestamp",
+        "graded_at",
+        "sent_at_utc",
+        "created_at",
+    ):
         value = event.get(key)
+        if isinstance(value, datetime):
+            return value.isoformat()
         if isinstance(value, str) and value:
             return value
     return None
@@ -217,6 +229,12 @@ def dashboard_overview(_operator=Depends(require_operator)):
             latest = col.find_one({row["field"]: row["agent_id"]}, {"_id": 0}, sort=[("created_at_utc", -1)])
         if latest is None:
             latest = col.find_one({row["field"]: row["agent_id"]}, {"_id": 0}, sort=[("logged_at_utc", -1)])
+        if latest is None:
+            latest = col.find_one({row["field"]: row["agent_id"]}, {"_id": 0}, sort=[("graded_at", -1)])
+        if latest is None:
+            latest = col.find_one({row["field"]: row["agent_id"]}, {"_id": 0}, sort=[("sent_at_utc", -1)])
+        if latest is None:
+            latest = col.find_one({row["field"]: row["agent_id"]}, {"_id": 0}, sort=[("created_at", -1)])
         states.append({
             "agent_id": row["agent_id"],
             "status": "ACTIVE" if total > 0 else "PAUSED",
