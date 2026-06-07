@@ -8,7 +8,7 @@ Returns all three market decisions in ONE payload.
 Prevents stale mixing across tabs.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 from core.market_decision import (
     GameDecisions, MarketDecision, MarketType, Classification, ReleaseStatus,
@@ -20,9 +20,42 @@ from db.mongo import db
 from db.decision_audit_logger import get_decision_audit_logger
 from db.decision_record_store import get_decision_record_store
 from services.observability_service import observability_service
+from middleware.auth import get_current_user
 import uuid
 
 router = APIRouter()
+
+
+@router.get("/decisions")
+def list_latest_decisions(user: dict = Depends(get_current_user)):
+    """
+    Lightweight authenticated decisions endpoint for dashboard/load-test health checks.
+    Returns the latest 20 decision records in a stable minimal shape.
+    """
+    docs = list(
+        db["decision_records"]
+        .find(
+            {},
+            {
+                "_id": 0,
+                "decision_id": 1,
+                "game_id": 1,
+                "league": 1,
+                "event_id": 1,
+                "classification": 1,
+                "release_status": 1,
+                "timestamp": 1,
+                "created_at": 1,
+            },
+        )
+        .sort("timestamp", -1)
+        .limit(20)
+    )
+
+    return {
+        "count": len(docs),
+        "decisions": docs,
+    }
 
 
 def _market_type_display(market_type: MarketType) -> str:
@@ -269,8 +302,42 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         sort=[("created_at", -1)]  # Latest first
     )
     if not sim_doc:
-        raise HTTPException(status_code=404, detail=f"Simulation not found for {game_id}")
-    
+        # Fail-closed: no simulation available — return BLOCKED decisions (HTTP 200, not 404)
+        market_spread_line = spread_lines.get(home_id, {}).get('line', 0)
+        market_spread_odds = spread_lines.get(home_id, {}).get('odds', -110)
+        total_line = over_outcome.get("point", default_total) if over_outcome else default_total
+        spread_blocked = create_blocked_decision(
+            league=league,
+            game_id=game_id,
+            odds_event_id=f'odds_event_{game_id}',
+            market_type=MarketType.SPREAD,
+            blocked_reason="No simulation data available",
+            release_status=ReleaseStatus.BLOCKED_MISSING_CONTEXT,
+            market_line=market_spread_line,
+            market_odds=market_spread_odds,
+        )
+        total_blocked = create_blocked_decision(
+            league=league,
+            game_id=game_id,
+            odds_event_id=f'odds_event_{game_id}',
+            market_type=MarketType.TOTAL,
+            blocked_reason="No simulation data available",
+            release_status=ReleaseStatus.BLOCKED_MISSING_CONTEXT,
+            market_line=total_line,
+            market_odds=over_odds,
+        )
+        decisions = GameDecisions(
+            spread=spread_blocked,
+            moneyline=None,
+            total=total_blocked,
+            home_team_name=home_team,
+            away_team_name=away_team,
+            inputs_hash="blocked",
+            decision_version="1.0.0",
+            computed_at=datetime.utcnow().isoformat(),
+        )
+        return _normalize_game_decisions_for_api(decisions)
+
     # Extract sharp_analysis structure
     sharp_analysis = sim_doc.get("sharp_analysis", {})
     spread_data = sharp_analysis.get("spread", {})

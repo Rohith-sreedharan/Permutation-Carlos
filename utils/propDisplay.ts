@@ -1,7 +1,7 @@
 import type { EventWithPrediction } from '../types';
 import { normalizeTeamAliasesInText } from './matchupLabel';
 
-export const CANONICAL_PROP_LABEL = 'MODEL MISPRICING — INFORMATIONAL ONLY';
+export const CANONICAL_PROP_LABEL = 'MARKET_ALIGNED';
 
 export const getCanonicalPropHeadline = (event: EventWithPrediction): string => {
   const fromTopPropBet = normalizeTeamAliasesInText(event.top_prop_bet);
