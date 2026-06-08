@@ -518,7 +518,7 @@ export function runPreRenderAssertions(state: GameEdgeState): PreRenderAssertion
     assertion_id: 'OFFICIAL_SIDE_PARITY',
     passed: sideConsistent,
     message: sideConsistent ? 'Official side matches state' : 'Official side present without EDGE/LEAN classification'
-      reason: evPassed ? undefined : getEvFailureMessage(ctx.ev)
+  });
   
   // 4. Bounded metrics in valid range (spot check)
   const spreadConfValid = state.spread_context.confidence_score >= 0 && state.spread_context.confidence_score <= 100;
