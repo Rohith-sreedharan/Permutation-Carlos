@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { loginUser, registerUser, verify2FALogin, beginPasskeyLogin, completePasskeyLogin } from '../services/api';
 import Swal from 'sweetalert2';
+
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+const APPLE_CLIENT_ID = (import.meta as any).env?.VITE_APPLE_CLIENT_ID || '';
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
@@ -12,8 +15,81 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(!!APPLE_CLIENT_ID);
+
+  useEffect(() => {
+    // Initialise Apple Sign In SDK once it has loaded
+    const init = () => {
+      const apple = (window as any).AppleID;
+      if (apple && APPLE_CLIENT_ID) {
+        try {
+          apple.auth.init({
+            clientId: APPLE_CLIENT_ID,
+            scope: 'name email',
+            redirectURI: window.location.origin,
+            usePopup: true,
+          });
+          setAppleAvailable(true);
+        } catch (_) {
+          // SDK not ready — silently skip; button stays hidden
+        }
+      }
+    };
+
+    // If the script is already loaded, init immediately
+    if ((window as any).AppleID) {
+      init();
+    } else {
+      // Otherwise wait for DOMContentLoaded / script onload
+      window.addEventListener('AppleIDSignInOnSuccess', init);
+      const timer = setTimeout(init, 1500);
+      return () => {
+        window.removeEventListener('AppleIDSignInOnSuccess', init);
+        clearTimeout(timer);
+      };
+    }
+  }, []);
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const apple = (window as any).AppleID;
+      if (!apple) throw new Error('Apple Sign In is not available in this browser.');
+      const result = await apple.auth.signIn();
+      const id_token = result?.authorization?.id_token;
+      if (!id_token) throw new Error('Apple Sign In did not return a token. Please try again.');
+
+      const resp = await fetch(`${API_BASE_URL}/api/v1/auth/apple`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Apple Sign In failed. Please try again.');
+      }
+      if (data.access_token) {
+        localStorage.setItem('authToken', data.access_token);
+        onAuthSuccess();
+      } else {
+        throw new Error('Sign in failed. Please try again.');
+      }
+    } catch (err: any) {
+      // Apple SDK throws {error: 'popup_closed_by_user'} when user cancels — don't show an error
+      if (err?.error === 'popup_closed_by_user' || err?.error === 'user_cancelled_authorize') {
+        // User dismissed — silent
+      } else {
+        setError(err.message || 'Apple Sign In failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleBiometricLogin = async () => {
     if (!email) {
@@ -246,14 +322,24 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Password
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-4 py-3 bg-black/30 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-gold focus:ring-2 focus:ring-gold/20 transition-all"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 pr-16 bg-black/30 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-gold focus:ring-2 focus:ring-gold/20 transition-all"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-300 hover:text-white"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
 
             {!isLogin && (
@@ -276,14 +362,24 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Confirm Password
                 </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-black/30 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-gold focus:ring-2 focus:ring-gold/20 transition-all"
-                  placeholder="••••••••"
-                />
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    className="w-full px-4 py-3 pr-16 bg-black/30 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:border-gold focus:ring-2 focus:ring-gold/20 transition-all"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-300 hover:text-white"
+                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  >
+                    {showConfirmPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -348,6 +444,33 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               By continuing, you agree to our Terms of Service
             </p>
           </div>
+
+          {/* Phase 12 WS2 — Apple Sign In */}
+          {appleAvailable && (
+            <div className="mt-4">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-700"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-[#0f1419] text-gray-400">or continue with</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAppleSignIn}
+                disabled={loading}
+                aria-label="Sign in with Apple"
+                className="w-full bg-white text-black font-semibold py-3 rounded-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
+              >
+                {/* Apple logo SVG */}
+                <svg viewBox="0 0 814 1000" className="w-5 h-5 fill-black" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.3-150.3-119.9C15.3 737.1 0 569.4 0 512.3c0-220.4 131.1-337.1 260.1-337.1 69.2 0 126.4 45.7 169.3 45.7 41.3 0 106.1-48.3 183.1-48.3 29.2 0 130.1 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
+                </svg>
+                Sign in with Apple
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Bottom tagline */}

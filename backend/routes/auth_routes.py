@@ -45,7 +45,7 @@ def create_access_token(user_id: str, email: str, tier: str) -> str:
 class UserRegistration(BaseModel):
     email: EmailStr
     password: str
-    username: Optional[str]
+    username: Optional[str] = None
 
 
 class PasskeyLoginRequest(BaseModel):
@@ -126,6 +126,19 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
     # Verify password using bcrypt
     if not verify_password(form_data.password, stored_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    if user.get("self_excluded"):
+        trace_id = user.get("self_exclusion_trace_id")
+        db["sentinel_event_log"].insert_one({
+            "event_type": "SELF_EXCLUSION_BYPASS",
+            "severity": "CRITICAL",
+            "user_id": str(user.get("_id")),
+            "trace_id": trace_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agent_id": "agent.sentinel.v1",
+            "reason": "Excluded user attempted login",
+        })
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SELF_EXCLUDED")
 
     # Check if 2FA is enabled
     if user.get("two_factor_enabled"):

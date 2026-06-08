@@ -36,7 +36,7 @@ interface FinalUnifiedSummaryProps {
   awayTeam: string;
 }
 
-const PLATFORM_DISCLAIMER = "Analysis based on the BeatVegas Decision Engine. Not financial advice. Gamble responsibly.";
+const PLATFORM_DISCLAIMER = "BeatVegas provides statistical simulation outputs only - not betting advice. Problem gambling help: 1-800-522-4700 | ncpgambling.org";
 
 export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
   simulation,

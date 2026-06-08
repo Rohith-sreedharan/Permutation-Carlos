@@ -49,17 +49,39 @@ const safeJsonParse = async (response: Response): Promise<any> => {
     }
 };
 
-// --- Token Management ---
+// --- Token Management (Phase 12 WS4: Safari iOS resilience) ---
+//
+// Safari on iOS aggressively clears localStorage when tabs are suspended or
+// when "Prevent Cross-Site Tracking" is active. To survive this:
+//  1. Write token to BOTH localStorage AND sessionStorage on every set.
+//  2. On get, read localStorage first; fall back to sessionStorage if missing.
+//  3. When falling back, re-hydrate localStorage so the token is persistent again.
+//  4. Never store token in plaintext in a non-storage location (Phase 2 requirement).
+//
+// This approach keeps the same API surface — callers use getToken/setToken/removeToken.
+
 export const getToken = (): string | null => {
-    return localStorage.getItem('authToken');
+    let token = localStorage.getItem('authToken');
+    if (!token) {
+        // Safari may have cleared localStorage — check sessionStorage fallback
+        token = sessionStorage.getItem('authToken');
+        if (token) {
+            // Re-hydrate localStorage so the token survives a full tab reload
+            try { localStorage.setItem('authToken', token); } catch (_) { /* storage full */ }
+        }
+    }
+    return token;
 };
 
 export const setToken = (token: string): void => {
     localStorage.setItem('authToken', token);
+    // Mirror to sessionStorage as Safari iOS fallback
+    try { sessionStorage.setItem('authToken', token); } catch (_) { /* private mode */ }
 };
 
 export const removeToken = (): void => {
     localStorage.removeItem('authToken');
+    sessionStorage.removeItem('authToken');
 };
 
 // --- Generic API Request ---
@@ -84,6 +106,12 @@ export const apiRequest = async <T = any>(
 
     if (!response.ok) {
         const errorData = await safeJsonParse(response).catch(() => ({ detail: 'Request failed' }));
+        // Phase 12 WS4: On 401 — token expired or invalid. Clear token and emit a
+        // custom event so App.tsx can redirect to login without a broken UI state.
+        if (response.status === 401) {
+            removeToken();
+            window.dispatchEvent(new CustomEvent('beatvegas:auth:expired'));
+        }
         throw new Error(errorData.detail || `HTTP ${response.status}`);
     }
 
@@ -93,7 +121,7 @@ export const apiRequest = async <T = any>(
 
 // --- Authentication ---
 export const registerUser = async (userData: UserRegistration): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -113,7 +141,7 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
     params.append('username', credentials.email);
     params.append('password', credentials.password);
     
-    const response = await fetch(`${API_BASE_URL}/api/token`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/token`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -139,7 +167,7 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
 };
 
 export const verify2FALogin = async (tempToken: string, code: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_BASE_URL}/api/verify-2fa?temp_token=${encodeURIComponent(tempToken)}&code=${encodeURIComponent(code)}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/verify-2fa?temp_token=${encodeURIComponent(tempToken)}&code=${encodeURIComponent(code)}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -722,6 +750,63 @@ export const getAffiliateEarnings = async (): Promise<{
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch earnings');
     return safeJsonParse(res);
+};
+
+export const submitAffiliateInterest = async (payload: {
+    name: string;
+    email: string;
+    audience_desc?: string | null;
+    audience_size?: string | null;
+    referral_source?: string | null;
+}) => {
+    return apiRequest('/api/v1/affiliate-program/interest', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+};
+
+export const getAffiliateApplicants = async () => {
+    const data = await apiRequest<{ applicants: any[] }>('/api/v1/affiliate-program/aos/applicants');
+    return data.applicants || [];
+};
+
+export const inviteAffiliateApplicant = async (interestId: string, invitedByOperatorId: string) => {
+    return apiRequest(`/api/v1/affiliate-program/aos/applicants/${interestId}/invite`, {
+        method: 'POST',
+        body: JSON.stringify({ invited_by_operator_id: invitedByOperatorId }),
+    });
+};
+
+export const declineAffiliateApplicant = async (interestId: string) => {
+    return apiRequest(`/api/v1/affiliate-program/aos/applicants/${interestId}/decline`, {
+        method: 'POST',
+    });
+};
+
+export const getRecruitmentPopupStatus = async () => {
+    return apiRequest('/api/v1/affiliate-program/recruitment/popup-status');
+};
+
+export const dismissRecruitmentPopup = async () => {
+    return apiRequest('/api/v1/affiliate-program/recruitment/dismiss', { method: 'POST' });
+};
+
+export const getMyAffiliateDashboard = async () => {
+    return apiRequest('/api/v1/affiliate-program/me/dashboard');
+};
+
+export const updateMyNotificationPreference = async (notificationPreference: 'email_only' | 'platform_only' | 'both') => {
+    return apiRequest('/api/v1/affiliate-program/me/notification-preference', {
+        method: 'POST',
+        body: JSON.stringify({ notification_preference: notificationPreference }),
+    });
+};
+
+export const updateMyLeaderboardPreferences = async (displayName: string, optOut: boolean) => {
+    return apiRequest('/api/v1/affiliate-program/me/leaderboard-preferences', {
+        method: 'POST',
+        body: JSON.stringify({ display_name: displayName, opt_out: optOut }),
+    });
 };
 
 // --- Risk Profile ---

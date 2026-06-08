@@ -345,6 +345,11 @@ export function sanitizeVolatility(raw: unknown): SanitizationResult<number> {
   return sanitizeBoundedMetric('volatility', raw, 0, 500);
 }
 
+function getEvFailureMessage(ev: number): string {
+  if (ev < 0) return 'Expected value negative. No actionable edge.';
+  return 'Expected value neutral. No edge detected.';
+}
+
 // ===== BLOCKING RULE ENGINE =====
 
 /**
@@ -359,7 +364,7 @@ export function evaluateSpreadBlockingRules(ctx: SpreadEdgeContext): BlockingRul
     rule_id: 'EV_POSITIVE',
     rule_name: 'EV must be positive',
     passed: evPassed,
-    reason: evPassed ? undefined : `EV ${ctx.ev.toFixed(2)}% <= 0`
+    reason: evPassed ? undefined : getEvFailureMessage(ctx.ev)
   });
   
   // Rule 2: Minimum gap threshold
@@ -420,7 +425,7 @@ export function evaluateTotalBlockingRules(ctx: TotalEdgeContext): BlockingRuleR
     rule_id: 'EV_POSITIVE',
     rule_name: 'EV must be positive',
     passed: evPassed,
-    reason: evPassed ? undefined : `EV ${ctx.ev.toFixed(2)}% <= 0`
+    reason: evPassed ? undefined : getEvFailureMessage(ctx.ev)
   });
   
   // Rule 2: Minimum gap threshold
@@ -513,7 +518,7 @@ export function runPreRenderAssertions(state: GameEdgeState): PreRenderAssertion
     assertion_id: 'OFFICIAL_SIDE_PARITY',
     passed: sideConsistent,
     message: sideConsistent ? 'Official side matches state' : 'Official side present without EDGE/LEAN classification'
-  });
+      reason: evPassed ? undefined : getEvFailureMessage(ctx.ev)
   
   // 4. Bounded metrics in valid range (spot check)
   const spreadConfValid = state.spread_context.confidence_score >= 0 && state.spread_context.confidence_score <= 100;

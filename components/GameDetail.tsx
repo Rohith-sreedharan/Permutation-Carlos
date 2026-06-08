@@ -138,6 +138,22 @@ const getEdgeClassificationLabel = (classification: Classification | string | nu
   return String(classification);
 };
 
+const formatEvRuleForDisplay = (rule: string): string => {
+  const rawEvMatch = rule.match(/EV\s+(-?\d+(?:\.\d+)?)%\s*<=\s*0/i);
+  if (rawEvMatch) {
+    const ev = Number(rawEvMatch[1]);
+    if (ev > 0) return 'Expected value positive. Edge confirmed.';
+    if (ev === 0) return 'Expected value neutral. No edge detected.';
+    return 'Expected value negative. No actionable edge.';
+  }
+
+  if (/expected value/i.test(rule)) {
+    return rule;
+  }
+
+  return rule;
+};
+
 const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [simulation, setSimulation] = useState<MonteCarloSimulation | null>(null);
   const [firstHalfSimulation, setFirstHalfSimulation] = useState<any | null>(null);
@@ -173,17 +189,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const edgeIsBlocked = !!gameEdgeState && !hasOfficialEdge;
 
   const renderSAFEMode = (marketType: string, errors: string[]) => {
+    // Raw errors are logged internally only — never exposed to the user
+    console.error(`[SAFE MODE] ${marketType} integrity errors:`, errors);
     return (
       <div className="p-6 bg-red-900/20 border-2 border-red-500 rounded-lg">
-        <div className="text-red-400 font-bold text-lg mb-2">🚫 SAFE MODE — Data Integrity Issue</div>
-        <div className="text-red-300 text-sm mb-3">
-          {marketType} market analysis unavailable due to integrity violations. Recalculating...
-        </div>
-        <div className="text-xs text-red-300/70 space-y-1 max-h-40 overflow-y-auto">
-          {errors.map((err, idx) => <div key={idx}>• {err}</div>)}
-        </div>
-        <div className="text-xs text-red-300/50 mt-3">
-          This view is blocked to prevent displaying incorrect data. OPTIONAL fields (labels, grades) do not trigger this mode.
+        <div className="text-red-400 font-bold text-lg mb-2">Analysis Temporarily Unavailable</div>
+        <div className="text-red-300 text-sm">
+          {marketType} analysis is temporarily unavailable. Data is being refreshed.
         </div>
       </div>
     );
@@ -1259,7 +1271,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       {gameEdgeState?.failed_blocking_rules.map((rule, idx) => (
                         <li key={idx} className="flex items-start gap-2">
                           <span className="text-gold">•</span>
-                          <span>{rule}</span>
+                          <span>{formatEvRuleForDisplay(rule)}</span>
                         </li>
                       ))}
                     </ul>
@@ -1316,14 +1328,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 <div className="mb-4 p-4 bg-charcoal/50 rounded-lg border border-purple-500/30">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        simulation.sharp_analysis.total.edge_grade === 'S' ? 'bg-purple-600 text-white' :
-                        simulation.sharp_analysis.total.edge_grade === 'A' ? 'bg-green-600 text-white' :
-                        simulation.sharp_analysis.total.edge_grade === 'B' ? 'bg-blue-600 text-white' :
-                        'bg-yellow-600 text-black'
-                      }`}>
-                        {simulation.sharp_analysis.total.edge_grade} GRADE
-                      </div>
                       <div className="text-lg font-bold text-white">
                         {simulation.sharp_analysis.total.sharp_side_display}
                       </div>
@@ -1436,20 +1440,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     </div>
                   </div>
                   
-                  {/* Grade Badge */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      simulation.sharp_analysis.spread.edge_grade === 'S' ? 'bg-purple-600 text-white' :
-                      simulation.sharp_analysis.spread.edge_grade === 'A' ? 'bg-green-600 text-white' :
-                      'bg-blue-600 text-white'
-                    }`}>
-                      {simulation.sharp_analysis.spread.edge_grade} GRADE
-                    </div>
-                    <div className="text-sm text-purple-300">
-                      ({edgePoints.toFixed(1)} pt edge)
-                    </div>
-                  </div>
-                  
                   {/* Market vs Model Spread with TEAM LABELS */}
                   <div className="grid grid-cols-3 gap-3 mb-3">
                     <div className="bg-navy/50 p-3 rounded">
@@ -1539,16 +1529,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         {((gameEdgeState.official_market === 'SPREAD' ? gameEdgeState.spread_context?.edge_gap : gameEdgeState.total_context?.edge_gap) ?? 0).toFixed(1)} pt gap
                       </div>
                       <div className="text-xs font-bold mt-1 text-gold">MEDIUM impact</div>
-                    </div>
-                  )}
-                  {/* Grade */}
-                  {(gameEdgeState.official_market === 'SPREAD' ? gameEdgeState.spread_context?.grade : gameEdgeState.total_context?.grade) && (
-                    <div className="bg-charcoal/50 p-2 rounded border border-gold/10">
-                      <div className="text-xs text-gold font-bold">Quality Grade</div>
-                      <div className="text-xs text-light-gray mt-1">
-                        Grade {gameEdgeState.official_market === 'SPREAD' ? gameEdgeState.spread_context?.grade : gameEdgeState.total_context?.grade}
-                      </div>
-                      <div className="text-xs font-bold mt-1 text-electric-blue">MEDIUM impact</div>
                     </div>
                   )}
                 </div>
