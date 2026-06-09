@@ -351,9 +351,61 @@ async def start_affiliate_trial(
             detail="A trial for this account has already been used.",
         )
 
+    # ── 4a. Device fingerprint deduplication ──────────────────────────────
+    # Same device creating a second trial within 30 days → TRIAL_ALREADY_USED
+    if body.device_fingerprint:
+        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        existing_device = db["promo_tokens"].find_one({
+            "device_fingerprint": body.device_fingerprint,
+            "redeemed": True,
+            "created_at": {"$gt": thirty_days_ago},
+        })
+        if existing_device:
+            logger.info(
+                "[Trial] DEVICE_FINGERPRINT block: fingerprint=%s user=%s",
+                body.device_fingerprint[:16],
+                user_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="TRIAL_ALREADY_USED",
+            )
+
+    # ── 4b. IP velocity check ─────────────────────────────────────────────
+    # 3+ trial signups from the same IP within 24 hours → flag affiliate
+    twenty_four_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    recent_from_ip = db["promo_tokens"].count_documents({
+        "client_ip": client_ip,
+        "created_at": {"$gt": twenty_four_hours_ago},
+    })
+    if recent_from_ip >= 3:
+        logger.warning(
+            "[Trial] IP_VELOCITY flag: ip=%s affiliate=%s count=%d",
+            client_ip,
+            affiliate_id,
+            recent_from_ip,
+        )
+        # Flag the affiliate for fraud review — non-blocking for user
+        try:
+            db["affiliate_fraud_flags"].insert_one({
+                "affiliate_id": affiliate_id,
+                "reason": "IP_VELOCITY",
+                "client_ip": client_ip,
+                "count_24h": recent_from_ip,
+                "user_id": user_id,
+                "trace_id": trace_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            db["affiliate_accounts"].update_one(
+                {"affiliate_id": affiliate_id},
+                {"$set": {"fraud_hold": True, "fraud_hold_reason": "IP_VELOCITY", "fraud_hold_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        except Exception as _flag_exc:
+            logger.error("[Trial] Fraud flag write failed: %s", _flag_exc)
+
     # user_id already resolved from auth token above (Step Auth)
 
-    # ── 4b. $0 Card Authorization check ───────────────────────────────────
+    # ── 4c. $0 Card Authorization check ───────────────────────────────────
     # Stripe performs a $0 authorization automatically when a PaymentMethod is
     # attached to a subscription with a trial period. We verify it succeeded
     # before granting any entitlement. If it fails we log CARD_AUTH_FAILED and
@@ -419,6 +471,7 @@ async def start_affiliate_trial(
         "trial_duration_hours": trial_hours,
         "payment_method_fingerprint": pm_fingerprint,
         "device_fingerprint": body.device_fingerprint,
+        "client_ip": client_ip,
         "redeemed": False,
         "expires_at": token_expires_at,
         "created_at": _now_iso(),

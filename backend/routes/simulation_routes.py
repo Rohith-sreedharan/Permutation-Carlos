@@ -41,12 +41,12 @@ _TIER_CYCLE_MAX_MAP = {
 }
 
 
-def _deduct_simulation_cycle(user_id: str, tier: str) -> Optional[HTTPException]:
+def _deduct_simulation_cycle(user_id: str, tier: str):
     """
     Deduct 1 Intelligence Cycle from the user's entitlement budget.
 
-    - Returns None  → cycle deducted, caller continues normally.
-    - Returns HTTPException(402) → budget exhausted, caller must raise it.
+    - Returns (None, balance_dict)  → cycle deducted, caller continues normally.
+    - Returns (HTTPException(402), None) → budget exhausted, caller must raise it.
     - Fires growth_agent.trigger_upgrade_prompt() when crossing the 80% threshold.
     - All limits and costs come from AGENT_CONFIG["cycles"] — zero hardcoded values.
     """
@@ -55,13 +55,13 @@ def _deduct_simulation_cycle(user_id: str, tier: str) -> Optional[HTTPException]
     cfg = AGENT_CONFIG.get("cycles", {})
     max_key = _TIER_CYCLE_MAX_MAP.get(tier)
     if not max_key:
-        return None  # unrecognised or unlimited tier — pass through
+        return None, None  # unrecognised or unlimited tier — pass through
 
     tier_max = cfg.get(max_key, 0)
     if tier_max <= 0:
-        return None  # unlimited tier — pass through
+        return None, None  # unlimited tier — pass through
 
-    cost = cfg.get("cost_per_simulation_view", 1)
+    cost = cfg.get("cost_decision_detail", cfg.get("cost_per_simulation_view", 1000))
     warn_pct = cfg.get("depletion_warn_pct", 80)
     block_pct = cfg.get("depletion_block_pct", 100)
 
@@ -100,10 +100,10 @@ def _deduct_simulation_cycle(user_id: str, tier: str) -> Optional[HTTPException]
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail={
                 "code": "ALLOCATION_EXHAUSTED",
-                "title": "Your Intelligence Cycles have been used.",
+                "title": "Your Intelligence Preview analyses have been used.",
                 "message": (
-                    f"You completed {used // cost} decision analyses on Intelligence Preview. "
-                    "Platform subscribers get 100,000 cycles — 200 analyses."
+                    f"You completed {used // cost} decision analyses on the starter tier. "
+                    "Platform subscribers get 100 full analyses per month."
                 ),
                 "cta_platform": "Subscribe to Platform — $97/month",
                 "cta_platform_url": "https://beatvegas.app/upgrade",
@@ -130,7 +130,14 @@ def _deduct_simulation_cycle(user_id: str, tier: str) -> Optional[HTTPException]
         except Exception as _exc:
             logger.warning("[cycle_deduct] upgrade prompt failed user=%s err=%s", user_id, _exc)
 
-    return None
+    return None, {
+        "cycles_used": new_used,
+        "cycles_remaining": max(0, alloc - new_used),
+        "cycles_allocated": alloc,
+        "analyses_completed": new_used // cost,
+        "analyses_remaining": max(0, (alloc - new_used) // cost),
+        "warn_active": new_pct >= warn_pct,
+    }
 
 
 def _apply_truth_mode_to_simulation(
@@ -319,9 +326,10 @@ async def get_simulation(
         # ── Cycle deduction gate ──────────────────────────────────────────────
         # Deduct 1 Intelligence Cycle for authenticated users with a tracked tier.
         # Returns 402 if the budget is exhausted before serving the simulation.
+        _cycle_balance = None
         if current_user:
             _user_id = str(current_user.get("_id", current_user.get("id", "")))
-            _gate = _deduct_simulation_cycle(_user_id, user_tier)
+            _gate, _cycle_balance = _deduct_simulation_cycle(_user_id, user_tier)
             if _gate:
                 raise _gate
 
@@ -687,6 +695,10 @@ async def get_simulation(
         if not is_valid:
             logger.error(f"❌ [Canonical Contract] Validation failed for {event_id}: {errors}")
             simulation["integrity_warnings"] = simulation.get("integrity_warnings", []) + errors
+        
+        # Inject live cycle balance so frontend can update sidebar counter immediately
+        if _cycle_balance:
+            simulation["_cycle_balance"] = _cycle_balance
         
         return simulation
         

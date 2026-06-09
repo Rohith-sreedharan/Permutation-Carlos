@@ -368,13 +368,19 @@ AGENT_CONFIG: dict = {
 
     # ── Cycle budget (all tiers) ──────────────────────────────────────────────
     # Governs depletion logic in simulation_routes and entitlement_gate.
+    # cost_decision_detail = 1,000 → 10 analyses on Preview (10,000 / 1,000)
+    # 80% warn fires at 8,000 used = 8 analyses completed
     "cycles": {
         "preview_max": int(os.getenv("CYCLES_PREVIEW_MAX", "10000")),
         "syndicate_max": int(os.getenv("CYCLES_SYNDICATE_MAX", "10000")),
         "telegram_syndicate_max": int(os.getenv("CYCLES_TELEGRAM_SYNDICATE_MAX", "10000")),
         "platform_max": int(os.getenv("CYCLES_PLATFORM_MAX", "100000")),
         "beatvegas_platform_max": int(os.getenv("CYCLES_BEATVEGAS_PLATFORM_MAX", "100000")),
-        "cost_per_simulation_view": int(os.getenv("CYCLES_COST_PER_VIEW", "500")),
+        "cost_dashboard_view": int(os.getenv("CYCLES_COST_DASHBOARD", "0")),
+        "cost_decision_detail": int(os.getenv("CYCLES_COST_DECISION", "1000")),
+        "cost_parlay_build": int(os.getenv("CYCLES_COST_PARLAY", "1500")),
+        # Legacy alias — kept so any existing env override still works
+        "cost_per_simulation_view": int(os.getenv("CYCLES_COST_PER_VIEW", "1000")),
         "depletion_warn_pct": int(os.getenv("CYCLES_WARN_PCT", "80")),
         "depletion_block_pct": int(os.getenv("CYCLES_BLOCK_PCT", "100")),
     },

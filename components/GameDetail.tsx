@@ -320,6 +320,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       }
 
       setSimulation(simData);
+
+      // Emit live cycle balance so SimulationPowerWidget updates without refetch
+      if ((simData as any)._cycle_balance) {
+        window.dispatchEvent(new CustomEvent('bv:cycle_update', {
+          detail: (simData as any)._cycle_balance,
+        }));
+      }
+
       const gameEvent = eventsData.find((e: EventType) => e.id === gameId);
       const fallbackEvent: EventType = {
         id: gameId,

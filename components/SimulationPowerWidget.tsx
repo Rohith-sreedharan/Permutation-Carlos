@@ -45,6 +45,20 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
     };
 
     fetchEntitlements();
+
+    // Listen for real-time cycle balance updates emitted by GameDetail
+    // after each simulation fetch — no API refetch needed
+    const handleCycleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.cycles_used === 'number') {
+        setEngineCyclesLimit(detail.cycles_used);
+        if (typeof detail.cycles_allocated === 'number' && detail.cycles_allocated > 0) {
+          setTierMaxCycles(detail.cycles_allocated);
+        }
+      }
+    };
+    window.addEventListener('bv:cycle_update', handleCycleUpdate);
+    return () => window.removeEventListener('bv:cycle_update', handleCycleUpdate);
   }, []);
 
   if (loading) return null;
@@ -100,7 +114,17 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
           <span className="text-gold">✓ {getUpgradeMessage()}</span>
         ) : (
           <>
-            You're using {activeCycles.toLocaleString()} / {tierMaxCycles.toLocaleString()} possible Intelligence Cycles.
+            {(() => {
+              const costPerAnalysis = 1000;
+              const remaining = tierMaxCycles - activeCycles;
+              const analysesRemaining = Math.max(0, Math.floor(remaining / costPerAnalysis));
+              return (
+                <>
+                  You're using {activeCycles.toLocaleString()} / {tierMaxCycles.toLocaleString()} possible Intelligence Cycles.
+                  {' '}({analysesRemaining} {analysesRemaining === 1 ? 'analysis' : 'analyses'} remaining)
+                </>
+              );
+            })()}
             <br />
             <span className="text-lightGold/90">{getUpgradeMessage()}</span>
           </>
