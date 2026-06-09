@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { getSubscriptionStatus } from '../services/api';
 import { COPY } from '../utils/uiCopy';
 
-const MAX_SIMS = 100000;
+const TIER_CYCLE_LIMITS: Record<string, number> = {
+  intelligence_preview: 10_000,
+  syndicate: 10_000,
+  telegram_syndicate: 10_000,
+  platform: 100_000,
+  beatvegas_platform: 100_000,
+};
+const DEFAULT_PREVIEW_MAX = 10_000;
 
 interface SimulationPowerWidgetProps {
   onUpgradeClick?: () => void;
@@ -12,6 +19,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
   const [platformAccess, setPlatformAccess] = useState(false);
   const [telegramAccess, setTelegramAccess] = useState(false);
   const [engineCyclesLimit, setEngineCyclesLimit] = useState(0);
+  const [tierMaxCycles, setTierMaxCycles] = useState(DEFAULT_PREVIEW_MAX);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,11 +29,16 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
         setPlatformAccess(Boolean(response.platform_access));
         setTelegramAccess(Boolean(response.telegram_access));
         setEngineCyclesLimit(Number(response.engine_cycles_limit ?? 0));
+        // Derive correct max from tier or plan_id
+        const tier = response.tier || response.plan_id || '';
+        const max = TIER_CYCLE_LIMITS[tier] ?? (response.platform_access ? 100_000 : DEFAULT_PREVIEW_MAX);
+        setTierMaxCycles(max);
       } catch (error) {
         console.error('Failed to fetch entitlement state:', error);
         setPlatformAccess(false);
         setTelegramAccess(false);
         setEngineCyclesLimit(0);
+        setTierMaxCycles(DEFAULT_PREVIEW_MAX);
       } finally {
         setLoading(false);
       }
@@ -37,8 +50,8 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
   if (loading) return null;
 
   const activeCycles = Math.max(0, engineCyclesLimit);
-  const progressPercent = Math.min(100, (activeCycles / MAX_SIMS) * 100);
-  const isMaxCapacity = activeCycles >= MAX_SIMS;
+  const progressPercent = Math.min(100, (activeCycles / tierMaxCycles) * 100);
+  const isMaxCapacity = activeCycles >= tierMaxCycles;
   const capacityLabel = isMaxCapacity ? 'Max Capacity' : 'Decision Depth: Preview Mode — Upgrade for full access';
 
   const getUpgradeMessage = () => {
@@ -77,7 +90,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
         </div>
         <div className="flex justify-between text-[10px] text-lightGold/50 mt-1">
           <span>{activeCycles.toLocaleString()}</span>
-          <span>{MAX_SIMS.toLocaleString()}</span>
+          <span>{tierMaxCycles.toLocaleString()}</span>
         </div>
       </div>
 
@@ -87,7 +100,7 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
           <span className="text-gold">✓ {getUpgradeMessage()}</span>
         ) : (
           <>
-            You're using {activeCycles.toLocaleString()} / {MAX_SIMS.toLocaleString()} possible Intelligence Cycles.
+            You're using {activeCycles.toLocaleString()} / {tierMaxCycles.toLocaleString()} possible Intelligence Cycles.
             <br />
             <span className="text-lightGold/90">{getUpgradeMessage()}</span>
           </>

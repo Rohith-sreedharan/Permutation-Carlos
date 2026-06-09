@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Component } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import GameDetail from './GameDetail';
@@ -17,6 +17,14 @@ import Profile from './Profile';
 import AffiliateWallet from './AffiliateWallet';
 import AffiliateRecruitmentPopup from './AffiliateRecruitmentPopup';
 import type { Page } from '../types';
+
+// ── Page Error Boundary ────────────────────────────────────────────────────
+interface EBState { hasError: boolean }
+class PageErrorBoundary extends Component<{ fallback: React.ReactNode; children: React.ReactNode }, EBState> {
+  constructor(props: any) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() { return this.state.hasError ? this.props.fallback : this.props.children; }
+}
 
 // ── Phase 13: Trial Banner ─────────────────────────────────────────────────
 // Shown to users with an active affiliate trial. One-click cancel.
@@ -163,13 +171,42 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
         return <Dashboard onAuthError={onAuthError} onGameClick={handleGameClick} />;
       
       case 'leaderboard':
-        return <Leaderboard />;
+        return (
+          <PageErrorBoundary fallback={
+            <div className="p-8 max-w-lg">
+              <h2 className="text-2xl font-bold text-white font-teko mb-2">Leaderboard</h2>
+              <p className="text-light-gray text-sm">Rankings activate after the first grading cycle completes. Check back after beta week one.</p>
+            </div>
+          }>
+            <Leaderboard />
+          </PageErrorBoundary>
+        );
       
       case 'community':
-        return <Community />;
+        return (
+          <PageErrorBoundary fallback={
+            <div className="p-8 max-w-lg">
+              <h2 className="text-2xl font-bold text-white font-teko mb-2">Community</h2>
+              <p className="text-light-gray text-sm mb-4">Community features are coming soon. Join live discussion on Telegram in the meantime.</p>
+              <a href="https://t.me/beatvegas" target="_blank" rel="noopener noreferrer" className="inline-block bg-electric-blue text-white text-sm font-bold px-4 py-2 rounded-lg hover:bg-electric-blue/80 transition">Join Syndicate — $39/month</a>
+            </div>
+          }>
+            <Community />
+          </PageErrorBoundary>
+        );
       
       case 'trust-loop':
-        return <TrustLoop />;
+        return (
+          <PageErrorBoundary fallback={
+            <div className="p-8 max-w-lg">
+              <h2 className="text-2xl font-bold text-white font-teko mb-2">Trust Loop</h2>
+              <p className="text-light-gray text-sm mb-2">Track record verification activates as games settle.</p>
+              <a href="/performance" className="text-electric-blue text-sm underline hover:text-electric-blue/80">View Intelligence Record →</a>
+            </div>
+          }>
+            <TrustLoop />
+          </PageErrorBoundary>
+        );
       
       case 'architect':
         return <ParlayArchitect />;
@@ -184,10 +221,28 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
         return <TelegramConnection />;
       
       case 'war-room':
-        return <WarRoom />;
+        return (
+          <PageErrorBoundary fallback={
+            <div className="p-8 max-w-lg">
+              <h2 className="text-2xl font-bold text-white font-teko mb-2">War Room — Live Room</h2>
+              <p className="text-light-gray text-sm">Live room activates when games are in progress. Check back at game time.</p>
+            </div>
+          }>
+            <WarRoom />
+          </PageErrorBoundary>
+        );
       
       case 'war-room-leaderboard':
-        return <WarRoomLeaderboard />;
+        return (
+          <PageErrorBoundary fallback={
+            <div className="p-8 max-w-lg">
+              <h2 className="text-2xl font-bold text-white font-teko mb-2">War Room — Rankings</h2>
+              <p className="text-light-gray text-sm">Rankings accumulate as picks are graded. Check back after the first week of beta.</p>
+            </div>
+          }>
+            <WarRoomLeaderboard />
+          </PageErrorBoundary>
+        );
       
       case 'billing':
         return <SubscriptionPlans />;
