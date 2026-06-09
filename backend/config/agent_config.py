@@ -374,7 +374,7 @@ AGENT_CONFIG: dict = {
         "telegram_syndicate_max": int(os.getenv("CYCLES_TELEGRAM_SYNDICATE_MAX", "10000")),
         "platform_max": int(os.getenv("CYCLES_PLATFORM_MAX", "100000")),
         "beatvegas_platform_max": int(os.getenv("CYCLES_BEATVEGAS_PLATFORM_MAX", "100000")),
-        "cost_per_simulation_view": int(os.getenv("CYCLES_COST_PER_VIEW", "1")),
+        "cost_per_simulation_view": int(os.getenv("CYCLES_COST_PER_VIEW", "500")),
         "depletion_warn_pct": int(os.getenv("CYCLES_WARN_PCT", "80")),
         "depletion_block_pct": int(os.getenv("CYCLES_BLOCK_PCT", "100")),
     },

@@ -20,6 +20,38 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(!!APPLE_CLIENT_ID);
+  const [dismissedTrial, setDismissedTrial] = useState(false);
+
+  // bv_ref cookie detection — shows trial offer on Sign Up tab when affiliate referral is active
+  const [referralInfo, setReferralInfo] = useState<{
+    affiliateId: string;
+    displayName: string;
+    chargeDisplay: string;
+    trialHours: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isLogin || dismissedTrial) return;
+    // Read bv_ref cookie (set by /ref/:affiliateId handler in App.tsx)
+    const cookieMatch = document.cookie.match(/(?:^|;\s*)bv_ref=([^;]+)/);
+    if (!cookieMatch) return;
+    const affiliateId = decodeURIComponent(cookieMatch[1]);
+    if (!affiliateId) return;
+
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    fetch(`/api/trial/affiliate/${encodeURIComponent(affiliateId)}?tz=${encodeURIComponent(tz)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setReferralInfo({
+          affiliateId,
+          displayName: data.display_name || 'a BeatVegas subscriber',
+          chargeDisplay: data.charge_disclosure || `No charge for ${data.trial_duration_hours || 72} hours`,
+          trialHours: data.trial_duration_hours || 72,
+        });
+      })
+      .catch(() => null); // silent — fallback to normal signup
+  }, [isLogin, dismissedTrial]);
 
   useEffect(() => {
     // Initialise Apple Sign In SDK once it has loaded
@@ -301,6 +333,44 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               Sign Up
             </button>
           </div>
+
+          {/* Trial offer — shown on Sign Up tab when bv_ref cookie is present */}
+          {!isLogin && referralInfo && !dismissedTrial && (
+            <div className="mb-6 rounded-xl border border-yellow-400/50 bg-yellow-400/5 p-5">
+              <div className="flex items-start justify-between mb-3">
+                <div className="text-yellow-400 text-xs font-bold uppercase tracking-wider">Referred Trial Offer</div>
+                <button
+                  type="button"
+                  onClick={() => setDismissedTrial(true)}
+                  className="text-gray-500 hover:text-gray-300 text-xs leading-none"
+                  aria-label="Dismiss trial offer"
+                >✕</button>
+              </div>
+              <p className="text-white text-sm font-semibold mb-1">
+                You were referred by <span className="text-yellow-400">{referralInfo.displayName}</span>.
+              </p>
+              <p className="text-white text-sm font-semibold mb-1">
+                Start your 3-day free Platform trial.
+              </p>
+              <p className="text-gray-400 text-xs mb-3">
+                {referralInfo.chargeDisplay} · Card required.
+              </p>
+              <button
+                type="button"
+                onClick={() => { window.location.href = `/ref/${encodeURIComponent(referralInfo.affiliateId)}`; }}
+                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 rounded-lg hover:shadow-lg hover:shadow-yellow-400/30 transition-all text-sm mb-2"
+              >
+                Start Free Trial — Enter Card
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissedTrial(true)}
+                className="w-full text-gray-400 hover:text-white text-sm py-2 transition-colors"
+              >
+                Continue without trial →
+              </button>
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">

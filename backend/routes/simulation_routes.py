@@ -102,8 +102,8 @@ def _deduct_simulation_cycle(user_id: str, tier: str) -> Optional[HTTPException]
                 "code": "ALLOCATION_EXHAUSTED",
                 "title": "Your Intelligence Cycles have been used.",
                 "message": (
-                    "You have experienced BeatVegas at the starter level. "
-                    "Platform subscribers get 100,000 cycles and full decision engine access."
+                    f"You completed {used // cost} decision analyses on Intelligence Preview. "
+                    "Platform subscribers get 100,000 cycles — 200 analyses."
                 ),
                 "cta_platform": "Subscribe to Platform — $97/month",
                 "cta_platform_url": "https://beatvegas.app/upgrade",
