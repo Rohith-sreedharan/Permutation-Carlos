@@ -373,7 +373,7 @@ export function evaluateSpreadBlockingRules(ctx: SpreadEdgeContext): BlockingRul
     rule_id: 'MIN_GAP',
     rule_name: 'Minimum spread gap',
     passed: gapPassed,
-    reason: gapPassed ? undefined : `Gap ${ctx.edge_gap.toFixed(1)} < ${BLOCKING_THRESHOLDS.MIN_SPREAD_GAP}`
+    reason: gapPassed ? undefined : 'Market gap below edge threshold'
   });
   
   // Rule 3: Volatility threshold
@@ -382,7 +382,7 @@ export function evaluateSpreadBlockingRules(ctx: SpreadEdgeContext): BlockingRul
     rule_id: 'VOLATILITY',
     rule_name: 'Volatility within threshold',
     passed: volPassed,
-    reason: volPassed ? undefined : `Volatility ${ctx.volatility_score.toFixed(0)} > ${BLOCKING_THRESHOLDS.MAX_VOLATILITY}`
+    reason: volPassed ? undefined : 'Market conditions too volatile for a reliable signal'
   });
   
   // Rule 4: Confidence threshold
@@ -391,7 +391,7 @@ export function evaluateSpreadBlockingRules(ctx: SpreadEdgeContext): BlockingRul
     rule_id: 'CONFIDENCE',
     rule_name: 'Minimum confidence',
     passed: confPassed,
-    reason: confPassed ? undefined : `Confidence ${ctx.confidence_score.toFixed(0)}% < ${BLOCKING_THRESHOLDS.MIN_CONFIDENCE}%`
+    reason: confPassed ? undefined : 'Insufficient simulation confidence for this market'
   });
   
   // Rule 5: Grade gate
@@ -400,7 +400,7 @@ export function evaluateSpreadBlockingRules(ctx: SpreadEdgeContext): BlockingRul
     rule_id: 'GRADE_GATE',
     rule_name: 'Publishable grade',
     passed: gradePassed,
-    reason: gradePassed ? undefined : `Grade ${ctx.grade || 'null'} below minimum (${MIN_PUBLISHABLE_GRADE})`
+    reason: gradePassed ? undefined : 'Insufficient historical grade for this market'
   });
   
   const failed = rules.filter(r => !r.passed);
@@ -434,7 +434,7 @@ export function evaluateTotalBlockingRules(ctx: TotalEdgeContext): BlockingRuleR
     rule_id: 'MIN_GAP',
     rule_name: 'Minimum total gap',
     passed: gapPassed,
-    reason: gapPassed ? undefined : `Gap ${ctx.edge_gap.toFixed(1)} < ${BLOCKING_THRESHOLDS.MIN_TOTAL_GAP}`
+    reason: gapPassed ? undefined : 'Insufficient market gap for signal'
   });
   
   // Rule 3: Volatility threshold
@@ -443,7 +443,7 @@ export function evaluateTotalBlockingRules(ctx: TotalEdgeContext): BlockingRuleR
     rule_id: 'VOLATILITY',
     rule_name: 'Volatility within threshold',
     passed: volPassed,
-    reason: volPassed ? undefined : `Volatility ${ctx.volatility_score.toFixed(0)} > ${BLOCKING_THRESHOLDS.MAX_VOLATILITY}`
+    reason: volPassed ? undefined : 'Market conditions too volatile for a reliable signal'
   });
   
   // Rule 4: Confidence threshold
@@ -452,7 +452,7 @@ export function evaluateTotalBlockingRules(ctx: TotalEdgeContext): BlockingRuleR
     rule_id: 'CONFIDENCE',
     rule_name: 'Minimum confidence',
     passed: confPassed,
-    reason: confPassed ? undefined : `Confidence ${ctx.confidence_score.toFixed(0)}% < ${BLOCKING_THRESHOLDS.MIN_CONFIDENCE}%`
+    reason: confPassed ? undefined : 'Insufficient simulation confidence for this market'
   });
   
   // Rule 5: Grade gate
@@ -461,7 +461,7 @@ export function evaluateTotalBlockingRules(ctx: TotalEdgeContext): BlockingRuleR
     rule_id: 'GRADE_GATE',
     rule_name: 'Publishable grade',
     passed: gradePassed,
-    reason: gradePassed ? undefined : `Grade ${ctx.grade || 'null'} below minimum (${MIN_PUBLISHABLE_GRADE})`
+    reason: gradePassed ? undefined : 'Insufficient historical grade for this market'
   });
   
   const failed = rules.filter(r => !r.passed);
