@@ -7,9 +7,10 @@ const APPLE_CLIENT_ID = (import.meta as any).env?.VITE_APPLE_CLIENT_ID || '';
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
+  sessionExpired?: boolean;
 }
 
-export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
+export default function AuthPage({ onAuthSuccess, sessionExpired }: AuthPageProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -307,6 +308,13 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             Sports Intelligence
           </p>
         </div>
+
+        {/* Session expired banner — Section 10 */}
+        {sessionExpired && (
+          <div className="mb-4 bg-yellow-400/10 border border-yellow-400/40 rounded-xl px-4 py-3 text-center">
+            <p className="text-yellow-400 text-sm font-medium">Your session has expired. Please sign in again.</p>
+          </div>
+        )}
 
         {/* Card */}
         <div className="bg-linear-to-b from-navy/80 to-[#0a0f1e]/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-gold/20 p-8">

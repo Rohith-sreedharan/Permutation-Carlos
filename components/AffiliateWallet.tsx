@@ -188,11 +188,32 @@ const AffiliateWallet: React.FC = () => {
         )}
       </div>
 
-      {/* Revenue Split Info */}
-      <div className="bg-navy/30 border border-electric-blue/30 rounded-lg p-4">
-        <p className="text-sm text-light-gray">
-          <span className="text-electric-blue font-semibold">💰 Revenue Split:</span> You earn 70% of all subscription and report sales. BeatVegas retains 30% for platform operations. Payouts are processed automatically on the 1st of each month.
+      {/* Commission Rates — Addendum 3 */}
+      <div className="bg-navy/30 border border-yellow-400/30 rounded-lg p-5 space-y-3">
+        <p className="text-yellow-400 text-sm font-semibold">💰 Your Commission Rates</p>
+        <p className="text-sm text-white">
+          Earn <span className="text-neon-green font-bold">$30</span> per Platform conversion.&nbsp;
+          Earn <span className="text-yellow-400 font-bold">$15</span> per Syndicate conversion.
         </p>
+        <p className="text-sm text-light-gray">
+          Your referrals see both Syndicate ($39) and Platform ($97) on the landing page. They choose. You earn on either.
+        </p>
+        <div className="flex gap-6 pt-3 border-t border-border-gray/20">
+          <div>
+            <p className="text-xs text-light-gray uppercase tracking-wider mb-1">Pending</p>
+            <p className="text-lg font-bold text-yellow-400">${earnings?.pendingPayout?.toFixed(2) ?? '0.00'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-light-gray uppercase tracking-wider mb-1">Eligible</p>
+            <p className="text-lg font-bold text-neon-green">${earnings?.lifetimeEarnings?.toFixed(2) ?? '0.00'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-light-gray uppercase tracking-wider mb-1">Paid</p>
+            <p className="text-lg font-bold text-electric-blue">
+              ${((earnings?.lifetimeEarnings ?? 0) - (earnings?.pendingPayout ?? 0)).toFixed(2)}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="bg-charcoal rounded-lg shadow-lg p-6 space-y-4">

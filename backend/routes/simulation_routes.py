@@ -119,6 +119,14 @@ def _deduct_simulation_cycle(user_id: str, tier: str):
         {"user_id": user_id},
         {"$inc": {"tokens_used_current_period": cost}},
     )
+
+    # Addendum 2: Track lifetime Preview cycles used — never decrements, never resets.
+    # Used on Syndicate cancellation to compute remaining Preview allocation.
+    if tier in ("intelligence_preview", "preview"):
+        db["user_entitlements"].update_one(
+            {"user_id": user_id},
+            {"$inc": {"preview_cycles_used_lifetime": cost}},
+        )
     new_used = used + cost
     new_pct = (new_used / alloc) * 100
 

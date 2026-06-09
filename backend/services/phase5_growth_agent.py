@@ -830,6 +830,42 @@ class GrowthAgent:
             return {"sent": False, "reason": "already_sent"}
         return self.send_message(user_id=user_id, template_id="preview_final_push", trace_id=trace_id)
 
+    def trigger_syndicate_cancellation_retention(
+        self,
+        user_id: str,
+        period_end_display: str = "your billing period end",
+        trace_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Addendum 1 — Syndicate cancellation retention template.
+        Fires when customer.subscription.updated has cancel_at_period_end=True.
+        Reminds user what they will lose and offers a resubscribe CTA.
+        Idempotent: suppressed if already sent within 30 days.
+        """
+        if self._already_sent_in_period(user_id, "syndicate_cancellation_retention", since_hours=720):
+            return {"sent": False, "reason": "already_sent"}
+        return self.send_message(
+            user_id=user_id,
+            template_id="syndicate_cancellation_retention",
+            trace_id=trace_id,
+            metadata={"period_end_display": period_end_display},
+        )
+
+    def trigger_syndicate_cycle_reset(
+        self,
+        user_id: str,
+        trace_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Section 2F — Syndicate monthly cycle reset notification.
+        Fires on invoice.payment_succeeded for a Syndicate subscriber.
+        """
+        return self.send_message(
+            user_id=user_id,
+            template_id="syndicate_cycle_reset",
+            trace_id=trace_id,
+        )
+
     def check_regulatory_filter(self, content: str) -> dict:
         """
         Public method to test the regulatory language filter.

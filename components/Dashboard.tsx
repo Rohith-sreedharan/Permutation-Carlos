@@ -463,11 +463,11 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {loading ? <LoadingSpinner/> : (
         <>
-          {/* Upgrade banner — visible for non-Platform users */}
-          {currentPlan !== PLAN_IDS.BEATVEGAS_PLATFORM && (
+          {/* Upgrade banner — Syndicate users: Platform CTA only */}
+          {currentPlan === PLAN_IDS.TELEGRAM_SYNDICATE && (
             <div className="mb-4 flex items-center justify-between gap-3 bg-[#0a0e1a] border border-yellow-400/30 rounded-lg px-4 py-2">
               <span className="text-yellow-400 text-xs font-medium whitespace-nowrap">
-                Intelligence Preview — 10,000 cycles&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
+                Syndicate — 10,000 cycles/month&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
               </span>
               <a
                 href="https://beatvegas.app/upgrade"
@@ -475,8 +475,34 @@ const Dashboard: React.FC<DashboardProps> = ({
                 rel="noopener noreferrer"
                 className="shrink-0 bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors whitespace-nowrap"
               >
-                Upgrade $97/month →
+                Upgrade to Platform — $97/month →
               </a>
+            </div>
+          )}
+          {/* Upgrade banner — Preview users: both Syndicate + Platform CTAs */}
+          {currentPlan !== PLAN_IDS.BEATVEGAS_PLATFORM && currentPlan !== PLAN_IDS.TELEGRAM_SYNDICATE && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 bg-[#0a0e1a] border border-yellow-400/30 rounded-lg px-4 py-2">
+              <span className="text-yellow-400 text-xs font-medium">
+                Intelligence Preview — 10,000 cycles&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
+              </span>
+              <div className="flex gap-2 shrink-0">
+                <a
+                  href="https://beatvegas.app/upgrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-transparent border border-yellow-400 text-yellow-400 font-bold text-xs px-3 py-1 rounded hover:bg-yellow-400/10 transition-colors whitespace-nowrap"
+                >
+                  Join Syndicate $39/month
+                </a>
+                <a
+                  href="https://beatvegas.app/upgrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors whitespace-nowrap"
+                >
+                  Upgrade $97/month →
+                </a>
+              </div>
             </div>
           )}
           {showFallbackNote && (

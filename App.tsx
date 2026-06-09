@@ -9,6 +9,7 @@ import PerformancePage from './components/PerformancePage';
 import OpsDashboard from './components/OpsDashboard';
 import BecomeAffiliatePage from './components/BecomeAffiliatePage';
 import AffiliateApplicantsPanel from './components/AffiliateApplicantsPanel';
+import UpgradePage from './components/UpgradePage';
 import { getOnboardingStatus, getToken, removeToken } from './services/api';
 // Phase 13 — Affiliate trial landing page
 import AffiliateTrial from './components/AffiliateTrial';
@@ -36,12 +37,16 @@ const PUBLIC_ROUTES: Record<string, React.FC> = {
   '/ops/dashboard': OpsDashboard,
   '/become-affiliate': BecomeAffiliatePage,
   '/ops/affiliate-applicants': AffiliateApplicantsPanel,
+  '/upgrade': UpgradePage,        // Section 6 — pricing page
+  '/pricing': UpgradePage,        // alias
 };
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   // null = not yet checked, true = complete, false = needs onboarding
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+  // Section 10: session expiry flag — shown on AuthPage after 401 redirect
+  const [sessionExpiredMsg, setSessionExpiredMsg] = useState(false);
 
   useEffect(() => {
     // Phase 12 WS4: Use the Safari-resilient getToken (localStorage + sessionStorage fallback)
@@ -52,6 +57,7 @@ export default function App() {
     // Phase 12 WS4: Listen for token expiry events emitted by the API layer.
     // On expiry, wipe auth state and show the login screen cleanly — no broken UI.
     const handleTokenExpiry = () => {
+      setSessionExpiredMsg(true);
       setIsAuthenticated(false);
       setOnboardingComplete(null);
     };
@@ -76,11 +82,13 @@ export default function App() {
   const handleAuthError = () => {
     console.warn('Authentication required - session expired or missing');
     removeToken(); // Phase 12 WS4: clears both localStorage and sessionStorage
+    setSessionExpiredMsg(true);
     setIsAuthenticated(false);
     setOnboardingComplete(null);
   };
 
   const handleAuthSuccess = () => {
+    setSessionExpiredMsg(false);
     setIsAuthenticated(true);
     // Re-check onboarding status for newly logged-in user
     getOnboardingStatus()
@@ -116,7 +124,7 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+    return <AuthPage onAuthSuccess={handleAuthSuccess} sessionExpired={sessionExpiredMsg} />;
   }
 
   // Phase 5A AC-2: Gate dashboard behind onboarding wizard
