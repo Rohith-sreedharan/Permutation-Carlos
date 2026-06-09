@@ -623,6 +623,20 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/simulations/${eventId}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 402) {
+        const error = await safeJsonParse(res).catch(() => null);
+        const detail = error?.detail || {};
+        // Throw a structured error the UI can detect and render as the upgrade gate
+        const gateError = new Error('CYCLES_EXHAUSTED') as any;
+        gateError.code = 'ALLOCATION_EXHAUSTED';
+        gateError.title = detail.title || 'Your Intelligence Cycles have been used.';
+        gateError.message = detail.message || 'Platform subscribers get 100,000 cycles and full decision engine access.';
+        gateError.ctaPlatform = detail.cta_platform || 'Subscribe to Platform — $97/month';
+        gateError.ctaPlatformUrl = detail.cta_platform_url || 'https://beatvegas.app/upgrade';
+        gateError.ctaSyndicate = detail.cta_syndicate || 'Join Syndicate — $39/month';
+        gateError.ctaSyndicateUrl = detail.cta_syndicate_url || 'https://beatvegas.app/upgrade';
+        throw gateError;
+    }
     if (res.status === 404) {
         // Fail closed without exposing internal identifiers
         throw new Error(`HTTP 404: Intelligence output unavailable for this game. Retry or check back later.`);

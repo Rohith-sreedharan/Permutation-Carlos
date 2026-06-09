@@ -105,6 +105,8 @@ def register_user(payload: UserRegistration):
     try:
         from services.phase5_growth_agent import growth_agent
         growth_agent.trigger_onboarding_sequence(user_id=user_id)
+        # Intelligence Preview conversion sequence — T+0 welcome
+        growth_agent.trigger_preview_welcome(user_id=user_id)
     except Exception as _ga_exc:
         # Non-fatal — registration succeeds even if growth agent call fails
         import logging

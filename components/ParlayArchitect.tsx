@@ -217,6 +217,15 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
           >
             Get Platform Access - {PRICE_DISPLAY.BEATVEGAS_PLATFORM}
           </button>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={onReturnDashboard}
+              className="text-light-gray/60 text-sm underline hover:text-light-gray transition-colors"
+            >
+              Continue Trial
+            </button>
+          </div>
         </div>
       );
     }

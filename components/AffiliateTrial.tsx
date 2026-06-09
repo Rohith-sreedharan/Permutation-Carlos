@@ -74,8 +74,13 @@ function formatCountdown(expiryMs: number): string {
   if (!Number.isFinite(expiryMs) || expiryMs <= 0) return '';
   const diff = Math.max(0, expiryMs - Date.now());
   if (diff === 0) return 'Expired';
-  const m = Math.ceil(diff / 60000);  // round up so "1 minute" shows until 0
-  return m === 1 ? '1 minute' : `${m} minutes`;
+  const totalMinutes = Math.ceil(diff / 60000);
+  if (totalMinutes < 60) {
+    return totalMinutes === 1 ? '1 minute' : `${totalMinutes} minutes`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
 }
 
 export default function AffiliateTrial({ affiliateId }: AffiliateTrialProps) {

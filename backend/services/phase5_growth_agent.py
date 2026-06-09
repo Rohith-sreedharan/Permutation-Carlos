@@ -363,6 +363,61 @@ _TEMPLATES: dict = {
             "Statistical outputs only — not betting advice."
         ),
     },
+
+    # ── Intelligence Preview conversion sequence ──────────────────────────────
+    # Fires T+0, Day 3, Day 7, Day 14 for intelligence_preview tier users.
+    # All templates pass regulatory filter. No generative content.
+    # Each template shows the 10x cycle gap explicitly: 10,000 vs 100,000.
+    "preview_welcome": {
+        "campaign_id": "preview_conversion_v1",
+        "channel": "platform",
+        "subject": "Your 10,000 Intelligence Cycles are active",
+        "body": (
+            "Your 10,000 Intelligence Cycles are active. "
+            "Each cycle powers a decision record from the BeatVegas simulation engine. "
+            "Your cycle balance is visible in the sidebar at all times — no silent deductions. "
+            "Platform subscribers receive 100,000 cycles — 10x the decision engine access. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "preview_value_nudge": {
+        "campaign_id": "preview_conversion_v1",
+        "channel": "platform",
+        "subject": "Platform subscribers received full decision records this week",
+        "body": (
+            "Platform subscribers received full decision records across all major markets this week. "
+            "Your Intelligence Preview access gives you the starter experience — 10,000 cycles. "
+            "Platform access unlocks 100,000 cycles and full Parlay Architect intelligence. "
+            "Upgrade to Platform for $97/month at beatvegas.app. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "preview_upgrade_push": {
+        "campaign_id": "preview_conversion_v1",
+        "channel": "platform",
+        "subject": "Intelligence Cycles remaining — consider upgrading",
+        "body": (
+            "You have used a portion of your 10,000 Intelligence Cycles. "
+            "When cycles reach zero, decision records will be paused until you upgrade. "
+            "Platform subscribers receive 100,000 cycles — 10x more decision engine access — for $97/month. "
+            "Syndicate access is available for $39/month. "
+            "Upgrade at beatvegas.app before your cycles run out. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "preview_final_push": {
+        "campaign_id": "preview_conversion_v1",
+        "channel": "platform",
+        "subject": "Your Intelligence Preview has been active for 2 weeks",
+        "body": (
+            "Your BeatVegas Intelligence Preview has been active for 2 weeks. "
+            "Platform subscribers are building a track record with 100,000 cycles. "
+            "Your 10,000 cycle starter allocation gives you the foundation — "
+            "Platform gives you the full product. "
+            "Subscribe to Platform for $97/month or Syndicate for $39/month at beatvegas.app. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
 }
 
 # Validate templates at import time — fail fast if any contain prohibited language
@@ -703,6 +758,77 @@ class GrowthAgent:
         if self._already_sent_in_period(user_id, "credit_expiry_warning", since_hours=72):
             return {"sent": False, "reason": "already_sent"}
         return self.send_message(user_id=user_id, template_id="credit_expiry_warning")
+
+    # ── Intelligence Preview conversion sequence ──────────────────────────────
+
+    def trigger_preview_welcome(self, user_id: str, trace_id: Optional[str] = None) -> dict:
+        """
+        T+0 — Fire immediately on Intelligence Preview account creation.
+        Idempotent: will not double-send within 48h.
+        """
+        if self._already_sent_in_period(user_id, "preview_welcome", since_hours=48):
+            return {"sent": False, "reason": "already_sent"}
+        return self.send_message(user_id=user_id, template_id="preview_welcome", trace_id=trace_id)
+
+    def trigger_preview_value_nudge(self, user_id: str, trace_id: Optional[str] = None) -> dict:
+        """
+        Day 3 — Show value gap. Only fires if user has not already upgraded.
+        Idempotent: will not double-send within 72h.
+        """
+        ent = None
+        try:
+            from db.mongo import db as _db
+            ent = _db["user_entitlements"].find_one(
+                {"user_id": user_id, "tier": {"$in": ["platform", "syndicate", "telegram_syndicate"]}, "active": True},
+                {"_id": 1},
+            )
+        except Exception:
+            pass
+        if ent:
+            return {"sent": False, "reason": "user_already_upgraded"}
+        if self._already_sent_in_period(user_id, "preview_value_nudge", since_hours=72):
+            return {"sent": False, "reason": "already_sent"}
+        return self.send_message(user_id=user_id, template_id="preview_value_nudge", trace_id=trace_id)
+
+    def trigger_preview_upgrade_push(self, user_id: str, trace_id: Optional[str] = None) -> dict:
+        """
+        Day 7 — Urgency push with cycles remaining. Suppressed if already upgraded.
+        Idempotent: will not double-send within 7 days.
+        """
+        ent = None
+        try:
+            from db.mongo import db as _db
+            ent = _db["user_entitlements"].find_one(
+                {"user_id": user_id, "tier": {"$in": ["platform", "syndicate", "telegram_syndicate"]}, "active": True},
+                {"_id": 1},
+            )
+        except Exception:
+            pass
+        if ent:
+            return {"sent": False, "reason": "user_already_upgraded"}
+        if self._already_sent_in_period(user_id, "preview_upgrade_push", since_hours=168):
+            return {"sent": False, "reason": "already_sent"}
+        return self.send_message(user_id=user_id, template_id="preview_upgrade_push", trace_id=trace_id)
+
+    def trigger_preview_final_push(self, user_id: str, trace_id: Optional[str] = None) -> dict:
+        """
+        Day 14 — Final push referencing 2-week tenure. Suppressed if already upgraded.
+        Idempotent: will not double-send within 14 days.
+        """
+        ent = None
+        try:
+            from db.mongo import db as _db
+            ent = _db["user_entitlements"].find_one(
+                {"user_id": user_id, "tier": {"$in": ["platform", "syndicate", "telegram_syndicate"]}, "active": True},
+                {"_id": 1},
+            )
+        except Exception:
+            pass
+        if ent:
+            return {"sent": False, "reason": "user_already_upgraded"}
+        if self._already_sent_in_period(user_id, "preview_final_push", since_hours=336):
+            return {"sent": False, "reason": "already_sent"}
+        return self.send_message(user_id=user_id, template_id="preview_final_push", trace_id=trace_id)
 
     def check_regulatory_filter(self, content: str) -> dict:
         """

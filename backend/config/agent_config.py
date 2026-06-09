@@ -355,4 +355,31 @@ AGENT_CONFIG: dict = {
         "low_confidence_action": "ALLOW_AND_LOG",  # never block on low confidence
         "blocked_territories": ["PR", "VI", "GU", "MP", "AS", "UM"],
     },
+
+    # ── Intelligence Preview tier ─────────────────────────────────────────────
+    # Single source of truth for all preview-tier limits and upgrade copy.
+    # All values overridable via environment variables at runtime.
+    "intelligence_preview": {
+        "max_cycles": int(os.getenv("PREVIEW_MAX_CYCLES", "10000")),
+        "cycle_cost_per_sim_view": int(os.getenv("PREVIEW_CYCLE_COST_PER_VIEW", "1")),
+        "upgrade_cta_platform_price": os.getenv("PREVIEW_PLATFORM_PRICE", "$97/month"),
+        "upgrade_cta_syndicate_price": os.getenv("PREVIEW_SYNDICATE_PRICE", "$39/month"),
+    },
+
+    # ── Cycle budget (all tiers) ──────────────────────────────────────────────
+    # Governs depletion logic in simulation_routes and entitlement_gate.
+    "cycles": {
+        "preview_max": int(os.getenv("CYCLES_PREVIEW_MAX", "10000")),
+        "syndicate_max": int(os.getenv("CYCLES_SYNDICATE_MAX", "10000")),
+        "telegram_syndicate_max": int(os.getenv("CYCLES_TELEGRAM_SYNDICATE_MAX", "10000")),
+        "platform_max": int(os.getenv("CYCLES_PLATFORM_MAX", "100000")),
+        "beatvegas_platform_max": int(os.getenv("CYCLES_BEATVEGAS_PLATFORM_MAX", "100000")),
+        "cost_per_simulation_view": int(os.getenv("CYCLES_COST_PER_VIEW", "1")),
+        "depletion_warn_pct": int(os.getenv("CYCLES_WARN_PCT", "80")),
+        "depletion_block_pct": int(os.getenv("CYCLES_BLOCK_PCT", "100")),
+    },
+
+    # ── Top-level upgrade prompt threshold (spec compliance alias) ────────────
+    # Mirrors phase5.upgrade_prompt_threshold_pct — queryable at top level.
+    "upgrade_prompt_threshold_pct": int(os.getenv("UPGRADE_PROMPT_THRESHOLD_PCT", "80")),
 }

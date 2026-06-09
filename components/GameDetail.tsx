@@ -161,6 +161,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [firstHalfLoading, setFirstHalfLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cycleGate, setCycleGate] = useState<{
+    title: string;
+    message: string;
+    ctaPlatform: string;
+    ctaPlatformUrl: string;
+    ctaSyndicate: string;
+    ctaSyndicateUrl: string;
+  } | null>(null);
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
   const [isAutoRetrying, setIsAutoRetrying] = useState(false);
   const [activeTab, setActiveTab] = useState<'distribution' | 'injuries' | 'props' | 'movement' | 'pulse' | 'firsthalf'>('distribution');
@@ -348,8 +356,23 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       // Retry logic for transient errors (not for 404s or auth errors)
       const isRetryable = !err.message?.includes('not found') && 
                           !err.message?.includes('Session expired') &&
+                          err.code !== 'ALLOCATION_EXHAUSTED' &&
                           statusCode !== '404' &&
                           statusCode !== '401';
+
+      // Cycle exhaustion hard gate — never retry, show upgrade CTA
+      if (err.code === 'ALLOCATION_EXHAUSTED') {
+        setCycleGate({
+          title: err.title || 'Your Intelligence Cycles have been used.',
+          message: err.message || 'Platform subscribers get 100,000 cycles and full decision engine access.',
+          ctaPlatform: err.ctaPlatform || 'Subscribe to Platform — $97/month',
+          ctaPlatformUrl: err.ctaPlatformUrl || 'https://beatvegas.app/upgrade',
+          ctaSyndicate: err.ctaSyndicate || 'Join Syndicate — $39/month',
+          ctaSyndicateUrl: err.ctaSyndicateUrl || 'https://beatvegas.app/upgrade',
+        });
+        setLoading(false);
+        return;
+      }
       
       if (retryCount < MAX_RETRIES && isRetryable) {
         const retryDelay = RETRY_DELAY * Math.pow(2, retryCount); // 1s, 2s, 4s
@@ -583,6 +606,45 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
   if (loading) {
     return <LoadingSpinner />;
+  }
+
+  if (cycleGate) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] flex items-center justify-center p-6">
+        <div className="max-w-md w-full space-y-6 text-center">
+          <div className="text-2xl font-bold text-white">{cycleGate.title}</div>
+          <p className="text-gray-300 text-sm leading-relaxed">
+            You have experienced BeatVegas at the starter level.
+          </p>
+          <p className="text-gray-300 text-sm leading-relaxed">
+            {cycleGate.message}
+          </p>
+          <div className="space-y-3 pt-2">
+            <a
+              href={cycleGate.ctaPlatformUrl}
+              className="block w-full bg-yellow-400 text-[#0a0e1a] font-bold py-3 px-6 rounded-lg text-sm hover:bg-yellow-300 transition-colors"
+            >
+              {cycleGate.ctaPlatform}
+            </a>
+            <a
+              href={cycleGate.ctaSyndicateUrl}
+              className="block w-full border border-yellow-400/50 text-yellow-400 font-semibold py-3 px-6 rounded-lg text-sm hover:bg-yellow-400/10 transition-colors"
+            >
+              {cycleGate.ctaSyndicate}
+            </a>
+          </div>
+          <p className="text-gray-500 text-xs pt-2">
+            Or watch for signals on the free Telegram channel.
+          </p>
+          <button
+            onClick={onBack}
+            className="text-gray-400 text-xs underline hover:text-gray-300 transition-colors"
+          >
+            Back to dashboard
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -2243,7 +2305,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       </div>
 
       {/* FINAL UNIFIED SUMMARY - ROOT FIX: Now reads from GameEdgeState */}
-      {simulation && (
+      {simulation && !analysisBlocked && (
         <>
           <FinalUnifiedSummary
             simulation={simulation}

@@ -189,7 +189,8 @@ export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
             const raw = narrative.risk_control_summary;
             // Strip leading "Blocked: " prefix and trailing period to get individual reasons
             const stripped = raw.replace(/^Blocked:\s*/i, '').replace(/\.$/, '');
-            const reasons = stripped.split(', ').map(r => r.trim()).filter(Boolean);
+            // Deduplicate after split — defense in depth
+            const reasons = [...new Set(stripped.split(', ').map(r => r.trim()).filter(Boolean))];
             return (
               <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
                 <div className="font-semibold mb-1">⚠️ Blocked</div>
@@ -286,20 +287,6 @@ const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({
         </div>
       )}
       
-      {/* Risk control log */}
-      {riskLog.length > 0 && (
-        <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
-          <ul className="space-y-0.5">
-            {[...new Set(riskLog)].map((r, i) => (
-              <li key={i} className="flex items-start gap-1.5">
-                <span className="shrink-0">🛡️</span>
-                <span>{r}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      
       {/* Official edge details */}
       {isOfficialEdge && (
         <div className="mt-2 text-xs text-neon-green bg-neon-green/10 border border-neon-green/30 rounded px-2 py-1">
@@ -370,20 +357,6 @@ const TotalAnalysisCard: React.FC<TotalAnalysisCardProps> = ({
           <span className={`text-xs font-bold ${getGradeStyling(grade as any).textColor}`}>
             {grade}
           </span>
-        </div>
-      )}
-      
-      {/* Risk control log */}
-      {riskLog.length > 0 && (
-        <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
-          <ul className="space-y-0.5">
-            {[...new Set(riskLog)].map((r, i) => (
-              <li key={i} className="flex items-start gap-1.5">
-                <span className="shrink-0">🛡️</span>
-                <span>{r}</span>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
       
