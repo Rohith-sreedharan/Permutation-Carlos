@@ -129,7 +129,7 @@ const EventListItem: React.FC<EventListItemProps> = ({ event, isRecalculated = f
           <span className="cursor-help text-light-gray/60 hover:text-white text-xs" title="BeatVegas identifies statistical deviations between our simulation output and sportsbook odds. This is NOT a list of recommended bets.">ⓘ</span>
         </div>
         <p className="text-sm font-bold text-white">{canonicalPropHeadline}</p>
-        <p className="text-[10px] text-gray-500 italic mt-1">MODEL MISPRICING — INFORMATIONAL ONLY.</p>
+        <p className="text-[10px] text-gray-500 italic mt-1">Statistical deviation — informational only.</p>
       </div>
       
       {prediction && (

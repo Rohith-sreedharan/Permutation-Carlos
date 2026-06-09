@@ -1,0 +1,4 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/v1/trial/status,HTTPError('401 Client Error: Unauthorized for url: /api/v1/trial/status'),36,2026-06-06T11:58:03Z,2026-06-06T11:58:16Z
+GET,/api/v1/trial/status,HTTPError('429 Client Error: Too Many Requests for url: /api/v1/trial/status'),281,2026-06-06T11:58:16Z,2026-06-06T11:58:59Z
+GET,/api/v1/subscription/status,HTTPError('429 Client Error: Too Many Requests for url: /api/v1/subscription/status'),711,2026-06-06T11:58:15Z,2026-06-06T11:58:59Z

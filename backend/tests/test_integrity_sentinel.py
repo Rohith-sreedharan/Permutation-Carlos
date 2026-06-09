@@ -62,7 +62,7 @@ class FakeCollection:
         self.docs.append(doc)
         return type("InsertResult", (), {"inserted_id": doc.get("id", "ok")})
 
-    def find(self, query):
+    def find(self, query, projection=None):
         return [doc for doc in self.docs if self._match(doc, query)]
 
     def find_one(self, query, sort=None):

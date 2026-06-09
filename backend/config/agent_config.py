@@ -83,6 +83,17 @@ AGENT_CONFIG: dict = {
         "OVERAGE_BLOCK_PCT": int(os.getenv("OVERAGE_BLOCK_PCT", "100")),  # % of allocation → block
         "WEBHOOK_FAIL_ALERT_THRESHOLD": int(os.getenv("WEBHOOK_FAIL_THRESHOLD", "3")),
         "SUBSCRIPTION_EXPIRY_CHECK_WINDOW_MIN": int(os.getenv("SUB_EXPIRY_WINDOW_MIN", "5")),
+        # Phase 9 AC-5 monitors
+        "PROHIBITED_LANGUAGE_API_RESPONSE_ALERT_COUNT": int(os.getenv("PROHIBITED_LANGUAGE_API_RESPONSE_ALERT_COUNT", "1")),
+        "SELF_EXCLUSION_BYPASS_ALERT_COUNT": int(os.getenv("SELF_EXCLUSION_BYPASS_ALERT_COUNT", "1")),
+        "DATA_DELETION_SLA_WARNING_COUNT": int(os.getenv("DATA_DELETION_SLA_WARNING_COUNT", "1")),
+        "DATA_DELETION_SLA_BREACH_COUNT": int(os.getenv("DATA_DELETION_SLA_BREACH_COUNT", "1")),
+        "DATA_DELETION_SLA_WARNING_DAYS": int(os.getenv("DATA_DELETION_SLA_WARNING_DAYS", "25")),
+        "DATA_DELETION_SLA_BREACH_DAYS": int(os.getenv("DATA_DELETION_SLA_BREACH_DAYS", "30")),
+        # Phase 11: affiliate fraud monitoring
+        "AFFILIATE_FRAUD_RATE_ALERT_COUNT": int(os.getenv("AFFILIATE_FRAUD_RATE_ALERT_COUNT", "1")),
+        "AFFILIATE_FRAUD_CLUSTER_ALERT_COUNT": int(os.getenv("AFFILIATE_FRAUD_CLUSTER_ALERT_COUNT", "1")),
+        "AFFILIATE_FRAUD_CLUSTER_SIZE": int(os.getenv("AFFILIATE_FRAUD_CLUSTER_SIZE", "3")),
     },
 
     # ── Phase 3 Billing ──────────────────────────────────────────────────────
@@ -224,5 +235,124 @@ AGENT_CONFIG: dict = {
         # Severity response windows
         "critical_escalate_minutes": int(os.getenv("P8_CRITICAL_ESCALATE_MIN", "15")),
         "warning_response_minutes": int(os.getenv("P8_WARNING_RESPONSE_MIN", "30")),
+    },
+
+    # ── Phase 11: Affiliate acquisition engine ─────────────────────────────
+    "phase11": {
+        "program_access_mode": os.getenv("P11_ACCESS_MODE", "INVITE_ONLY"),
+        "open_enrollment_delay_days": int(os.getenv("P11_OPEN_ENROLLMENT_DAYS", "90")),
+        "attribution_cookie_name": os.getenv("P11_COOKIE_NAME", "bv_ref"),
+        "attribution_cookie_expiry_days": int(os.getenv("P11_COOKIE_EXPIRY_DAYS", "30")),
+        "invite_link_expiry_days": int(os.getenv("P11_INVITE_EXPIRY_DAYS", "7")),
+        "payout_min_threshold_usd": float(os.getenv("P11_PAYOUT_MIN_THRESHOLD_USD", "50")),
+        "payout_batch_day_of_month": int(os.getenv("P11_PAYOUT_BATCH_DOM", "1")),
+        "payout_net_days": int(os.getenv("P11_PAYOUT_NET_DAYS", "30")),
+    },
+
+    # ── Phase 11.5: Parlay Sentinel Monitors (Section 3.2) ─────────────────
+    # All thresholds configurable via env. Zero hardcoded values in the service file.
+    "phase11_5": {
+        # Max seconds since scheduler last ran before treating absence as a failure
+        "scheduler_run_window_seconds": int(os.getenv("P11_5_SCHEDULER_WINDOW_SEC", "3600")),
+        # Max age (seconds) of the freshest snapshot_hash before feed is deemed stale
+        "feed_staleness_threshold_seconds": int(os.getenv("P11_5_FEED_STALE_SEC", "3600")),
+        # DecisionRecord fields that must be non-null for a leg to be parlay-eligible
+        "required_leg_fields": os.getenv(
+            "P11_5_REQUIRED_LEG_FIELDS",
+            "selection_id,snapshot_hash,model_probability,line"
+        ).split(","),
+    },
+
+    # ── Phase 13: Affiliate 3-Day Trial System ──────────────────────────────
+    # All thresholds configurable via env — zero hardcoded values.
+    "phase13": {
+        # Trial durations (hours)
+        "trial_duration_qr_hours": int(os.getenv("P13_TRIAL_QR_HOURS", "24")),
+        "trial_duration_affiliate_hours": int(os.getenv("P13_TRIAL_AFFILIATE_HOURS", "72")),
+        "trial_duration_subscriber_hours": int(os.getenv("P13_TRIAL_SUBSCRIBER_HOURS", "72")),
+
+        # Promo token expiry (minutes) — 60 min per spec
+        "promo_token_expiry_minutes": int(os.getenv("P13_TOKEN_EXPIRY_MIN", "60")),
+
+        # QR code daily redemption cap — prevents bot exhaustion
+        "qr_daily_redemption_limit": int(os.getenv("P13_QR_DAILY_LIMIT", "10")),
+
+        # Platform trial subscription token allocation
+        "trial_platform_token_allocation": int(os.getenv("P13_TRIAL_TOKENS", "1500")),
+
+        # Section 13.18 — Subscriber Referral Program commission tiers
+        "referral_reward_platform_usd": float(os.getenv("P13_REFERRAL_REWARD_PLATFORM_USD", "30.0")),    # Platform ($97/mo) referral
+        "referral_reward_syndicate_usd": float(os.getenv("P13_REFERRAL_REWARD_SYNDICATE_USD", "15.0")),  # Syndicate ($47/mo) referral
+        "referral_auto_upgrade_threshold": int(os.getenv("P13_REFERRAL_UPGRADE_THRESHOLD", "5")),        # referrer tier upgrade at N conversions
+
+        # Affiliate rapid conversion velocity monitor — fraud sentinel
+        # >N conversions from same affiliate_id in rolling M-day window → FRAUD_HOLD
+        "affiliate_rapid_conversion_threshold": int(os.getenv("P13_RAPID_CONV_THRESHOLD", "5")),
+        "affiliate_rapid_conversion_window_days": int(os.getenv("P13_RAPID_CONV_WINDOW_DAYS", "7")),
+
+        # Device mismatch + conversion window (seconds) — flag for review
+        "device_mismatch_conversion_window_seconds": int(os.getenv("P13_DEV_MISMATCH_WINDOW_SEC", "300")),
+
+        # Growth Agent sequence timing offsets (hours from trial_start)
+        "trial_day1_hours": int(os.getenv("P13_DAY1_HOURS", "24")),
+        "trial_day2_hours": int(os.getenv("P13_DAY2_HOURS", "48")),
+        "trial_hour68_hours": int(os.getenv("P13_HOUR68", "68")),
+        "trial_hour71_hours": int(os.getenv("P13_HOUR71", "71")),
+
+        # Win-back sequence stop day
+        "winback_stop_day": int(os.getenv("P13_WINBACK_STOP_DAY", "30")),
+
+        # Sequence overlap suppression window (hours) when active win-back exists
+        "overlap_suppression_hours": int(os.getenv("P13_OVERLAP_SUPPRESS_HRS", "24")),
+
+        # FTC: charge timezone default if GeoIP lookup fails
+        "charge_timezone_default": os.getenv("P13_CHARGE_TZ_DEFAULT", "America/New_York"),
+
+        # Commission amounts (USD) — pulled by billing service
+        "commission_platform_base_usd": float(os.getenv("P13_COMM_PLATFORM_BASE", "30.0")),
+        "commission_syndicate_usd": float(os.getenv("P13_COMM_SYNDICATE", "15.0")),
+
+        # Payout net days (matches phase11)
+        "commission_net_days": int(os.getenv("P13_COMM_NET_DAYS", "30")),
+
+        # Turnstile secret key for Cloudflare bot protection
+        "turnstile_secret_key": os.getenv("CLOUDFLARE_TURNSTILE_SECRET", ""),
+        "turnstile_site_key": os.getenv("CLOUDFLARE_TURNSTILE_SITE_KEY", ""),
+
+        # Affiliate trial landing page — platform price shown in copy
+        "platform_price_display": os.getenv("P13_PLATFORM_PRICE_DISPLAY", "$97/month"),
+
+        # Email: trial receipt and ending schedule
+        "trial_receipt_from": os.getenv("P13_RECEIPT_FROM", "em9248.beatvegas.app"),
+        "trial_ending_warning_hours_before": int(os.getenv("P13_ENDING_WARN_HOURS", "24")),
+
+        # Billing policy: days after failed charge before access is revoked
+        "grace_period_days": int(os.getenv("P13_GRACE_PERIOD_DAYS", "3")),
+
+        # Billing policy: days after charge within which a refund can be issued
+        "refund_window_days": int(os.getenv("P13_REFUND_WINDOW_DAYS", "7")),
+
+        # Affiliate trial offer window (seconds from first click via bv_ref cookie)
+        # 86400 = 24 hours — offer expires 24h after the referral link was clicked
+        "affiliate_trial_offer_expiry_seconds": int(os.getenv("P13_TRIAL_OFFER_EXPIRY_SEC", "86400")),
+
+        # Stripe API retry — exponential backoff for trial subscription creation.
+        # Live mode enforces stricter rate limits than test mode.
+        # Retries on RateLimitError and APIConnectionError only — not card declines.
+        # Backoff: 0.5s, 1.0s, 2.0s (base * 2^attempt)
+        "stripe_retry_max_attempts": int(os.getenv("P13_STRIPE_RETRY_MAX", "3")),
+        "stripe_retry_backoff_base_seconds": float(os.getenv("P13_STRIPE_BACKOFF_BASE", "0.5")),
+    },
+
+    # ── GeoIP enforcement ────────────────────────────────────────────────────
+    # Item 9: Low-confidence threshold for MaxMind GeoLite2-City per-IP scores.
+    # Results below this threshold are ALLOWED (not blocked) but logged as
+    # GEO_LOW_CONFIDENCE to sentinel_event_log for audit.
+    # MaxMind confidence range: 0–100 (integer). Country DB returns None (no confidence).
+    # Default 50 = allow any result MaxMind is less than 50% confident about.
+    "geoip": {
+        "low_confidence_threshold": int(os.getenv("GEOIP_CONFIDENCE_THRESHOLD", "50")),
+        "low_confidence_action": "ALLOW_AND_LOG",  # never block on low confidence
+        "blocked_territories": ["PR", "VI", "GU", "MP", "AS", "UM"],
     },
 }

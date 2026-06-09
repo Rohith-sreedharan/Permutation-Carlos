@@ -192,7 +192,14 @@ export function classifySpreadEdge(
   if (sharpAction && sharpAction !== 'NO_SHARP_PLAY') {
     stateReasons.push(`Sharp action identified: ${sharpAction}`);
     stateReasons.push(`Gap-based edge analysis (backend validated)`);
-    
+
+    const sharpActionLabel =
+      sharpAction === 'TAKE_POINTS' ? 'Take the Points' :
+      sharpAction === 'LAY_POINTS' ? 'Lay the Points' :
+      sharpAction === 'OVER' ? 'Over' :
+      sharpAction === 'UNDER' ? 'Under' :
+      sharpAction;
+
     return {
       state: EdgeState.EDGE,
       side: valueSide,
@@ -200,7 +207,7 @@ export function classifySpreadEdge(
       probability: 0.55 + (spreadDeviation / 40),
       confidence: confidence || 50,  // Use actual confidence or default
       confidenceComponents: null,
-      reason: `Official edge: ${sharpAction} — ${spreadDeviation.toFixed(1)} pt gap-validated edge`,
+      reason: `Official edge: ${sharpActionLabel} — ${spreadDeviation.toFixed(1)} pt gap-validated edge`,
       actionable: true,
       showBanner: true,
       telegramEligible: true,

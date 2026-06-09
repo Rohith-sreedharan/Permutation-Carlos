@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { getTopAnalysts } from '../services/api';
+import { getTopAnalysts , API_BASE_URL } from '../services/api';
 import type { TopAnalyst } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import { swalSuccess, swalError } from '../utils/swal';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface Channel {
     id: string;
@@ -282,7 +282,7 @@ const CommunityEnhanced: React.FC = () => {
                                          selectedChannel.includes('nfl') ? 'NFL analysis and line movement updates post here automatically.' :
                                          selectedChannel === 'props' ? 'Player prop mispricings unlock 24-48 hours before games.' :
                                          selectedChannel === 'parlay' ? 'Build multi-leg parlays with AI-optimized edges.' :
-                                         selectedChannel === 'winning-tickets' ? 'Winning bet celebrations appear here automatically.' :
+                                         selectedChannel === 'winning-tickets' ? 'Winning ticket highlights appear here automatically.' :
                                          'Be the first to post in this channel!'}
                                     </p>
                                 </div>

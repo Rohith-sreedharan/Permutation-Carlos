@@ -87,6 +87,34 @@ def _extract_user_id_from_token(authorization: Optional[str]) -> Optional[str]:
     return None
 
 
+def _resolve_tenant(request: Request, user_id: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
+    tenant_id = request.headers.get("X-Tenant-ID")
+    try:
+        from db.mongo import db
+        if tenant_id:
+            tenant = db["tenants"].find_one({"tenant_id": tenant_id})
+            return tenant_id, tenant
+
+        if user_id:
+            tenant = db["tenants"].find_one({"tenant_id": user_id})
+            if tenant:
+                return user_id, tenant
+    except Exception:
+        pass
+    return None, None
+
+
+def _resolve_tenant_limit(tenant_doc: Optional[dict], fallback_limit: int) -> int:
+    if not tenant_doc:
+        return fallback_limit
+    custom = tenant_doc.get("custom_thresholds", {}) or {}
+    value = custom.get("rate_limit_per_minute")
+    try:
+        return int(value) if value is not None else fallback_limit
+    except Exception:
+        return fallback_limit
+
+
 class _InMemoryStore:
     """Single-process sliding-window store. Thread-safe for asyncio (GIL)."""
 
@@ -162,18 +190,27 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         auth_header = request.headers.get("Authorization")
         user_id = _extract_user_id_from_token(auth_header)
+        tenant_id, tenant_doc = _resolve_tenant(request, user_id)
 
         if user_id:
             limit = int(config["rate_limit_per_user_rpm"])
-            rate_key = f"rl:user:{user_id}"
+            limit = _resolve_tenant_limit(tenant_doc, limit)
+            tenant_scope = tenant_id or user_id
+            rate_key = f"rl:user:{tenant_scope}:{user_id}"
             identifier = user_id
             identifier_type = "user"
         else:
             limit = int(config["rate_limit_per_ip_rpm"])
+            limit = _resolve_tenant_limit(tenant_doc, limit)
             ip = request.client.host if request.client else "unknown"
-            rate_key = f"rl:ip:{ip}"
-            identifier = ip
-            identifier_type = "ip"
+            if tenant_id:
+                rate_key = f"rl:tenant:{tenant_id}:ip:{ip}"
+                identifier = tenant_id
+                identifier_type = "tenant"
+            else:
+                rate_key = f"rl:ip:{ip}"
+                identifier = ip
+                identifier_type = "ip"
 
         allowed, count = self._store.check_and_record(rate_key, limit, window)
 

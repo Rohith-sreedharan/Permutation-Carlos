@@ -199,7 +199,7 @@ class TelegramBotManager:
         
         Runs every hour, checks for games starting in next window
         """
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc)
         
         # Get signals published in last hour
         signals = await self.signal_manager.get_signals_published_since(  # type: ignore
@@ -240,7 +240,7 @@ class TelegramBotManager:
     
     def _format_batch_message(self, signals: List[Signal], tier: str) -> str:
         """Format batch of signals for Telegram"""
-        time_slot = datetime.now().strftime("%I:%M %p ET")
+        time_slot = datetime.now(timezone.utc).strftime("%I:%M %p ET")
         
         lines = [
             f"🎯 **{time_slot} SIGNAL UPDATE**",
@@ -354,7 +354,7 @@ class TelegramBotManager:
         
         elif sequence_type == "DAILY_SUMMARY":
             return [
-                f"📊 **Daily Summary - {datetime.now().strftime('%b %d, %Y')}**",
+                f"📊 **Daily Summary - {datetime.now(timezone.utc).strftime('%b %d, %Y')}**",
                 "",
                 f"Signals today: **{user_data.get('signals_today', 0)}**",
                 f"Win rate: **{user_data.get('win_rate', 0):.1f}%**",
@@ -448,7 +448,7 @@ class TelegramBotManager:
             "telegram_message_id": telegram_message_id,
             "message_text": message_text,
             "tier": tier,
-            "posted_at": datetime.now()
+            "posted_at": datetime.now(timezone.utc)
         })
 
 

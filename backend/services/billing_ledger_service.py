@@ -204,8 +204,10 @@ class BillingLedgerService:
     ) -> None:
         """Append to billing_state_change_log (subscription lifecycle events)."""
         try:
+            change_id = str(uuid4())
             db["billing_state_change_log"].insert_one({
-                "id": str(uuid4()),
+                "id": change_id,
+                "change_id": change_id,
                 "user_id": str(user_id),
                 "event_type": str(event_type),
                 "trace_id": trace_id,

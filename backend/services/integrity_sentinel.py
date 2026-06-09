@@ -84,6 +84,13 @@ class IntegritySentinel:
         MetricThreshold("overage_block_rate", _load_threshold("OVERAGE_BLOCK_PCT", 100), 60, "ALERT"),
         MetricThreshold("subscription_expiry_rate", _load_threshold("SUBSCRIPTION_EXPIRY_CHECK_WINDOW_MIN", 5), 5, "ALERT"),
         MetricThreshold("webhook_failure_rate", _load_threshold("WEBHOOK_FAIL_ALERT_THRESHOLD", 3), 15, "ALERT"),
+        # ── Phase 9 AC-5 monitors (thresholds from agent_config only) ───────
+        MetricThreshold("prohibited_language_api_response_rate", _load_threshold("PROHIBITED_LANGUAGE_API_RESPONSE_ALERT_COUNT", 1), 15, "CRITICAL_ALERT"),
+        MetricThreshold("self_exclusion_bypass_rate", _load_threshold("SELF_EXCLUSION_BYPASS_ALERT_COUNT", 1), 15, "CRITICAL_ALERT"),
+        MetricThreshold("data_deletion_sla_warning_rate", _load_threshold("DATA_DELETION_SLA_WARNING_COUNT", 1), 60, "WARNING_ALERT"),
+        MetricThreshold("data_deletion_sla_breach_rate", _load_threshold("DATA_DELETION_SLA_BREACH_COUNT", 1), 60, "CRITICAL_ALERT"),
+        MetricThreshold("affiliate_fraud_rate", _load_threshold("AFFILIATE_FRAUD_RATE_ALERT_COUNT", 1), 60, "WARNING_ALERT"),
+        MetricThreshold("affiliate_fraud_cluster", _load_threshold("AFFILIATE_FRAUD_CLUSTER_ALERT_COUNT", 1), 60, "CRITICAL_ALERT"),
     ]
 
     def __init__(self, db: Database, alert_webhook_url: Optional[str] = None):
@@ -196,6 +203,28 @@ class IntegritySentinel:
                 )
                 actions_taken.append(f"ALERTED ({threshold.metric_name})")
 
+            elif threshold.action == "WARNING_ALERT":
+                self._send_alert(
+                    severity="WARNING",
+                    message=(
+                        f"Warning threshold breached: {threshold.metric_name} = "
+                        f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                    ),
+                    metric=metric_value,
+                )
+                actions_taken.append(f"WARNING_ALERTED ({threshold.metric_name})")
+
+            elif threshold.action == "CRITICAL_ALERT":
+                self._send_alert(
+                    severity="CRITICAL",
+                    message=(
+                        f"Critical threshold breached: {threshold.metric_name} = "
+                        f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                    ),
+                    metric=metric_value,
+                )
+                actions_taken.append(f"CRITICAL_ALERTED ({threshold.metric_name})")
+
             elif threshold.action == "ROLLBACK":
                 self._send_alert(
                     severity="CRITICAL",
@@ -277,6 +306,23 @@ class IntegritySentinel:
             value = self._compute_sentinel_event_count("SUBSCRIPTION_EXPIRED", window_start)
         elif threshold.metric_name == "webhook_failure_rate":
             value = self._compute_sentinel_event_count("WEBHOOK_FAILURE", window_start)
+        # ── Phase 9 AC-5 metrics ─────────────────────────────────────────────
+        elif threshold.metric_name == "prohibited_language_api_response_rate":
+            value = self._compute_sentinel_event_count("PROHIBITED_LANGUAGE_API_RESPONSE", window_start)
+        elif threshold.metric_name == "self_exclusion_bypass_rate":
+            value = self._compute_sentinel_event_count("SELF_EXCLUSION_BYPASS", window_start)
+        elif threshold.metric_name == "data_deletion_sla_warning_rate":
+            value = self._compute_pending_data_deletion_older_than_days(
+                int(_load_threshold("DATA_DELETION_SLA_WARNING_DAYS", 25))
+            )
+        elif threshold.metric_name == "data_deletion_sla_breach_rate":
+            value = self._compute_pending_data_deletion_older_than_days(
+                int(_load_threshold("DATA_DELETION_SLA_BREACH_DAYS", 30))
+            )
+        elif threshold.metric_name == "affiliate_fraud_rate":
+            value = self._compute_affiliate_fraud_rate(window_start)
+        elif threshold.metric_name == "affiliate_fraud_cluster":
+            value = self._compute_affiliate_fraud_cluster(window_start)
         else:
             logger.warning("Unknown metric: %s", threshold.metric_name)
             value = 0.0
@@ -443,6 +489,43 @@ class IntegritySentinel:
                 },
             )
         )
+
+    def _compute_pending_data_deletion_older_than_days(self, days: int) -> float:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return float(
+            self._count_documents(
+                ["data_deletion_log"],
+                {
+                    "status": "PENDING",
+                    "requested_at_utc": {"$lte": cutoff.isoformat()},
+                },
+            )
+        )
+
+    def _compute_affiliate_fraud_rate(self, window_start: datetime) -> float:
+        dup = self._compute_sentinel_event_count("DUPLICATE_CLICK", window_start)
+        self_ref = self._compute_sentinel_event_count("SELF_REFERRAL", window_start)
+        return float(dup + self_ref)
+
+    def _compute_affiliate_fraud_cluster(self, window_start: datetime) -> float:
+        size = int(_load_threshold("AFFILIATE_FRAUD_CLUSTER_SIZE", 3))
+        rows = list(
+            self._get_collection("sentinel_event_log").find(
+                {
+                    "event_type": {"$in": ["DUPLICATE_CLICK", "SELF_REFERRAL"]},
+                    **self._window_query("timestamp", window_start),
+                },
+                {"affiliate_id": 1},
+            )
+        )
+        counts: Dict[str, int] = {}
+        for row in rows:
+            aid = str(row.get("affiliate_id", ""))
+            if not aid:
+                continue
+            counts[aid] = counts.get(aid, 0) + 1
+        clusters = [aid for aid, cnt in counts.items() if cnt >= size]
+        return float(len(clusters))
 
     def _disable_telegram_autopublish(self) -> bool:
         from services.feature_flags import FeatureFlagService

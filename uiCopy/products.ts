@@ -300,8 +300,8 @@ export const PAYWALL_COPY = {
     body: 'Build up to 6-leg decision combinations from engine-approved outputs.',
     sub: `Available on BeatVegas Platform with 1,500 Parlay Tokens per period.`,
     price: `${PRICE_DISPLAY.BEATVEGAS_PLATFORM} — Telegram Syndicate included`,
-    cta: 'Upgrade to Platform',
-    ctaSecondary: 'Not now',
+     cta: 'Subscribe Now — $97/month',
+     ctaSecondary: 'Continue Trial',
   },
 } as const;
 

@@ -39,6 +39,26 @@ class FakeCollection:
         self.docs.append(doc)
         return FakeInsertResult(inserted_id=doc["record_id"])
 
+    def find_one_and_update(self, query, update, upsert=False, return_document=None, projection=None):
+        """Emulate MongoDB findOneAndUpdate with $setOnInsert semantics."""
+        def _project(doc):
+            if projection is None:
+                return doc
+            return {k: doc[k] for k, include in projection.items() if include and k in doc}
+
+        for doc in self.docs:
+            ok = all(doc.get(k) == v for k, v in query.items())
+            if ok:
+                # Document exists: $setOnInsert is a no-op; return existing doc projected
+                return _project(doc)
+
+        if upsert:
+            new_doc = dict(update.get("$setOnInsert", {}))
+            self.docs.append(new_doc)
+            return _project(new_doc)
+
+        return None
+
 
 def make_decisions() -> GameDecisions:
     return GameDecisions(

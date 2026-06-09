@@ -13,7 +13,7 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 def regenerate_cards():
     """Trigger daily cards regeneration"""
     try:
-        print(f"[{datetime.now()}] Regenerating daily best cards...")
+        print(f"[{datetime.now(timezone.utc)}] Regenerating daily best cards...")
         
         response = requests.post(
             f"{API_URL}/api/daily-cards/regenerate",

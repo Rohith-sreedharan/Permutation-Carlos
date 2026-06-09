@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import LoadingSpinner from './LoadingSpinner';
-import { getSubscriptionStatus } from '../services/api';
+import { getSubscriptionStatus , API_BASE_URL } from '../services/api';
 import {
   BILLING_PAGE_COPY,
   PLAN_IDS,
   type PlanId,
 } from '../uiCopy/products';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface BillingState {
   plan_id: PlanId | null;

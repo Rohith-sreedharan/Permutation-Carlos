@@ -8,7 +8,7 @@ the Stripe event_id written to webhook_event_log before processing).
 Events handled:
   invoice.created               → acknowledge + log (no entitlement change; pre-payment)
   invoice.payment_succeeded     → activate entitlement + billing_state_change_log
-  invoice.payment_failed        → send failure email + log (no immediate revoke)
+  invoice.payment_failed        → revoke entitlement immediately + log SUBSCRIPTION_REVOKED + email
   customer.subscription.updated → update tier + log
   customer.subscription.deleted → revoke entitlement + invalidate session + log
   charge.dispute.created        → suspend entitlement + log CHARGEBACK_INITIATED + alert sentinel
@@ -178,7 +178,7 @@ def _handle_payment_succeeded(event: Dict[str, Any]) -> None:
 
 
 def _handle_payment_failed(event: Dict[str, Any]) -> None:
-    """invoice.payment_failed → send failure email + log (no immediate revoke)."""
+    """invoice.payment_failed → revoke entitlement immediately + log + email."""
     invoice = event["data"]["object"]
     customer_id = invoice.get("customer")
     amount = invoice.get("amount_due", 0) / 100
@@ -189,18 +189,52 @@ def _handle_payment_failed(event: Dict[str, Any]) -> None:
     if not user_id:
         return
 
+    # Resolve old tier for audit log
+    old_ent = db["user_entitlements"].find_one({"user_id": user_id}, {"tier": 1})
+    old_tier = old_ent.get("tier") if old_ent else None
+
+    # 1. Revoke entitlement immediately — platform access lost on payment failure
+    db["user_entitlements"].update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "active": False,
+            "platform_access": False,
+            "revoked_at": _now_iso(),
+            "revoke_reason": "PAYMENT_FAILED",
+        }},
+    )
+
+    # 2. Remove access flags from billing_state
+    db["billing_state"].update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "platform_access": False,
+            "telegram_access": False,
+            "status": "past_due",
+        }},
+    )
+
+    # 3. Log lifecycle event — SUBSCRIPTION_REVOKED so entitlement audit is complete
     billing_ledger.log_state_change(
         user_id=user_id,
-        event_type="PAYMENT_FAILED",
+        event_type="SUBSCRIPTION_REVOKED",
         trace_id=trace_id,
+        old_tier=old_tier,
+        new_tier=None,
         metadata={
             "amount_due_usd": amount,
             "stripe_invoice_id": invoice.get("id"),
             "next_attempt": next_attempt,
+            "revoke_reason": "PAYMENT_FAILED",
         },
     )
 
-    # Send payment failure email (entitlement not immediately revoked)
+    logger.warning(
+        "[Webhook] ENTITLEMENT REVOKED on payment failure user=%s invoice=%s",
+        user_id, invoice.get("id"),
+    )
+
+    # 4. Send payment failure email
     try:
         from services.transactional_email_service import email_service
         email_service.send_payment_failed(

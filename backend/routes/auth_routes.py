@@ -55,6 +55,9 @@ class PasskeyLoginRequest(BaseModel):
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
+# v1-prefixed router — mirrors /api/* at /api/v1/* for versioned clients
+router_v1 = APIRouter(prefix="/api/v1", tags=["auth"])
+
 
 def hash_password(password: str) -> str:
     """Hash password using bcrypt directly."""
@@ -74,6 +77,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 @router.post("/auth/register")
+@router_v1.post("/auth/register")
 def register_user(payload: UserRegistration):
     users = db["users"]
     existing = users.find_one({"email": payload.email})
@@ -108,10 +112,13 @@ def register_user(payload: UserRegistration):
             f"[auth_routes] Growth Agent onboarding trigger failed for user_id={user_id}: {_ga_exc}"
         )
 
-    return {"status": "ok", "user_id": user_id, "email": payload.email}
+    # Issue access token so the frontend can auto-login immediately after registration
+    access_token = create_access_token(user_id=user_id, email=payload.email, tier="free")
+    return {"status": "ok", "user_id": user_id, "email": payload.email, "access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/token")
+@router_v1.post("/token")
 def token(form_data: OAuth2PasswordRequestForm = Depends()):
     users = db["users"]
     user = users.find_one({"email": form_data.username})
@@ -158,6 +165,7 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.post("/verify-2fa")
+@router_v1.post("/verify-2fa")
 def verify_2fa_login(temp_token: str, code: str):
     """Verify 2FA code and complete login"""
     # Extract user ID from temp token

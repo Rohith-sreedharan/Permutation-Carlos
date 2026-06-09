@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 import logging
+from config.phase10_tenant_shell import PHASE10_AUDIT_COLLECTIONS
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.timezone import now_utc, now_est, parse_iso_to_est, format_est_date
@@ -16,24 +17,25 @@ logger = logging.getLogger(__name__)
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DATABASE_NAME", "beatvegas")
+MONGO_MAX_POOL_SIZE = int(os.getenv("MONGO_MAX_POOL_SIZE", "50"))
 
-# Initialize MongoDB client with error handling
-try:
-    client = MongoClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=5000,  # 5 second timeout
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000,
-    )
-    # Test connection
-    client.admin.command('ping')
-    db = client[DB_NAME]
-    logger.info(f"✅ MongoDB connected successfully to {DB_NAME}")
-except Exception as e:
-    logger.error(f"❌ MongoDB connection failed: {e}")
-    logger.error(f"   MONGO_URI format should be: mongodb://username:password@host:port/database")
-    logger.error(f"   Or for auth: mongodb://username:password@host:port/?authSource=admin")
-    raise
+# Initialize MongoDB client — lazy connection (no blocking ping at import time).
+# pymongo MongoClient is non-blocking at construction; the first actual operation
+# triggers the connection. The blocking `admin.command('ping')` has been removed
+# from module-level code to prevent hanging the FastAPI event loop at startup.
+# Connection health is verified in the async startup handler via run_in_executor.
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=10000,
+    maxPoolSize=MONGO_MAX_POOL_SIZE,
+)
+db = client[DB_NAME]
+logger.info(
+    "MongoDB client initialised (lazy connection — not yet pinged, maxPoolSize=%s)",
+    MONGO_MAX_POOL_SIZE,
+)
 
 
 def ensure_indexes() -> None:
@@ -262,6 +264,53 @@ def ensure_indexes() -> None:
         db["parlay_overage_charge_log"].create_index([("trace_id", 1)])
         db["parlay_overage_charge_log"].create_index([("billing_period_start", 1)])
         db["parlay_overage_charge_log"].create_index([("created_at_utc", -1)])
+
+        # Phase 9 compliance indexes (append-only legal logs)
+        db["self_exclusion_log"].create_index([("exclusion_id", 1)], unique=True)
+        db["self_exclusion_log"].create_index([("user_id", 1), ("requested_at_utc", -1)])
+        db["self_exclusion_log"].create_index([("trace_id", 1)])
+
+        db["self_exclusion_reinstatement_queue"].create_index([("request_id", 1)], unique=True)
+        db["self_exclusion_reinstatement_queue"].create_index([("user_id", 1), ("requested_at_utc", -1)])
+        db["self_exclusion_reinstatement_queue"].create_index([("status", 1), ("requested_at_utc", -1)])
+
+        db["data_deletion_log"].create_index([("request_id", 1)])
+        db["data_deletion_log"].create_index([("user_id", 1), ("requested_at_utc", -1)])
+        db["data_deletion_log"].create_index([("status", 1), ("requested_at_utc", -1)])
+        db["data_deletion_log"].create_index([("trace_id", 1)])
+
+        # Phase 10 B2B shell: tenant table and tenant-scoped audit readiness.
+        db["tenants"].create_index([("tenant_id", 1)], unique=True)
+        db["tenants"].create_index([("tenant_type", 1), ("status", 1)])
+        db["tenants"].create_index([("entitlement_type", 1), ("status", 1)])
+
+        for collection in PHASE10_AUDIT_COLLECTIONS:
+            db[collection].create_index([("tenant_id", 1)])
+
+        # Phase 11 affiliate acquisition engine indexes
+        db["affiliate_invites"].create_index([("invite_id", 1)], unique=True)
+        db["affiliate_invites"].create_index([("affiliate_id", 1), ("status", 1)])
+        db["affiliate_invites"].create_index([("expires_at_utc", 1)])
+
+        db["affiliate_clicks"].create_index([("click_id", 1)], unique=True)
+        db["affiliate_clicks"].create_index([("affiliate_id", 1), ("clicked_at_utc", -1)])
+        db["affiliate_clicks"].create_index([("is_converted", 1), ("clicked_at_utc", -1)])
+
+        db["affiliate_attributions"].create_index([("attribution_id", 1)], unique=True)
+        db["affiliate_attributions"].create_index([("user_id", 1)], unique=True)
+        db["affiliate_attributions"].create_index([("affiliate_id", 1), ("locked_at_utc", -1)])
+
+        db["affiliate_commission_log"].create_index([("commission_id", 1)])
+        db["affiliate_commission_log"].create_index([("affiliate_id", 1), ("created_at_utc", -1)])
+        db["affiliate_commission_log"].create_index([("status", 1), ("net_30_date", 1)])
+        db["affiliate_commission_log"].create_index([("trace_id", 1)])
+
+        db["affiliate_payout_log"].create_index([("payout_id", 1)], unique=True)
+        db["affiliate_payout_log"].create_index([("affiliate_id", 1), ("created_at_utc", -1)])
+        db["affiliate_payout_log"].create_index([("status", 1), ("created_at_utc", -1)])
+
+        db["affiliate_payout_batches"].create_index([("batch_id", 1)], unique=True)
+        db["affiliate_payout_batches"].create_index([("run_date_utc", -1)])
         
         logger.info("✅ Database indexes created successfully")
         

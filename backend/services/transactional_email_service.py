@@ -389,6 +389,203 @@ class TransactionalEmailService:
     send_renewal_reminder = staticmethod(send_renewal_reminder)
     send_cancellation_confirmation = staticmethod(send_cancellation_confirmation)
     consume_reset_token = staticmethod(consume_reset_token)
+    # Phase 13 — trial emails
+    send_affiliate_trial_receipt = staticmethod(lambda **kw: send_affiliate_trial_receipt(**kw))
+    send_affiliate_trial_ending = staticmethod(lambda **kw: send_affiliate_trial_ending(**kw))
 
 
 email_service = TransactionalEmailService()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email 6 (Phase 13): affiliate_trial_receipt
+# FTC Negative Option Rule 2024 — required at trial start
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_affiliate_trial_receipt(
+    *,
+    user_id: str,
+    charge_display: str,
+    trial_ends_at_utc: str,
+    cancel_url: str = "https://beatvegas.app/settings/billing",
+    amount_usd: float = 97.0,
+    stripe_subscription_id: Optional[str] = None,
+) -> bool:
+    """
+    Sent immediately when trial subscription is created.
+    Required by FTC Negative Option Rule 2024.
+    Contains: exact charge date/time in local timezone, one-click cancel link,
+    charge amount, NCPG footer.
+    Domain: em9248.beatvegas.app (verified SendGrid domain).
+    """
+    to_email = _get_user_email(user_id)
+    if not to_email:
+        logger.warning("[Email:TrialReceipt] no email for user=%s", user_id)
+        return False
+
+    subject = "Your BeatVegas 3-Day Trial Has Started"
+    text_body = (
+        f"Your BeatVegas Platform trial has started.\n\n"
+        f"FREE until: {charge_display}\n"
+        f"After that: ${amount_usd:.2f}/month\n\n"
+        f"To cancel before {charge_display} and avoid any charge:\n"
+        f"{cancel_url}\n\n"
+        f"If you do nothing, your subscription activates automatically.\n\n"
+        f"BeatVegas provides statistical simulation outputs — not betting advice.\n"
+        f"Problem gambling help: 1-800-522-4700 | ncpgambling.org"
+    )
+    html_body = f"""
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;background:#0c141f;color:#f2f3ec;padding:24px">
+<h2 style="color:#bc993c;margin-bottom:4px">Your 3-Day Trial Has Started</h2>
+<p style="color:#afb6bb;font-size:13px">BeatVegas Platform access is now active</p>
+
+<table style="border-collapse:collapse;width:100%;margin-top:20px">
+  <tr style="border-bottom:1px solid #1e2d3d">
+    <td style="padding:12px 8px;color:#afb6bb">Trial period</td>
+    <td style="padding:12px 8px;font-weight:600">Free until {charge_display}</td>
+  </tr>
+  <tr style="border-bottom:1px solid #1e2d3d">
+    <td style="padding:12px 8px;color:#afb6bb">Then</td>
+    <td style="padding:12px 8px;font-weight:600">${amount_usd:.2f}/month</td>
+  </tr>
+</table>
+
+<p style="margin-top:24px">
+  To cancel before <strong>{charge_display}</strong> and avoid any charge:
+</p>
+<p>
+  <a href="{cancel_url}"
+     style="display:inline-block;background:#bc993c;color:#0c141f;padding:12px 28px;
+            text-decoration:none;border-radius:6px;font-weight:700;font-size:15px">
+    Cancel Trial
+  </a>
+</p>
+
+<p style="font-size:12px;color:rgba(242,243,236,0.5);margin-top:32px">
+  BeatVegas provides statistical simulation outputs only — not betting advice.
+  No wagering services are offered.
+</p>
+<p style="font-size:12px;color:rgba(242,243,236,0.4)">
+  Problem gambling help: 1-800-522-4700 |
+  <a href="https://www.ncpgambling.org" style="color:rgba(242,243,236,0.4)">ncpgambling.org</a>
+</p>
+<p style="font-size:11px;color:rgba(242,243,236,0.3)">
+  You received this because you started a BeatVegas trial.
+  <a href="{cancel_url}" style="color:rgba(242,243,236,0.3)">Unsubscribe</a>
+</p>
+</body></html>"""
+
+    success = _send_email(
+        to_email=to_email, subject=subject,
+        html_body=html_body, text_body=text_body,
+    )
+    if success:
+        # Log for compliance audit trail
+        try:
+            db["transactional_email_log"].insert_one({
+                "email_type": "affiliate_trial_receipt",
+                "user_id": user_id,
+                "to_email": to_email,
+                "stripe_subscription_id": stripe_subscription_id,
+                "charge_display": charge_display,
+                "trial_ends_at_utc": trial_ends_at_utc,
+                "sent_at": _now_iso(),
+                "cancel_url": cancel_url,
+            })
+        except Exception:
+            pass
+    return success
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Email 7 (Phase 13): affiliate_trial_ending
+# FTC Negative Option Rule 2024 — T-24h notice required
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_affiliate_trial_ending(
+    *,
+    user_id: str,
+    charge_display: str,
+    trial_ends_at_utc: str,
+    cancel_url: str = "https://beatvegas.app/settings/billing",
+    amount_usd: float = 97.0,
+) -> bool:
+    """
+    Sent T-24h before trial end.
+    Required by FTC Negative Option Rule 2024 — provides adequate notice before charge.
+    Contains: exact charge date/time, one-click cancel link, NCPG footer.
+    Scheduled by trial_ending_scheduler.py which reads promo_tokens.trial_ends_at.
+    """
+    to_email = _get_user_email(user_id)
+    if not to_email:
+        logger.warning("[Email:TrialEnding] no email for user=%s", user_id)
+        return False
+
+    subject = "Your BeatVegas trial ends tomorrow"
+    text_body = (
+        f"Your BeatVegas Platform trial ends tomorrow.\n\n"
+        f"Charge date and time: {charge_display}\n"
+        f"Amount: ${amount_usd:.2f}\n\n"
+        f"Cancel before {charge_display} and you won't be charged:\n"
+        f"{cancel_url}\n\n"
+        f"If you do nothing, your subscription activates automatically.\n\n"
+        f"BeatVegas provides statistical simulation outputs — not betting advice.\n"
+        f"Problem gambling help: 1-800-522-4700 | ncpgambling.org"
+    )
+    html_body = f"""
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;background:#0c141f;color:#f2f3ec;padding:24px">
+<h2 style="color:#de691b;margin-bottom:4px">Your Trial Ends Tomorrow</h2>
+<p style="color:#afb6bb;font-size:13px">Action required if you want to cancel</p>
+
+<table style="border-collapse:collapse;width:100%;margin-top:20px">
+  <tr style="border-bottom:1px solid #1e2d3d">
+    <td style="padding:12px 8px;color:#afb6bb">Charge time</td>
+    <td style="padding:12px 8px;font-weight:600">{charge_display}</td>
+  </tr>
+  <tr style="border-bottom:1px solid #1e2d3d">
+    <td style="padding:12px 8px;color:#afb6bb">Amount</td>
+    <td style="padding:12px 8px;font-weight:600">${amount_usd:.2f}/month</td>
+  </tr>
+</table>
+
+<p style="margin-top:24px">
+  To cancel before <strong>{charge_display}</strong> and avoid any charge:
+</p>
+<p>
+  <a href="{cancel_url}"
+     style="display:inline-block;background:#bc993c;color:#0c141f;padding:12px 28px;
+            text-decoration:none;border-radius:6px;font-weight:700;font-size:15px">
+    Cancel Trial
+  </a>
+</p>
+
+<p style="font-size:12px;color:rgba(242,243,236,0.5);margin-top:32px">
+  BeatVegas provides statistical simulation outputs only — not betting advice.
+</p>
+<p style="font-size:12px;color:rgba(242,243,236,0.4)">
+  Problem gambling help: 1-800-522-4700 |
+  <a href="https://www.ncpgambling.org" style="color:rgba(242,243,236,0.4)">ncpgambling.org</a>
+</p>
+<p style="font-size:11px;color:rgba(242,243,236,0.3)">
+  <a href="{cancel_url}" style="color:rgba(242,243,236,0.3)">Unsubscribe</a>
+</p>
+</body></html>"""
+
+    success = _send_email(
+        to_email=to_email, subject=subject,
+        html_body=html_body, text_body=text_body,
+    )
+    if success:
+        try:
+            db["transactional_email_log"].insert_one({
+                "email_type": "affiliate_trial_ending",
+                "user_id": user_id,
+                "to_email": to_email,
+                "charge_display": charge_display,
+                "trial_ends_at_utc": trial_ends_at_utc,
+                "sent_at": _now_iso(),
+                "cancel_url": cancel_url,
+            })
+        except Exception:
+            pass
+    return success

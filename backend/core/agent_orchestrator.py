@@ -35,18 +35,24 @@ class AgentOrchestrator:
     async def start(self):
         """Initialize and start all agents"""
         try:
-            # Initialize Event Bus
-            self.bus = await get_event_bus()
+            # Initialize Event Bus (Redis optional — graceful fallback)
+            try:
+                self.bus = await get_event_bus()
+            except Exception as bus_err:
+                logger.warning(f"⚠️ Event Bus unavailable (Redis not running): {bus_err}. Continuing without event bus.")
+                self.bus = None
             logger.info("🚀 Starting Agent Orchestrator...")
             
-            # Initialize agents
+            # Initialize agents (use InMemory fallback if bus is None)
+            from core.event_bus import in_memory_bus
+            _bus = self.bus if self.bus is not None else in_memory_bus
             self.agents = {
-                "parlay": ParlayAgent(self.bus),
-                "risk": RiskAgent(self.bus, self.db),
-                "market": MarketAgent(self.bus, self.db),
-                "user_modeling": UserModelingAgent(self.bus, self.db),
-                "event_trigger": EventTriggerAgent(self.bus, self.db),
-                "ai_coach": AICoach(self.bus)
+                "parlay": ParlayAgent(_bus),
+                "risk": RiskAgent(_bus, self.db),
+                "market": MarketAgent(_bus, self.db),
+                "user_modeling": UserModelingAgent(_bus, self.db),
+                "event_trigger": EventTriggerAgent(_bus, self.db),
+                "ai_coach": AICoach(_bus)
             }
             
             # Start all agents
@@ -54,9 +60,10 @@ class AgentOrchestrator:
                 await agent.start()
                 logger.info(f"✅ {name.title()} Agent initialized")
                 
-            # Start Event Bus listener
+            # Start Event Bus listener (only if bus is available)
             self.running = True
-            asyncio.create_task(self.bus.start_listening())
+            if self.bus is not None:
+                asyncio.create_task(self.bus.start_listening())
             
             logger.info("🎯 Multi-Agent System ONLINE")
             logger.info("📡 Event Bus listening on topics:")

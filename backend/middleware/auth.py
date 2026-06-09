@@ -12,6 +12,7 @@ No plaintext secrets are ever written to logs.
 import logging
 import os
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, status
@@ -66,6 +67,27 @@ def _resolve_user_from_id(user_id: str) -> Dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+        )
+
+    if user.get("self_excluded"):
+        trace_id = user.get("self_exclusion_trace_id")
+        try:
+            db["sentinel_event_log"].insert_one(
+                {
+                    "event_type": "SELF_EXCLUSION_BYPASS",
+                    "severity": "CRITICAL",
+                    "user_id": user_id,
+                    "trace_id": trace_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "agent_id": "agent.sentinel.v1",
+                    "reason": "Excluded user attempted authenticated access",
+                }
+            )
+        except Exception:
+            logger.error("Failed writing SELF_EXCLUSION_BYPASS sentinel event")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SELF_EXCLUDED",
         )
     return user
 

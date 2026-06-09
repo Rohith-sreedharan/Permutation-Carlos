@@ -259,7 +259,7 @@ class ParlayArchitectAdapter:
             event_id=leg_data["event_id"],
             sport=leg_data.get("sport", "unknown"),
             league=leg_data.get("league", "unknown"),
-            start_time_utc=leg_data.get("start_time_utc", datetime.now()),
+            start_time_utc=leg_data.get("start_time_utc", datetime.now(timezone.utc)),
             market_type=MarketType(leg_data.get("market_type", "SPREAD")),
             selection=leg_data.get("selection", "HOME"),
             tier=tier,

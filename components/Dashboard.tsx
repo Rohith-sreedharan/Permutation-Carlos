@@ -81,8 +81,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                         : undefined;
 
       // Use database fetch which supports all sports and EST filtering
+      // upcoming_only=false so in-progress/completed games still show on the dashboard
       console.log('[Dashboard] Fetching with:', { sportKey, targetDate, activeSport, dateFilter });
-      const eventsData = await fetchEventsFromDB(sportKey, targetDate, true, 200);
+      const eventsData = await fetchEventsFromDB(sportKey, targetDate, false, 200);
       console.log('[Dashboard] Fetched events:', eventsData.length);
 
       const predictionsData = await getPredictions();

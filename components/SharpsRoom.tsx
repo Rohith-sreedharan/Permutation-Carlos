@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { fetchCLVData, fetchPerformanceReport, getSubscriptionStatus } from '../services/api';
+import { fetchCLVData, fetchPerformanceReport, getSubscriptionStatus , API_BASE_URL } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface CLVData {
   picks: Array<{

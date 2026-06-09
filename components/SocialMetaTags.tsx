@@ -18,8 +18,8 @@ interface SocialMetaTagsProps {
 const SocialMetaTags: React.FC<SocialMetaTagsProps> = ({ event, pageType = 'dashboard' }) => {
   useEffect(() => {
     // Default meta tags for dashboard
-    let title = 'BeatVegas - AI Sports Betting Intelligence';
-    let description = 'Advanced AI-powered sports betting predictions with Decision Engine intelligence cycles, real-time odds tracking, and professional-grade analytics.';
+    let title = 'BeatVegas - AI Sports Intelligence';
+    let description = 'Advanced AI-powered sports intelligence with Decision Engine cycles, real-time pricing tracking, and professional-grade analytics.';
     let image = 'https://beatvegas.ai/og-default.png'; // Placeholder - replace with your hosted image
     let url = 'https://beatvegas.ai';
 

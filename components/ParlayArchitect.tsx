@@ -38,6 +38,7 @@ interface ParlayArchitectProps {
   tokensRemaining?: number;
   overageChargesCurrentPeriod?: number;
   billingPeriodEnd?: string;
+  isTrialUser?: boolean;
   onUpgradeToPlatform?: () => void;
   onViewBilling?: () => void;
   onReturnDashboard?: () => void;
@@ -78,6 +79,7 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
   tokensRemaining,
   overageChargesCurrentPeriod,
   billingPeriodEnd,
+  isTrialUser,
   onUpgradeToPlatform,
   onViewBilling,
   onReturnDashboard,
@@ -85,6 +87,7 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
   const [resolvedPlatformAccess, setResolvedPlatformAccess] = useState<boolean | undefined>(platformAccess);
   const [resolvedTelegramAccess, setResolvedTelegramAccess] = useState<boolean | undefined>(telegramAccess);
   const [resolvedEngineCyclesLimit, setResolvedEngineCyclesLimit] = useState<number | undefined>(engineCyclesLimit);
+  const [resolvedIsTrialUser, setResolvedIsTrialUser] = useState<boolean>(isTrialUser ?? false);
   const [sport, setSport] = useState<string>('basketball_nba');
   const [legCount, setLegCount] = useState<number>(PARLAY_LIMITS.MIN_LEGS);
   const [riskProfile, setRiskProfile] = useState<string>('balanced');
@@ -107,6 +110,7 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
         setResolvedPlatformAccess(Boolean(status.platform_access));
         setResolvedTelegramAccess(Boolean(status.telegram_access));
         setResolvedEngineCyclesLimit(Number(status.engine_cycles_limit ?? 0));
+        setResolvedIsTrialUser(Boolean(status.is_trial));
       } catch {
         setResolvedPlatformAccess(false);
         setResolvedTelegramAccess(false);
@@ -170,6 +174,38 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
 
   const renderGate = () => {
     if (!resolvedPlatformAccess && !resolvedTelegramAccess) {
+      // Trial user gate — distinct messaging with Subscribe Now CTA + Continue Trial link
+      if (resolvedIsTrialUser) {
+        return (
+          <div className="bg-charcoal border border-gold/40 rounded-xl p-6 text-center">
+            <div className="text-3xl mb-3">🏆</div>
+            <h3 className="text-xl font-bold text-gold mb-2">Parlay Architect — Platform Feature</h3>
+            <p className="text-light-gray mb-1">
+              Parlay Architect is available to Platform subscribers. Your current trial gives you
+              access to Telegram Syndicate signals.
+            </p>
+            <p className="text-light-gray/70 text-sm mb-5">
+              Upgrade now to unlock 6-leg parlay optimization during your trial window.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={onUpgradeToPlatform}
+                className="px-5 py-2.5 bg-gold text-darkNavy font-bold rounded-lg hover:bg-gold/90 transition-colors"
+              >
+                Subscribe Now — {PRICE_DISPLAY.BEATVEGAS_PLATFORM}
+              </button>
+              <button
+                type="button"
+                onClick={onReturnDashboard}
+                className="px-5 py-2.5 bg-transparent border border-light-gray/30 text-light-gray rounded-lg hover:border-light-gray/60 transition-colors"
+              >
+                Continue Trial
+              </button>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="bg-charcoal border border-electric-blue/30 rounded-xl p-5 text-center">
           <h3 className="text-xl font-bold text-white mb-2">Subscription Required</h3>
@@ -253,31 +289,33 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
           <p className="text-lightGold/70 text-sm mt-2">{PARLAY_ARCHITECT_COPY.legGuidance}</p>
         </header>
 
-        <section className="bg-charcoal border border-gold/20 rounded-xl p-5 space-y-4">
-          <div>
-            <div className="flex justify-between text-sm text-lightGold mb-1">
-              <span>Intelligence Cycles</span>
-              <span>
-                {remainingCycles.toLocaleString()} / {PRODUCT_LIMITS.INTELLIGENCE_CYCLES_MONTHLY.toLocaleString()}
-              </span>
+        {(resolvedPlatformAccess || resolvedTelegramAccess) && (
+          <section className="bg-charcoal border border-gold/20 rounded-xl p-5 space-y-4">
+            <div>
+              <div className="flex justify-between text-sm text-lightGold mb-1">
+                <span>Intelligence Cycles</span>
+                <span>
+                  {remainingCycles.toLocaleString()} / {PRODUCT_LIMITS.INTELLIGENCE_CYCLES_MONTHLY.toLocaleString()}
+                </span>
+              </div>
+              <div className="w-full bg-navy h-2 rounded-full overflow-hidden">
+                <div className="h-2 bg-neon-green" style={{ width: `${cyclePct}%` }} />
+              </div>
             </div>
-            <div className="w-full bg-navy h-2 rounded-full overflow-hidden">
-              <div className="h-2 bg-neon-green" style={{ width: `${cyclePct}%` }} />
+            <div>
+              <div className="flex justify-between text-sm text-lightGold mb-1">
+                <span>Parlay Tokens</span>
+                <span>
+                  {remainingTokens.toLocaleString()} / {PRODUCT_LIMITS.PARLAY_TOKENS_MONTHLY.toLocaleString()}
+                </span>
+              </div>
+              <div className="w-full bg-navy h-2 rounded-full overflow-hidden">
+                <div className="h-2 bg-electric-blue" style={{ width: `${tokenPct}%` }} />
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="flex justify-between text-sm text-lightGold mb-1">
-              <span>Parlay Tokens</span>
-              <span>
-                {remainingTokens.toLocaleString()} / {PRODUCT_LIMITS.PARLAY_TOKENS_MONTHLY.toLocaleString()}
-              </span>
-            </div>
-            <div className="w-full bg-navy h-2 rounded-full overflow-hidden">
-              <div className="h-2 bg-electric-blue" style={{ width: `${tokenPct}%` }} />
-            </div>
-          </div>
-          <p className="text-xs text-lightGold/60">Reset date: {formatDate(billingPeriodEnd)}</p>
-        </section>
+            <p className="text-xs text-lightGold/60">Reset date: {formatDate(billingPeriodEnd)}</p>
+          </section>
+        )}
 
         {renderGate()}
 

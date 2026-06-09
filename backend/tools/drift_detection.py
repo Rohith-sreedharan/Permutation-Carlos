@@ -87,7 +87,7 @@ class DriftDetector:
         print(f"Analyzing last {weeks_to_analyze} weeks")
         print("="*80)
         
-        end_date = datetime.now()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(weeks=weeks_to_analyze)
         
         # Analyze each sport
@@ -195,7 +195,7 @@ class DriftDetector:
         print("-" * 40)
         
         # Collect metrics for each week
-        end_date = datetime.now()
+        end_date = datetime.now(timezone.utc)
         
         for sport in self.BASELINES.keys():
             weekly_edge_rates = []
@@ -280,7 +280,7 @@ class DriftDetector:
         high_severity = [a for a in self.drift_alerts if a["severity"] == "HIGH"]
         
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "alerts": self.drift_alerts,
             "summary": {
                 "total_alerts": len(self.drift_alerts),

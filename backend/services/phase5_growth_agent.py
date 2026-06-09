@@ -168,6 +168,201 @@ _TEMPLATES: dict = {
             "Log in to review outstanding records before your credits reset."
         ),
     },
+    "affiliate_welcome_1": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Affiliate Program Welcome",
+        "body": (
+            "Welcome to the BeatVegas affiliate program. "
+            "Your referral link is active and ready to share. "
+            "Commissions are calculated from confirmed subscriber payments."
+        ),
+    },
+    "affiliate_welcome_2": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Affiliate Sharing Reminder",
+        "body": (
+            "Reminder: your referral link is active. "
+            "Share it across your approved channels to increase qualified conversions."
+        ),
+    },
+    "affiliate_welcome_3": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "First Conversion Guidance",
+        "body": (
+            "Your affiliate dashboard includes volume tiers and conversion tracking. "
+            "Review your current tier progress and optimize your distribution plan."
+        ),
+    },
+    "affiliate_conversion": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Commission Event Created",
+        "body": (
+            "A new commission event was created for your account. "
+            "Open your affiliate dashboard to review your updated earnings."
+        ),
+    },
+    "affiliate_tier_upgrade": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Volume Tier Updated",
+        "body": (
+            "Your monthly conversion volume reached a new tier. "
+            "Your current commission rate has been updated for this month."
+        ),
+    },
+    "affiliate_retention_bonus": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Retention Bonus Added",
+        "body": (
+            "A platform retention bonus was added to your affiliate balance. "
+            "See your commission detail panel for event-level breakdown."
+        ),
+    },
+    "affiliate_monthly_digest": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Monthly Affiliate Summary",
+        "body": (
+            "Your monthly affiliate summary is ready. "
+            "Review conversions, earnings, and payout status in your dashboard."
+        ),
+    },
+    "affiliate_fraud_hold": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Commission Under Review",
+        "body": (
+            "One commission event is currently under review. "
+            "Payout timing for that event may be delayed pending operator review."
+        ),
+    },
+    "affiliate_payout_confirm": {
+        "campaign_id": "affiliate_v1",
+        "channel": "platform",
+        "subject": "Payout Processed",
+        "body": (
+            "Your affiliate payout has been processed through Stripe Connect. "
+            "See payout history in your affiliate dashboard for full detail."
+        ),
+    },
+
+    # ── Phase 13: Affiliate 3-Day Trial sequences ────────────────────────────
+    # All content passes regulatory filter. No generative content.
+    # trial_source=AFFILIATE_REFERRAL fires these templates.
+    # QR_PROMO continues to use existing templates.
+    "affiliate_trial_welcome": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "Your 3-day BeatVegas access has started",
+        "body": (
+            "Your 3-day Platform access has started. "
+            "Tonight's intelligence output is live on your dashboard. "
+            "BeatVegas provides statistical simulation outputs — not betting advice. "
+            "Cancel anytime before your trial ends and you will not be charged."
+        ),
+    },
+    "affiliate_trial_day1": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "Day 1 complete — today's intelligence summary",
+        "body": (
+            "Day 1 of your BeatVegas trial is complete. "
+            "Your dashboard shows the simulation outputs our agentic engine produced today. "
+            "Statistical outputs only — not betting advice. "
+            "Log in to review your intelligence feed."
+        ),
+    },
+    "affiliate_trial_day2": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "Two signals fired across your trial",
+        "body": (
+            "Two simulation signals fired across your trial period. "
+            "Platform subscribers can view the full decision record detail in their dashboard. "
+            "Statistical outputs only — not betting advice. "
+            "Your trial continues through tomorrow."
+        ),
+    },
+    "affiliate_trial_hour68": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "4 hours left on your trial",
+        "body": (
+            "Your BeatVegas trial ends in 4 hours. "
+            "If you would like to continue, your subscription will activate automatically. "
+            "Cancel in your account settings before your trial ends to avoid any charge. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "affiliate_trial_hour71": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "1 hour left on your BeatVegas trial",
+        "body": (
+            "Your BeatVegas trial ends in 1 hour. "
+            "To cancel, visit your account settings and click Cancel Trial. "
+            "No action needed to continue your subscription. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "affiliate_trial_converted": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "Welcome to BeatVegas — your subscription is active",
+        "body": (
+            "Your BeatVegas Platform subscription is now active. "
+            "Parlay Architect intelligence is now available on your dashboard. "
+            "Statistical outputs only — not betting advice. "
+            "Manage your subscription any time in account settings."
+        ),
+    },
+    "affiliate_trial_churned": {
+        "campaign_id": "affiliate_trial_v1",
+        "channel": "email",
+        "subject": "Your BeatVegas trial has ended",
+        "body": (
+            "Your BeatVegas trial has ended. No charge was made. "
+            "You can start a Platform subscription any time at beatvegas.app. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "affiliate_winback_day2": {
+        "campaign_id": "affiliate_winback_v1",
+        "channel": "email",
+        "subject": "You missed last night's intelligence output",
+        "body": (
+            "Last night's simulation engine output is available to Platform subscribers. "
+            "Your trial has ended but you can reactivate at any time. "
+            "Visit beatvegas.app to review subscription options. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "affiliate_winback_day7": {
+        "campaign_id": "affiliate_winback_v1",
+        "channel": "email",
+        "subject": "This week's intelligence summary — Platform subscribers only",
+        "body": (
+            "This week's simulation intelligence summary is live for Platform subscribers. "
+            "Your dashboard access has been paused. "
+            "Reactivate at beatvegas.app to restore full Platform access. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
+    "affiliate_winback_day30": {
+        "campaign_id": "affiliate_winback_v1",
+        "channel": "email",
+        "subject": "Final notice — Platform subscription available",
+        "body": (
+            "This is the final win-back notice for your BeatVegas account. "
+            "Platform access is available at beatvegas.app. "
+            "Statistical outputs only — not betting advice."
+        ),
+    },
 }
 
 # Validate templates at import time — fail fast if any contain prohibited language
@@ -240,6 +435,83 @@ class GrowthAgent:
             query["sent_at_utc"] = {"$gte": cutoff}
         return db["outbound_communication_log"].find_one(query) is not None
 
+    def _has_active_winback_sequence(self, user_id: str) -> bool:
+        """
+        Return True if user has an active win-back sequence from a prior trial.
+        Used for Phase 13 sequence overlap suppression.
+        """
+        winback_templates = ["affiliate_winback_day2", "affiliate_winback_day7", "affiliate_winback_day30"]
+        stop_day = AGENT_CONFIG.get("phase13", {}).get("winback_stop_day", 30)
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=stop_day)).isoformat()
+
+        # Active win-back = any win-back template sent within the stop window
+        # AND user has not subscribed since then
+        existing = db["outbound_communication_log"].find_one(
+            {
+                "user_id": user_id,
+                "template_id": {"$in": winback_templates},
+                "sent_at_utc": {"$gte": cutoff},
+            }
+        )
+        if not existing:
+            return False
+
+        # Check if user has since subscribed — suppress win-back if so
+        entitlement = db["user_entitlements"].find_one(
+            {"user_id": user_id, "tier": {"$in": ["platform", "syndicate"]}, "active": True},
+            {"_id": 1},
+        )
+        return entitlement is None  # Active win-back only if not currently subscribed
+
+    def _should_suppress_trial_welcome(self, user_id: str) -> bool:
+        """
+        Phase 13 sequence overlap suppression:
+        If user has an active win-back sequence from a prior trial,
+        suppress affiliate_trial_welcome for the overlap suppression window (default 24h).
+        After 24h the trial sequence supersedes the win-back sequence.
+        """
+        if not self._has_active_winback_sequence(user_id):
+            return False
+        suppress_hours = AGENT_CONFIG.get("phase13", {}).get("overlap_suppression_hours", 24)
+        # Check if trial_welcome was already suppressed within the window
+        # If the active trial started less than suppress_hours ago, suppress welcome
+        trial_doc = db["affiliate_trial_subscriptions"].find_one(
+            {"user_id": user_id, "status": "active"},
+            {"trial_starts_at": 1},
+        )
+        if not trial_doc:
+            return False
+        trial_start = trial_doc.get("trial_starts_at")
+        if not trial_start:
+            return False
+        try:
+            from datetime import datetime as _dt
+            if isinstance(trial_start, str):
+                start_dt = _dt.fromisoformat(trial_start.replace("Z", "+00:00"))
+            else:
+                start_dt = trial_start
+            age_hours = (datetime.now(timezone.utc) - start_dt).total_seconds() / 3600
+            return age_hours < suppress_hours
+        except Exception:
+            return False
+
+    def stop_winback_if_subscribed(self, user_id: str) -> bool:
+        """
+        Suppress all remaining win-back sends if user has subscribed.
+        Called before every win-back send. Returns True if suppressed.
+        """
+        entitlement = db["user_entitlements"].find_one(
+            {"user_id": user_id, "tier": {"$in": ["platform", "syndicate"]}, "active": True},
+            {"_id": 1},
+        )
+        if entitlement:
+            logger.info(
+                "[GrowthAgent] Win-back suppressed: user=%s is now subscribed",
+                user_id,
+            )
+            return True
+        return False
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def send_message(
@@ -263,6 +535,32 @@ class GrowthAgent:
         effective_channel = channel or tmpl["channel"]
         effective_trace = trace_id or str(uuid.uuid4())
 
+        # ── Phase 13: Sequence overlap suppression ────────────────────────────
+        # affiliate_trial_welcome suppressed for overlap_suppression_hours (24h)
+        # if user has an active win-back sequence from a prior trial.
+        if template_id == "affiliate_trial_welcome" and self._should_suppress_trial_welcome(user_id):
+            logger.info(
+                "[GrowthAgent] affiliate_trial_welcome suppressed (active win-back): user=%s",
+                user_id,
+            )
+            db["outbound_communication_log"].insert_one({
+                "message_id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "template_id": template_id,
+                "campaign_id": tmpl.get("campaign_id", ""),
+                "sent_at_utc": datetime.now(timezone.utc).isoformat(),
+                "delivered": False,
+                "suppressed": True,
+                "suppress_reason": "OVERLAP_SUPPRESSION_ACTIVE_WINBACK",
+                "agent_id": self.AGENT_ID,
+                "trace_id": effective_trace,
+            })
+            return {"sent": False, "reason": "OVERLAP_SUPPRESSION_ACTIVE_WINBACK"}
+
+        # ── Phase 13: Win-back stop condition — check subscription before every send ─
+        if template_id.startswith("affiliate_winback") and self.stop_winback_if_subscribed(user_id):
+            return {"sent": False, "reason": "WINBACK_SUPPRESSED_USER_SUBSCRIBED"}
+
         # Regulatory filter — mandatory, cannot be bypassed
         body = tmpl["body"]
         filter_result = _regulatory_filter(body)
@@ -279,18 +577,35 @@ class GrowthAgent:
                 "violations": filter_result["violations"],
             }
 
-        message_id = self._write_to_outbound_log(
-            user_id=user_id,
-            template_id=template_id,
-            campaign_id=tmpl["campaign_id"],
-            channel=effective_channel,
-            trace_id=effective_trace,
-        )
+        channels = [effective_channel]
+        affiliate = db["affiliate_accounts"].find_one({"affiliate_id": user_id}, {"notification_preference": 1})
+        if affiliate:
+            pref = str(affiliate.get("notification_preference", "both")).lower().strip()
+            if pref == "email_only":
+                channels = ["email"]
+            elif pref == "platform_only":
+                channels = ["platform"]
+            elif pref == "both":
+                channels = ["email", "platform"]
+
+        message_ids = []
+        for resolved_channel in channels:
+            message_ids.append(
+                self._write_to_outbound_log(
+                    user_id=user_id,
+                    template_id=template_id,
+                    campaign_id=tmpl["campaign_id"],
+                    channel=resolved_channel,
+                    trace_id=effective_trace,
+                )
+            )
+
+        message_id = message_ids[0]
         logger.info(
             f"[{self.AGENT_ID}] message sent "
-            f"template_id={template_id} user_id={user_id} message_id={message_id}"
+            f"template_id={template_id} user_id={user_id} message_ids={message_ids}"
         )
-        return {"sent": True, "message_id": message_id}
+        return {"sent": True, "message_id": message_id, "message_ids": message_ids}
 
     def trigger_onboarding_sequence(self, user_id: str, trace_id: Optional[str] = None) -> dict:
         """

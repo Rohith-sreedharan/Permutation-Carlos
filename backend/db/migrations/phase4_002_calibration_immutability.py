@@ -157,6 +157,8 @@ class CalibrationImmutabilityGuard:
                     "calibration_version": calibration_version,
                     "source": source,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
+                    # system.immutability_guard is a system-internal identity, not an AOS agent.
+                    # Does not follow agent.[name].v1 format by design. Documented and approved.
                     "agent_id": "system.immutability_guard",
                 }
             )
@@ -303,6 +305,8 @@ class CalibrationChangeStreamWatcher:
                     "pre_image_status": pre_image.get("status"),
                     "post_image_status": post_image.get("status"),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
+                    # system.immutability_guard is a system-internal identity, not an AOS agent.
+                    # Does not follow agent.[name].v1 format by design. Documented and approved.
                     "agent_id": "system.immutability_guard",
                 }
             )

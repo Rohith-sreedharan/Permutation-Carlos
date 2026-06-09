@@ -1,0 +1,173 @@
+{
+  "agent_status_grid": [
+    {
+      "agent_id": "agent.sentinel.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-26T12:52:42.910452+00:00",
+      "recent_event_count": 4,
+      "latest_event": {
+        "event_id": "f5e78342-9d3c-47c4-843a-3d651313bc8b",
+        "event_type": "SAMPLE_GATE_SUPPRESSION",
+        "severity": "INFO",
+        "agent_id": "agent.sentinel.v1",
+        "subject": "ac2-test-segment-6698a6a1-8029-4abe-8091-c90b5ce80065",
+        "detail": {
+          "segment_key": "ac2-test-segment-6698a6a1-8029-4abe-8091-c90b5ce80065",
+          "n_actual": 3,
+          "n_required": 50,
+          "suppression_copy": "Track record building \u2014 check back soon."
+        },
+        "trace_id": "b75ea366-c4ea-42bf-b88f-95310540f8f3",
+        "timestamp": "2026-05-26T12:52:42.910452+00:00"
+      }
+    },
+    {
+      "agent_id": "agent.response.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-27T02:50:32.247198+00:00",
+      "recent_event_count": 2,
+      "latest_event": {
+        "action_id": "187b10e7-63a1-4188-9015-1393b7991b27",
+        "agent_id": "agent.response.v1",
+        "action": "SEGMENT2_CANONICAL_IDENTITY_BOOTSTRAP",
+        "reason": "Phase 8 Resolution-1 canonical identity enforcement",
+        "trace_id": "phase8-resolution1-canonical-bootstrap",
+        "timestamp_utc": "2026-05-27T02:50:32.247198+00:00",
+        "source_agent_id": "agent.sentinel.v1",
+        "metadata": {
+          "segment": "2"
+        }
+      }
+    },
+    {
+      "agent_id": "agent.recovery.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-27T02:35:29.121472+00:00",
+      "recent_event_count": 2,
+      "latest_event": {
+        "recovery_id": "330cf09b-af4f-4ad3-b022-ca5d6783a7c7",
+        "agent_id": "agent.recovery.v1",
+        "triggered_by_action_id": "phase8-segment2-bootstrap-action",
+        "recovery_type": "SERVICE_HEALTH_RECHECK",
+        "severity": "LOW",
+        "status": "EXECUTED_AUTONOMOUS",
+        "requires_human_approval": false,
+        "approved_by": null,
+        "approved_at_utc": null,
+        "executed_at_utc": "2026-05-27T02:35:29.121472+00:00",
+        "trace_id": "phase8-segment2-recovery-bootstrap",
+        "details": {},
+        "created_at_utc": "2026-05-27T02:35:29.121472+00:00"
+      }
+    },
+    {
+      "agent_id": "agent.grading.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": null,
+      "recent_event_count": 1,
+      "latest_event": {
+        "settlement_id": "5f58f480-8c6a-4b9e-ac98-e929a8de25a5",
+        "decision_id": "ev_edge_fddeb0d6",
+        "event_id": "ev_34b8819c",
+        "league": "NBA",
+        "phase4_decision_class": "EDGE",
+        "result_code": "WIN",
+        "unit_return": 1.0,
+        "clv": 0.039999999999999925,
+        "brier_score": 0.17640000000000003,
+        "model_probability": 0.58,
+        "market_implied_probability": 0.52,
+        "graded_by": "agent.grading.v1",
+        "graded_at": "2026-05-24T10:19:55.732635+00:00",
+        "home_score": 108,
+        "away_score": 104,
+        "_inserted_at": "2026-05-24T10:19:55.732635+00:00"
+      }
+    },
+    {
+      "agent_id": "agent.calibration.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-27T15:59:48.409905+00:00",
+      "recent_event_count": 1,
+      "latest_event": {
+        "calibration_record_id": "0c6c3242-ea5f-404f-9799-7537f35ddaa8",
+        "agent_id": "agent.calibration.v1",
+        "calibration_version": "calibration_bootstrap_v1",
+        "method": "bootstrap_isotonic",
+        "trained_on_start": "2026-04-27T15:59:48.408520+00:00",
+        "trained_on_end": "2026-05-27T15:59:48.408496+00:00",
+        "sample_count": 1,
+        "brier": 0.25,
+        "logloss": 0.693147,
+        "ece": 0.0,
+        "status": "CANDIDATE",
+        "trace_id": "trace_cal_b3aa8cbbb5914714",
+        "snapshot_hash": "bc6069def2188477af2cfc04dfefd3664f8a477191ccc5fc9d5462c99411fdff",
+        "metadata": {
+          "note": "Phase 8 Segment 3 bootstrap calibration cycle \u2014 pre-run activation",
+          "n_total_in_db": 1
+        },
+        "timestamp": "2026-05-27T15:59:48.409905+00:00",
+        "created_at_utc": "2026-05-27T15:59:48.409905+00:00",
+        "created_at": "2026-05-27T15:59:48.409905+00:00"
+      }
+    },
+    {
+      "agent_id": "agent.distribution.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": null,
+      "recent_event_count": 38,
+      "latest_event": {
+        "attempt_id": "0e2c4fcb-05df-4d4f-94ce-9744a96b5db2",
+        "decision_id": "test_blocked_836182f4",
+        "post_content_hash": "d6c72c3d776d29621d105c6c493d05cf563ccec825879181977750fa5e95ca25",
+        "channel": "test_channel",
+        "sent_at_utc": "2026-05-26T06:23:42.149441+00:00",
+        "validation_result": "FAIL",
+        "validation_reason": "FEATURE_TELEGRAM_AUTOPUBLISH=OFF",
+        "validation_check": "kill_switch",
+        "delivered": false,
+        "agent_id": "agent.distribution.v1",
+        "trace_id": "c4b2f6cb-556d-4a36-bdfe-d14461e4498b"
+      }
+    },
+    {
+      "agent_id": "agent.growth.v1",
+      "status": "ACTIVE",
+      "last_heartbeat_utc": null,
+      "recent_event_count": 4,
+      "latest_event": {
+        "message_id": "7fcdf508-fab2-4f9c-8b84-876727e696b5",
+        "user_id": "6a147d1dee7e0266628ee6b7",
+        "campaign_id": "onboarding_v1",
+        "template_id": "onboarding_step_1",
+        "channel": "platform",
+        "sent_at_utc": "2026-05-25T16:47:25.052997+00:00",
+        "delivered": true,
+        "opened": false,
+        "converted": false,
+        "agent_id": "agent.growth.v1",
+        "trace_id": "c1114e2c-7005-4765-b222-e7a4ea05be20"
+      }
+    }
+  ],
+  "calibration_records_count": 1,
+  "has_lkg_config": true,
+  "rollback_dry_run": {
+    "rollback_id": "rb_1779932906.777582",
+    "triggered_by": "segment3_revalidation",
+    "reason": "pre-run gate recheck",
+    "started_at": "2026-05-28T01:48:26.777605+00:00",
+    "dry_run": true,
+    "steps_completed": [
+      "DISABLED_RISKY_FEATURES",
+      "PINNED_VERSIONS",
+      "PURGED_QUEUE",
+      "SENT_ALERT"
+    ],
+    "steps_failed": [],
+    "completed_at": "2026-05-28T01:48:26.785621+00:00",
+    "success": true
+  },
+  "ops_alerts_count": 2
+}

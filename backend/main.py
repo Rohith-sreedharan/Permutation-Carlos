@@ -28,6 +28,13 @@ app.add_middleware(GeoIPMiddleware, enabled=_geoip_enabled)
 from middleware.rate_limiter import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
+from middleware.api_versioning import APIVersioningMiddleware
+app.add_middleware(APIVersioningMiddleware)
+
+# ── Phase 9 AC-5: API response language guard (CRITICAL sentinel events) ─────
+from middleware.api_response_language_guard import APIResponseLanguageGuardMiddleware
+app.add_middleware(APIResponseLanguageGuardMiddleware)
+
 # Read CORS configuration from environment
 # Example values in backend/.env.example
 cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
@@ -98,7 +105,7 @@ except ImportError:
     print("Warning: ab_testing service not available")
 
 # Import routers
-from routes.auth_routes import router as auth_router
+from routes.auth_routes import router as auth_router, router_v1 as auth_router_v1
 from routes.whoami_routes import router as whoami_router
 from routes.odds_routes import router as odds_router
 from routes.core_routes import router as core_router
@@ -160,6 +167,7 @@ from routes.phase4_calibration_agent_routes import router as phase4_calibration_
 from routes.onboarding_routes import router as onboarding_router  # Phase 5A: Onboarding gate
 
 app.include_router(auth_router)
+app.include_router(auth_router_v1)
 app.include_router(whoami_router)
 app.include_router(odds_router)
 app.include_router(core_router)
@@ -229,7 +237,62 @@ from routes.phase7_routes import router as phase7_router
 app.include_router(phase7_router)               # Phase 7: Public Trust Record + AOS Sentinel
 
 from routes.phase8_routes import router as phase8_router
+from routes.phase9_compliance_routes import router as phase9_compliance_router
+from routes.phase11_affiliate_routes import router as phase11_affiliate_router
 app.include_router(phase8_router)               # Phase 8: Recovery Agent + Operator approvals + AOS activation
+app.include_router(phase9_compliance_router)    # Phase 9: Compliance (self-exclusion + data deletion)
+app.include_router(phase11_affiliate_router)    # Phase 11: Affiliate acquisition engine
+
+# ── Phase 12: Apple Sign In ───────────────────────────────────────────────────
+from routes.apple_auth_routes import router as apple_auth_router
+app.include_router(apple_auth_router)           # Phase 12: Apple Sign In (web)
+
+# ── Phase 13: Affiliate 3-Day Trial System ───────────────────────────────────
+from routes.phase13_trial_routes import router as phase13_trial_router
+from routes.phase13_webhook_handlers import register_phase13_webhook_handlers
+from routes.phase13_referral_routes import router as phase13_referral_router
+app.include_router(phase13_trial_router)        # Phase 13: Affiliate trial routes
+register_phase13_webhook_handlers()             # Phase 13: Chain trial webhook handlers
+app.include_router(phase13_referral_router)     # Phase 13.18: Subscriber referral program
+
+
+def _register_v1_alias_routes() -> None:
+    """Create /api/v1 aliases for all existing /api routes without changing handlers."""
+    from fastapi.routing import APIRoute
+
+    existing_paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
+    source_routes = [
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and route.path.startswith("/api/")
+        and not route.path.startswith("/api/v1/")
+    ]
+
+    for route in source_routes:
+        suffix = route.path[len("/api"):]
+        versioned_path = f"/api/v1{suffix}"
+        if versioned_path in existing_paths:
+            continue
+
+        app.add_api_route(
+            versioned_path,
+            route.endpoint,
+            methods=list(route.methods),
+            tags=route.tags,
+            summary=route.summary,
+            description=route.description,
+            response_model=route.response_model,
+            status_code=route.status_code,
+            responses=route.responses,
+            name=f"v1_{route.name}",
+            dependencies=route.dependencies,
+            include_in_schema=True,
+        )
+        existing_paths.add(versioned_path)
+
+
+_register_v1_alias_routes()
 
 
 @app.websocket("/ws")
@@ -312,10 +375,22 @@ async def websocket_endpoint(websocket: WebSocket, connection_id: str | None = N
 @app.on_event("startup")
 async def startup_event():
     """Initialize database indexes and multi-agent system"""
+    import asyncio
     from db.mongo import ensure_indexes, db, client
-    
+
+    # ── Phase 13 fix: ping + ensure_indexes run in a thread so they never
+    # block the asyncio event loop. MongoClient is synchronous (pymongo);
+    # calling it directly in an async function freezes the server.
+    loop = asyncio.get_event_loop()
     try:
-        ensure_indexes()
+        await loop.run_in_executor(None, lambda: client.admin.command("ping"))
+        print("✓ MongoDB connected")
+    except Exception as e:
+        print(f"⚠️  MongoDB ping failed: {e}")
+        print("   App will continue — database-dependent routes will return 503")
+
+    try:
+        await loop.run_in_executor(None, ensure_indexes)
         print("✓ Database indexes initialized")
     except Exception as e:
         print(f"⚠️  Index creation skipped: {e}")

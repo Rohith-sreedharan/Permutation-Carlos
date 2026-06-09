@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Target, Activity, Zap, Brain } from 'lucide-react';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface BettingCommandCenterProps {
-  onAuthError: () => void;
+import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Target, Activity, Zap, Brain } from 'lucide-react';
+import { API_BASE_URL } from '../services/api';
+import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Target, Activity, Zap, Brain } from 'lucide-react';
 }
 
 interface PnLMetrics {
@@ -68,7 +68,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       }
 
       // Fetch PnL metrics
-      const pnlRes = await fetch(`${API_BASE_URL}/api/bets/pnl?days=30`, {
+      const pnlRes = await fetch(`${API_BASE_URL}/api/tracker/pnl?days=30`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -92,7 +92,7 @@ const BettingCommandCenter: React.FC<BettingCommandCenterProps> = ({ onAuthError
       }
 
       // Fetch recent bets
-      const betsRes = await fetch(`${API_BASE_URL}/api/bets/history?limit=10`, {
+      const betsRes = await fetch(`${API_BASE_URL}/api/tracker/history?limit=10`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       

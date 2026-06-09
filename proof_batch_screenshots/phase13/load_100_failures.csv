@@ -1,0 +1,5 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/subscription/status,HTTPError('401 Client Error: Unauthorized for url: /api/subscription/status'),18,2026-06-06T09:57:07Z,2026-06-06T09:57:11Z
+GET,/api/predictions,HTTPError('404 Client Error: Not Found for url: /api/predictions'),8,2026-06-06T09:57:07Z,2026-06-06T09:57:10Z
+POST,/api/auth/login,HTTPError('426 Client Error: Upgrade Required for url: /api/auth/login'),50,2026-06-06T09:57:06Z,2026-06-06T09:57:10Z
+GET,/healthz,HTTPError('404 Client Error: Not Found for url: /healthz'),3,2026-06-06T09:57:07Z,2026-06-06T09:57:10Z

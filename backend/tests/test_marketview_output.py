@@ -2,6 +2,9 @@
 Quick MarketView inspection script
 Generates a SPREAD MarketView and validates SINGLE SELECTION CONTEXT
 """
+import pytest
+pytest.skip("Inspection script — not a pytest test", allow_module_level=True)
+
 import json
 from core.selection_id_generator import generate_spread_selections
 

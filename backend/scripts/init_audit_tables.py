@@ -83,7 +83,7 @@ def main():
         return 1
     
     print("=" * 80)
-    print(f"Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Completed at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
     
     return 0

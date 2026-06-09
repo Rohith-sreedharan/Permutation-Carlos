@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:integrity": "vitest run tests/mappingIntegrity.test.ts",
-    "test:suite": "chmod +x scripts/test_integrity_suite.sh && ./scripts/test_integrity_suite.sh"
+    "test:suite": "chmod +x scripts/test_integrity_suite.sh && ./scripts/test_integrity_suite.sh",
+    "compliance:language-audit": "python3 backend/scripts/phase9_ac3_language_audit.py --ci",
+    "compliance:affiliate-disclosure": "node scripts/check_affiliate_disclosures.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.555.0",

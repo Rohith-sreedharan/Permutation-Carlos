@@ -20,6 +20,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pymongo import MongoClient, ASCENDING
 from pymongo.errors import PyMongoError
 
@@ -35,17 +36,25 @@ class DeterministicReplayCache:
     def __init__(self, mongo_uri: Optional[str] = None):
         """
         Initialize deterministic replay cache.
-        
+
         Args:
             mongo_uri: MongoDB connection string (defaults to localhost)
         """
         if mongo_uri is None:
             mongo_uri = "mongodb://localhost:27017/"
-        
-        self.client = MongoClient(mongo_uri)
+
+        # In-memory fallback is ONLY permitted when BEATVEGAS_ENV=test.
+        # In production, if MongoDB is unavailable all operations fail closed
+        # with an explicit error — never silently returning stale cached results.
+        self._allow_memory_fallback: bool = (
+            os.getenv("BEATVEGAS_ENV", "production").lower() == "test"
+        )
+        self._memory_cache: Dict[str, Any] = {}
+
+        self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
         self.db = self.client["beatvegas"]
         self.collection = self.db["deterministic_replay_cache"]
-        
+
         self._ensure_indexes()
     
     def _ensure_indexes(self) -> None:
@@ -133,10 +142,30 @@ class DeterministicReplayCache:
                     print(f"[CACHE HIT] Deterministic replay: {event_id} | {market_type}")
                     return decision
             
+            # Fall through to in-memory cache only in test environment.
+            # In production the MongoDB result is the only canonical source.
+            if self._allow_memory_fallback:
+                cache_key = self._compute_cache_key(
+                    event_id, inputs_hash, market_type, decision_version
+                )
+                mem_entry = self._memory_cache.get(cache_key)
+                if mem_entry:
+                    return mem_entry.get("decision_payload")
+
             return None
         
         except PyMongoError as e:
             print(f"[ERROR] Cache lookup failed: {e}")
+            if not self._allow_memory_fallback:
+                # Production: fail closed — never return stale in-memory results.
+                raise
+            # Test environment: fall back to in-memory cache
+            cache_key = self._compute_cache_key(
+                event_id, inputs_hash, market_type, decision_version
+            )
+            mem_entry = self._memory_cache.get(cache_key)
+            if mem_entry:
+                return mem_entry.get("decision_payload")
             return None
     
     def cache_decision(
@@ -189,11 +218,31 @@ class DeterministicReplayCache:
                 upsert=True
             )
             
+            # Mirror to in-memory cache — test env only
+            if self._allow_memory_fallback:
+                self._memory_cache[cache_key] = cache_entry
             return True
         
         except PyMongoError as e:
             print(f"[ERROR] Failed to cache decision: {e}")
-            return False
+            if not self._allow_memory_fallback:
+                # Production: fail closed — do not silently swallow the error.
+                raise
+            # Test environment: fall back to in-memory cache so tests pass offline
+            cache_key = self._compute_cache_key(
+                event_id, inputs_hash, market_type, decision_version
+            )
+            self._memory_cache[cache_key] = {
+                "cache_key": cache_key,
+                "event_id": event_id,
+                "inputs_hash": inputs_hash,
+                "market_type": market_type,
+                "decision_version": decision_version,
+                "decision_payload": decision_payload,
+                "cached_at": datetime.now(timezone.utc),
+                "cache_ttl": None,
+            }
+            return True
     
     def verify_determinism(
         self,
@@ -287,7 +336,19 @@ class DeterministicReplayCache:
         
         except PyMongoError as e:
             print(f"[ERROR] Failed to get cache statistics: {e}")
-            return {"error": str(e)}
+            if not self._allow_memory_fallback:
+                # Production: fail closed
+                raise
+            # Test environment: return stats from in-memory cache
+            entries = list(self._memory_cache.values())
+            return {
+                "total_entries": len(entries),
+                "spread_decisions": sum(1 for e in entries if e.get("market_type") == "spread"),
+                "total_decisions": sum(1 for e in entries if e.get("market_type") == "total"),
+                "oldest_entry": None,
+                "newest_entry": None,
+                "cache_ttl_policy": "no_expiration",
+            }
     
     def clear_cache(self, confirm: bool = False) -> bool:
         """

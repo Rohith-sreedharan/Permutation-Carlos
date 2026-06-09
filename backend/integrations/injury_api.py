@@ -170,7 +170,7 @@ def fetch_espn_injuries(sport_key: str) -> List[Dict[str, Any]]:
                     "position": position,
                     "injury": injury_desc,
                     "status": status,
-                    "date_updated": datetime.now().strftime("%Y-%m-%d"),
+                    "date_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "source": "ESPN"
                 })
         

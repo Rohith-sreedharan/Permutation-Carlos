@@ -586,7 +586,7 @@ class MarketDecisionComputer:
             fair_selection=None,  # null per spec
             probabilities=None,  # null per spec
             edge=None,  # null per spec
-            classification=Classification.BLOCKED,
+            classification=None,  # null per spec — no classification when blocked
             market_type_display="Spread",
             selection_label=None,
             edge_points=None,

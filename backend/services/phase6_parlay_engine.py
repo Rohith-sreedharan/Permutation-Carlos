@@ -175,7 +175,7 @@ def _construct_legs(
     if len(selected) < 2:
         return selected, f"INSUFFICIENT_LEGS:only {len(selected)} qualifying leg(s) found"
     if len(selected) < requested_size:
-        return selected, f"SMALLER_PARLAY:only {len(selected)} of {requested_size} requested legs qualify"
+        return selected, "DEGRADED_INSUFFICIENT_POOL"
 
     return selected, "OK"
 
@@ -563,6 +563,8 @@ def build_parlay(
         "snapshot_hash": snapshot_hash,
         "token_cost": token_cost,
         "tokens_remaining": deduct_result.get("tokens_remaining", 0),
+        "legs_requested": requested_size,
+        "legs_built": actual_leg_count,
         "leg_count": actual_leg_count,
         "simulation": simulation,
         "legs": [

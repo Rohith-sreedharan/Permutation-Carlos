@@ -2,7 +2,7 @@
 Subscription Routes - Fix for /api/subscription/* endpoints
 This module provides subscription status endpoints separate from payment routes
 """
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from fastapi.responses import RedirectResponse
 from typing import Optional
 from datetime import datetime, timezone
@@ -10,6 +10,7 @@ from db.mongo import db
 from bson import ObjectId
 import stripe
 import os
+from middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/subscription", tags=["Subscription"])
 stripe_router = APIRouter(prefix="/api/stripe", tags=["Stripe"])
@@ -18,50 +19,105 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 
 def _get_user_id_from_auth(authorization: Optional[str]) -> str:
-    """Extract user_id from Bearer token"""
+    """Extract user_id from Bearer token (JWT or legacy user:<id>)"""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
-    
+
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != 'bearer':
         raise HTTPException(status_code=401, detail="Invalid Authorization header format")
-    
+
     token = parts[1]
-    if not token.startswith('user:'):
-        raise HTTPException(status_code=401, detail="Invalid token format")
-    
-    user_id = token.split(':', 1)[1]
-    return user_id
+
+    # JWT path — 3 dot-separated segments
+    if token.count('.') == 2:
+        secret = os.getenv("JWT_SECRET_KEY", "")
+        if not secret:
+            raise HTTPException(status_code=500, detail="Server misconfiguration: JWT_SECRET_KEY not set")
+        try:
+            import jwt as _jwt
+            payload = _jwt.decode(token, secret, algorithms=["HS256"])
+            user_id = payload.get("sub")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="Token missing subject claim")
+            return user_id
+        except HTTPException:
+            raise
+        except Exception as exc:
+            if "expired" in str(exc).lower():
+                raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
+            raise HTTPException(status_code=401, detail="Invalid or malformed token.")
+
+    # Legacy user:<id> path
+    if token.startswith('user:'):
+        user_id = token.split(':', 1)[1]
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User ID not found in token")
+        return user_id
+
+    raise HTTPException(status_code=401, detail="Invalid token format")
 
 
 @router.get("/status")
-async def get_subscription_status(authorization: Optional[str] = Header(None)):
+async def get_subscription_status(user: dict = Depends(get_current_user)):
     """
     Get user's current subscription status
     Returns canonical entitlement state, billing period metadata, and payment status.
+    Never returns 404 — route exists. Returns status: none when no data found.
     """
-    user_id = _get_user_id_from_auth(authorization)
+    user_id = str(user.get("_id") or user.get("id") or user.get("user_id") or "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token format")
     
     try:
-        user = db["users"].find_one({"_id": ObjectId(user_id)})
+        user = db["users"].find_one({"_id": ObjectId(user_id)}) or user
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid user ID format")
     
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Route exists — no subscription data for this user yet.
+        return {
+            "status": "none",
+            "plan_id": None,
+            "platform_access": False,
+            "telegram_access": False,
+            "engine_cycles_limit": 0,
+            "engine_cycles_remaining": 0,
+            "parlay_tokens_remaining": 0,
+            "overage_charges_current_period": 0.0,
+            "billing_period_end": None,
+            "renewalDate": None,
+            "paymentMethod": None,
+            "is_trial": False,
+        }
     
     billing_state = db["billing_state"].find_one({"user_id": user_id}) or {}
+    stripe_subscription_id = user.get("stripe_subscription_id")
 
-    raw_status = str(billing_state.get("status", "inactive")).lower()
+    # Required entitlement behavior:
+    # - Never subscribed -> status none
+    # - Previously subscribed then canceled -> status canceled
+    if not billing_state and not stripe_subscription_id:
+        return {
+            "status": "none",
+            "tier": "intelligence_preview",
+            "platform_access": False,
+            "telegram_access": False,
+        }
+
+    raw_status = str(billing_state.get("status", "")).lower()
     if raw_status == "active":
         normalized_status = "active"
     elif raw_status in {"past_due", "past-due"}:
         normalized_status = "past_due"
-    else:
+    elif raw_status == "canceled" or stripe_subscription_id:
         normalized_status = "canceled"
+    else:
+        normalized_status = "none"
 
     response = {
         "plan_id": billing_state.get("plan_id"),
+        "tier": str(user.get("tier") or "intelligence_preview"),
         "platform_access": bool(billing_state.get("platform_access", False)),
         "telegram_access": bool(billing_state.get("telegram_access", False)),
         "engine_cycles_limit": int(billing_state.get("engine_cycles_limit", 0) or 0),
@@ -72,6 +128,7 @@ async def get_subscription_status(authorization: Optional[str] = Header(None)):
         "renewalDate": billing_state.get("next_billing_date"),
         "paymentMethod": None,
         "status": normalized_status,
+        "is_trial": billing_state.get("on_trial", False),
     }
     
     # If user has Stripe subscription, fetch live status
@@ -101,6 +158,7 @@ async def get_subscription_status(authorization: Optional[str] = Header(None)):
                 "billing_period_end": response.get("billing_period_end"),
                 "renewalDate": renewal_date,
                 "status": "active" if subscription.get("status") in {"active", "trialing"} else "past_due" if subscription.get("status") == "past_due" else "canceled",
+                "is_trial": subscription.get("status") == "trialing",
                 "paymentMethod": None  # Would need to fetch payment method separately
             }
             
@@ -127,6 +185,7 @@ async def get_subscription_status(authorization: Optional[str] = Header(None)):
 async def get_subscription_usage(authorization: Optional[str] = Header(None)):
     """
     Get user's canonical entitlement usage snapshot.
+    Never returns 404 — route exists. Returns zeros when no data found.
     """
     user_id = _get_user_id_from_auth(authorization)
     
@@ -136,7 +195,15 @@ async def get_subscription_usage(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=400, detail="Invalid user ID format")
     
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return {
+            "plan_id": None,
+            "platform_access": False,
+            "telegram_access": False,
+            "engine_cycles_limit": 0,
+            "engine_cycles_remaining": 0,
+            "parlay_tokens_remaining": 0,
+            "billing_period_end": None,
+        }
     
     billing_state = db["billing_state"].find_one({"user_id": user_id}) or {}
 

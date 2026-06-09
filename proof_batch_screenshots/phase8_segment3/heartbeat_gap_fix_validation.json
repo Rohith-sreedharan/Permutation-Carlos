@@ -1,0 +1,67 @@
+{
+  "issue": "AOS dashboard last_heartbeat_utc null for grading/distribution/growth while Prometheus heartbeat showed active",
+  "root_cause": {
+    "dashboard_lookup": {
+      "route": "/api/phase8/dashboard/overview",
+      "file": "backend/routes/phase8_routes.py",
+      "before_supported_heartbeat_keys": [
+        "heartbeat_at_utc",
+        "timestamp_utc",
+        "created_at_utc",
+        "logged_at_utc",
+        "timestamp"
+      ],
+      "before_sort_fallbacks": [
+        "timestamp",
+        "timestamp_utc",
+        "created_at_utc",
+        "logged_at_utc"
+      ]
+    },
+    "prometheus_lookup": {
+      "file": "backend/services/phase8_observability_metrics.py",
+      "agent_fields": {
+        "agent.grading.v1": "graded_at",
+        "agent.distribution.v1": "sent_at_utc",
+        "agent.growth.v1": "sent_at_utc"
+      }
+    }
+  },
+  "before_fix_live_dashboard": {
+    "agent.grading.v1": {
+      "status": "ACTIVE",
+      "last_heartbeat_utc": null
+    },
+    "agent.distribution.v1": {
+      "status": "ACTIVE",
+      "last_heartbeat_utc": null
+    },
+    "agent.growth.v1": {
+      "status": "ACTIVE",
+      "last_heartbeat_utc": null
+    }
+  },
+  "fix": {
+    "commit": "110336c",
+    "changes": [
+      "Added graded_at/sent_at_utc/created_at to dashboard heartbeat extractor",
+      "Added datetime object handling for graded_at docs",
+      "Added sort fallbacks for graded_at/sent_at_utc/created_at"
+    ]
+  },
+  "after_fix_live_dashboard": {
+    "agent.grading.v1": {
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-24T10:19:55.732635+00:00"
+    },
+    "agent.distribution.v1": {
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-26T06:23:42.149441+00:00"
+    },
+    "agent.growth.v1": {
+      "status": "ACTIVE",
+      "last_heartbeat_utc": "2026-05-25T16:47:25.052997+00:00"
+    }
+  },
+  "status": "resolved"
+}

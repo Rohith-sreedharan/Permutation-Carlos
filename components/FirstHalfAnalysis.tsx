@@ -178,11 +178,11 @@ const FirstHalfAnalysis: React.FC<FirstHalfAnalysisProps> = ({ eventId, simulati
           <div className="text-white text-2xl font-bold">{projected_total.toFixed(1)}</div>
         </div>
 
-        {/* Sim Power */}
+        {/* Intelligence Cycles */}
         <div className="bg-navy rounded-lg p-4">
-          <div className="text-light-gray text-xs mb-1">SIM POWER</div>
+          <div className="text-light-gray text-xs mb-1">INTELLIGENCE CYCLES</div>
           <div className="text-white text-xl font-bold">{(iterations / 1000).toFixed(0)}K</div>
-          <div className="text-light-gray text-xs">1H Scenarios</div>
+          <div className="text-light-gray text-xs">1H Analysis Depth</div>
         </div>
 
         {/* Tempo */}

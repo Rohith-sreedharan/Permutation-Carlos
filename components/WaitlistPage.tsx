@@ -1,14 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiRequest } from '../services/api';
 
 /**
- * Waitlist Page — Phase 2B.4
- * Public route at /waitlist — no authentication required.
- * Uses the existing /api/waitlist/join backend endpoint.
+ * Waitlist Page — Phase 2B.4 / Phase 12 WS3
+ * Public route at /waitlist and /join — no authentication required.
+ * Phase 12: reads bv_ref cookie and ?ref= query param to pre-populate referral
+ * so attribution locks correctly when a referred user completes mobile signup.
  */
+
+function _getInitialRef(): string {
+  // Priority: ?ref= query param (set by /ref/:id deep link handler in App.tsx)
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get('ref');
+  if (fromQuery) return decodeURIComponent(fromQuery);
+  // Fallback: read bv_ref first-party cookie (persists across sessions)
+  const cookieMatch = document.cookie.match(/(?:^|;\s*)bv_ref=([^;]+)/);
+  return cookieMatch ? decodeURIComponent(cookieMatch[1]) : '';
+}
+
 export default function WaitlistPage() {
   const [email, setEmail] = useState('');
-  const [referralCode, setReferralCode] = useState('');
+  const [referralCode, setReferralCode] = useState(_getInitialRef);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [result, setResult] = useState<{
     position?: number;
@@ -17,6 +29,12 @@ export default function WaitlistPage() {
     early_access?: boolean;
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    // If bv_ref cookie arrives after mount (e.g. slow redirect), re-read it
+    const ref = _getInitialRef();
+    if (ref && !referralCode) setReferralCode(ref);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

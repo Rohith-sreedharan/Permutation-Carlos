@@ -1,8 +1,9 @@
+
+
+
 import React, { useState, useEffect } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-
-const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
+import { API_BASE_URL } from '../services/api';
+import React, { useState, useEffect } from 'react';
   const [email, setEmail] = useState('');
   const [founderCount, setFounderCount] = useState(243);
   const [isSubmitted, setIsSubmitted] = useState(false);

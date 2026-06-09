@@ -281,7 +281,7 @@ def extract_market_lines(event: dict) -> dict:
     spread_line = None
     total_line = None
     bookmaker_name = None
-    odds_timestamp = datetime.now().isoformat()  # Default to now if not available
+    odds_timestamp = datetime.now(timezone.utc).isoformat()  # Default to now if not available
     
     # Use first bookmaker with available markets (DraftKings, FanDuel, etc.)
     for bookmaker in bookmakers:

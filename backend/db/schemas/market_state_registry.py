@@ -198,11 +198,11 @@ class MarketStateRegistry(BaseModel):
     
     # Timestamps
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When registry entry was created"
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Last update timestamp"
     )
     expires_at: Optional[datetime] = Field(

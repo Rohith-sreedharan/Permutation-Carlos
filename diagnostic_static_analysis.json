@@ -1,0 +1,204 @@
+{
+  "report_timestamp": "2026-05-30T14:59:58.710387",
+  "report_type": "STATIC_ANALYSIS",
+  "note": "This report requires NO running services. Infrastructure diagnostics stored in separate JSON.",
+  "analysis": {
+    "environment_config": {
+      "env_file_exists": true,
+      "configured_keys": {
+        "MONGO_URI": "mongodb+srv://crmmanager_db_user:crmmanager_db_user@beatvegas.varyfzx.mongodb.net/?appName=beatvegas",
+        "ODDS_API_KEY": "375cdd3572***",
+        "ODDS_BASE_URL": "https://api.the-odds-api.com/v4",
+        "DATABASE_NAME": "beatvegas"
+      },
+      "missing_keys": [],
+      "issues": []
+    },
+    "decision_endpoint": {
+      "file_exists": true,
+      "endpoint_path": "GET /api/games/{league}/{game_id}/decisions",
+      "failure_points": [
+        {
+          "scenario": "MISSING_EVENT",
+          "condition": "Event not found in db['events']",
+          "http_code": 404,
+          "error_message": "Game {game_id} not found"
+        },
+        {
+          "scenario": "NO_ODDS_AVAILABLE",
+          "condition": "No bookmakers/markets in event",
+          "http_code": 404,
+          "error_message": "No odds available for {game_id}"
+        },
+        {
+          "scenario": "DECISION_COMPUTATION",
+          "condition": "MarketDecisionComputer.compute_all() fails",
+          "http_code": 500,
+          "error_message": "Internal server error (returned as Failed to load)"
+        }
+      ],
+      "expected_response_structure": {
+        "spread": "MarketDecision object",
+        "moneyline": "MarketDecision object",
+        "total": "MarketDecision object"
+      }
+    },
+    "database_schema": {
+      "collections": {
+        "events": {
+          "purpose": "Raw odds data from Odds API",
+          "key_fields": [
+            "id",
+            "event_id",
+            "sport_key",
+            "bookmakers",
+            "markets"
+          ],
+          "sample_index": "event_id (unique)"
+        },
+        "market_snapshots": {
+          "purpose": "Historical market state snapshots",
+          "key_fields": [
+            "game_id",
+            "created_at",
+            "status",
+            "wave"
+          ],
+          "sample_index": "(created_at DESC)"
+        },
+        "decision_records": {
+          "purpose": "Cached decision computation results",
+          "key_fields": [
+            "identity_key",
+            "record_id",
+            "game_id",
+            "classification",
+            "release_status"
+          ],
+          "sample_index": "(identity_key, unique), (game_id, created_at DESC)"
+        },
+        "monte_carlo_simulations": {
+          "purpose": "Pre-computed simulation results",
+          "key_fields": [
+            "game_id",
+            "league",
+            "iteration_count",
+            "results"
+          ],
+          "sample_index": "game_id"
+        }
+      }
+    },
+    "odds_pipeline": {
+      "file_exists": true,
+      "job_name": "poll_odds_api",
+      "frequency": "APScheduler interval (default 5-10 min)",
+      "slo": "< 20s pre-match, < 10s in-play",
+      "pipeline_stages": [
+        {
+          "stage": 1,
+          "action": "Call Odds API",
+          "endpoint": "GET /v4/sports/{sport}/odds",
+          "parameters": [
+            "apiKey",
+            "regions",
+            "markets",
+            "oddsFormat"
+          ],
+          "timeout": "15 seconds"
+        },
+        {
+          "stage": 2,
+          "action": "Normalize events",
+          "details": "Add EST dates, convert decimal\u2192American odds"
+        },
+        {
+          "stage": 3,
+          "action": "Upsert to MongoDB",
+          "collection": "events",
+          "upsert_key": "id"
+        }
+      ],
+      "failure_modes": [
+        {
+          "scenario": "API_TIMEOUT",
+          "cause": "Odds API not responding within 15s",
+          "impact": "New odds not loaded, old odds returned"
+        },
+        {
+          "scenario": "API_ERROR",
+          "cause": "HTTP 401 (auth), 429 (quota), 422 (bad request)",
+          "impact": "Pipeline fails, odds go stale"
+        },
+        {
+          "scenario": "MONGODB_UNAVAILABLE",
+          "cause": "MongoDB connection fails",
+          "impact": "Cannot upsert odds, pipeline halts"
+        },
+        {
+          "scenario": "NORMALIZATION_FAILURE",
+          "cause": "Exception in normalize_event()",
+          "impact": "Some events skipped"
+        }
+      ]
+    },
+    "data_providers": {
+      "primary_provider": "The Odds API",
+      "provider_url": "https://api.the-odds-api.com/v4",
+      "api_key_env_var": "ODDS_API_KEY",
+      "base_url_env_var": "ODDS_BASE_URL",
+      "supported_sports": [
+        {
+          "sport": "NBA",
+          "api_key": "basketball_nba",
+          "markets": [
+            "spreads",
+            "totals",
+            "h2h"
+          ],
+          "status": "CHECK_WITH_RUNNING_SERVER"
+        },
+        {
+          "sport": "MLB",
+          "api_key": "baseball_mlb",
+          "markets": [
+            "spreads",
+            "totals",
+            "h2h"
+          ],
+          "status": "ERROR_422_MISSING_REGION (known issue)",
+          "fix": "Ensure 'regions' parameter included in API request"
+        },
+        {
+          "sport": "NHL",
+          "api_key": "icehockey_nhl",
+          "markets": [
+            "spreads",
+            "totals",
+            "h2h"
+          ],
+          "status": "OUT_OF_SEASON_TODAY"
+        },
+        {
+          "sport": "NFL",
+          "api_key": "americanfootball_nfl",
+          "markets": [
+            "spreads",
+            "totals",
+            "h2h"
+          ],
+          "status": "CHECK_WITH_RUNNING_SERVER"
+        }
+      ],
+      "current_issues": [
+        {
+          "sport": "MLB",
+          "issue": "422 MISSING_REGION error",
+          "root_cause": "API parameters not aligned with current API version",
+          "fix_location": "backend/integrations/odds_api.py",
+          "fix_action": "Add 'regions=us' to request params"
+        }
+      ]
+    }
+  }
+}

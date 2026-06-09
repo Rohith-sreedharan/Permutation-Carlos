@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import PageHeader from './PageHeader';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface ParlayCalculation {
-  combined_probability: number;
+import PageHeader from './PageHeader';
+import { API_BASE_URL } from '../services/api';
+import PageHeader from './PageHeader';
   combined_probability_pct: number;
   correlation_type: string;
   correlation_label: string;

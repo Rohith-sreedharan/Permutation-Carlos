@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { fetchSimulation, fetchEventsFromDB } from '../services/api';
+import { fetchSimulation, fetchEventsFromDB , API_BASE_URL } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import SocialMetaTags from './SocialMetaTags';
@@ -50,7 +50,7 @@ import LegalDisclaimer from './LegalDisclaimer';
 import { IntegrityLogger, validateSnapshotConsistency, handleSnapshotMismatch } from '../utils/integrityLogger';
 import { formatAwayAtHome, getDisplayTeamName } from '../utils/matchupLabel';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 const DEBUG_UI_ENABLED = Boolean((import.meta as any).env?.DEV) && (import.meta as any).env?.VITE_ENABLE_DEBUG_PANEL === 'true';
 
 interface GameDetailProps {

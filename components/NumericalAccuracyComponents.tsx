@@ -87,7 +87,7 @@ export const ConfidenceTooltip: React.FC<ConfidenceTooltipProps> = ({
 
           {simCount < 50000 && (
             <div className="pt-2 border-t border-purple-700/30 text-xs text-purple-300">
-              💡 <strong>Pro tip:</strong> Higher tiers (50K-100K sims) provide tighter confidence bands.
+              💡 <strong>Pro tip:</strong> Higher tiers (50K-100K Intelligence Cycles) provide tighter confidence bands.
             </div>
           )}
         </div>
