@@ -672,11 +672,12 @@ export function generateEdgeExplanation(state: GameEdgeState): string {
  * Generate risk control summary
  */
 export function generateRiskControlSummary(state: GameEdgeState): string {
+  const seen = new Set<string>();
   const allFailed = [
     ...state.spread_context.risk_control_log,
     ...state.total_context.risk_control_log,
     ...state.failed_blocking_rules
-  ];
+  ].filter(r => { if (seen.has(r)) return false; seen.add(r); return true; });
   
   if (allFailed.length === 0) {
     return 'All risk controls passed.';

@@ -290,7 +290,7 @@ const MarketAnalysisCard: React.FC<MarketAnalysisCardProps> = ({
       {riskLog.length > 0 && (
         <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
           <ul className="space-y-0.5">
-            {riskLog.map((r, i) => (
+            {[...new Set(riskLog)].map((r, i) => (
               <li key={i} className="flex items-start gap-1.5">
                 <span className="shrink-0">🛡️</span>
                 <span>{r}</span>
@@ -377,7 +377,7 @@ const TotalAnalysisCard: React.FC<TotalAnalysisCardProps> = ({
       {riskLog.length > 0 && (
         <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
           <ul className="space-y-0.5">
-            {riskLog.map((r, i) => (
+            {[...new Set(riskLog)].map((r, i) => (
               <li key={i} className="flex items-start gap-1.5">
                 <span className="shrink-0">🛡️</span>
                 <span>{r}</span>

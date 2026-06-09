@@ -1158,7 +1158,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                         return 'N/A';
                       })()}
                     </div>
-                    <div className="text-xs text-light-gray/60 mt-1">betting line</div>
+                    <div className="text-xs text-light-gray/60 mt-1">market line</div>
                   </div>
                   
                   <div className="bg-charcoal/50 p-3 rounded-lg border border-electric-blue/30 relative group">
@@ -1268,7 +1268,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       <span>Edge Context Notes:</span>
                     </div>
                     <ul className="text-xs text-light-gray space-y-1">
-                      {gameEdgeState?.failed_blocking_rules.map((rule, idx) => (
+                      {[...new Set(gameEdgeState?.failed_blocking_rules ?? [])].map((rule, idx) => (
                         <li key={idx} className="flex items-start gap-2">
                           <span className="text-gold">•</span>
                           <span>{formatEvRuleForDisplay(rule)}</span>
