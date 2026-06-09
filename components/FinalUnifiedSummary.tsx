@@ -187,10 +187,17 @@ export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
           {/* Risk control summary if any */}
           {narrative.risk_control_summary && (() => {
             const raw = narrative.risk_control_summary;
-            // Strip leading "Blocked: " prefix and trailing period to get individual reasons
+            // Strip leading "Blocked: " prefix and trailing period
             const stripped = raw.replace(/^Blocked:\s*/i, '').replace(/\.$/, '');
-            // Deduplicate after split — defense in depth
-            const reasons = [...new Set(stripped.split(', ').map(r => r.trim()).filter(Boolean))];
+            // Build set of reasons already shown in "Edge Context Notes" above
+            // (failed_blocking_rules are rendered there — skip them here to avoid
+            // showing the same reason twice on the same page)
+            const alreadyShown = new Set<string>(state.failed_blocking_rules ?? []);
+            // Deduplicate + suppress already-shown reasons
+            const reasons = [
+              ...new Set(stripped.split(', ').map(r => r.trim()).filter(Boolean))
+            ].filter(r => !alreadyShown.has(r));
+            if (reasons.length === 0) return null;
             return (
               <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
                 <div className="font-semibold mb-1">⚠️ Blocked</div>

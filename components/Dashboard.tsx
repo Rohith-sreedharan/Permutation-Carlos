@@ -469,14 +469,14 @@ const Dashboard: React.FC<DashboardProps> = ({
               <span className="text-yellow-400 text-xs font-medium whitespace-nowrap">
                 Intelligence Preview — 10,000 cycles&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
               </span>
-              {onUpgradeToPlatform && (
-                <button
-                  onClick={onUpgradeToPlatform}
-                  className="shrink-0 bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors"
-                >
-                  Upgrade $97/month →
-                </button>
-              )}
+              <a
+                href="https://beatvegas.app/upgrade"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors whitespace-nowrap"
+              >
+                Upgrade $97/month →
+              </a>
             </div>
           )}
           {showFallbackNote && (
