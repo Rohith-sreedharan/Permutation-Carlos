@@ -5,7 +5,7 @@ import { getDisplayTeamName } from '../utils/matchupLabel';
 import { CANONICAL_PROP_LABEL, getCanonicalPropHeadline } from '../utils/propDisplay';
 import { getSportDisplayName } from '../utils/sportLabels';
 import MarketDecisionCard from './MarketDecisionCard';
-import { fetchGameDecisions } from '../services/api';
+import { fetchGameDecisions, fetchSimulation } from '../services/api';
 import type { MarketDecision } from '../types/MarketDecision';
 import { compareCardsByClassification, renderMarketSignalCard } from '../utils/cardMarketSignal';
 
@@ -45,6 +45,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
   const [decision, setDecision] = useState<MarketDecision | null>(null);
   const [decisionLoading, setDecisionLoading] = useState<boolean>(true);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const retryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mapSportKeyToLeague = (sportKey: string): string => {
     const key = (sportKey || '').toLowerCase();
@@ -82,7 +83,29 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
     setDecisionError(null);
     try {
       const data = await fetchGameDecisions(league, event.id);
-      setDecision(selectTopDecision(data));
+      const top = selectTopDecision(data);
+      setDecision(top);
+
+      // Auto-retry once if all markets are BLOCKED — simulation may not be
+      // generated yet. Fire fetchSimulation (which auto-generates it), then
+      // re-fetch the decision after a short delay.
+      const allBlocked =
+        top === null ||
+        (top as any).classification === 'BLOCKED' ||
+        (top as any).classification === undefined;
+      if (allBlocked) {
+        // Warm the simulation cache in background, then retry decision fetch
+        fetchSimulation(event.id).catch(() => null);
+        if (retryRef.current) clearTimeout(retryRef.current);
+        retryRef.current = setTimeout(async () => {
+          try {
+            const retryData = await fetchGameDecisions(league, event.id);
+            setDecision(selectTopDecision(retryData));
+          } catch {
+            // Keep the original BLOCKED result — silent retry failure
+          }
+        }, 4000);
+      }
     } catch (err: any) {
       setDecisionError(err?.message || 'Failed to load decision');
       setDecision(null);
@@ -90,6 +113,12 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
       setDecisionLoading(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     loadDecision();

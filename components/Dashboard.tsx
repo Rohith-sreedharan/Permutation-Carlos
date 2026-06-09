@@ -463,6 +463,22 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {loading ? <LoadingSpinner/> : (
         <>
+          {/* Upgrade banner — visible for non-Platform users */}
+          {currentPlan !== PLAN_IDS.BEATVEGAS_PLATFORM && (
+            <div className="mb-4 flex items-center justify-between gap-3 bg-[#0a0e1a] border border-yellow-400/30 rounded-lg px-4 py-2">
+              <span className="text-yellow-400 text-xs font-medium whitespace-nowrap">
+                Intelligence Preview — 10,000 cycles&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
+              </span>
+              {onUpgradeToPlatform && (
+                <button
+                  onClick={onUpgradeToPlatform}
+                  className="shrink-0 bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors"
+                >
+                  Upgrade $97/month →
+                </button>
+              )}
+            </div>
+          )}
           {showFallbackNote && (
             <div className="mb-3 text-xs text-light-gray/70">
               No games for this date. Showing <span className="text-neon-green font-bold">All Upcoming</span>.
