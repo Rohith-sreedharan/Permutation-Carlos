@@ -185,11 +185,25 @@ export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
           )}
           
           {/* Risk control summary if any */}
-          {narrative.risk_control_summary && (
-            <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-1">
-              ⚠️ {narrative.risk_control_summary}
-            </div>
-          )}
+          {narrative.risk_control_summary && (() => {
+            const raw = narrative.risk_control_summary;
+            // Strip leading "Blocked: " prefix and trailing period to get individual reasons
+            const stripped = raw.replace(/^Blocked:\s*/i, '').replace(/\.$/, '');
+            const reasons = stripped.split(', ').map(r => r.trim()).filter(Boolean);
+            return (
+              <div className="mt-2 text-xs text-yellow-400 bg-yellow-900/10 border border-yellow-500/30 rounded px-2 py-2">
+                <div className="font-semibold mb-1">⚠️ Blocked</div>
+                <ul className="space-y-0.5">
+                  {reasons.map((r, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-yellow-500 shrink-0">•</span>
+                      <span>{r}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
         
         {/* Snapshot & Version Info */}
