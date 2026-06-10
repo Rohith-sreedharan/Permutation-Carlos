@@ -148,6 +148,55 @@ def _sanitise_all_params(params: Dict[str, str]) -> Dict[str, str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GET /api/trial/ref/{affiliate_id} — Section 7B: record attribution at CLICK TIME
+# Attribution window: 30 days. Trial offer window: 24 hours (bv_ref cookie).
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/ref/{affiliate_id}")
+async def record_affiliate_click_attribution(
+    affiliate_id: str,
+    request: Request,
+):
+    """
+    Section 7B — Record attribution at click time (not signup time).
+    Called by the frontend when a user visits /ref/{affiliateId}.
+    Writes affiliate_attributions with clicked_at_utc, 30-day window.
+    """
+    import uuid as _uuid
+    now = datetime.now(timezone.utc)
+    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
+    click_id = str(_uuid.uuid4())
+    trace_id = str(_uuid.uuid4())
+    attribution_id = str(_uuid.uuid4())
+
+    db["affiliate_attributions"].update_one(
+        {
+            "affiliate_id": affiliate_id,
+            "ip_address": client_ip,
+            "status": "PENDING_SIGNUP",
+        },
+        {"$setOnInsert": {
+            "attribution_id": attribution_id,
+            "affiliate_id": affiliate_id,
+            "click_id": click_id,
+            "user_id": "PENDING",
+            "locked_at_utc": now.isoformat(),
+            "immutable_guard": "LOCKED",
+            "trace_id": trace_id,
+            "tenant_id": "beatvegas",
+            "tier": None,
+            "clicked_at_utc": now.isoformat(),
+            "attribution_expires_at": (now + timedelta(days=30)).isoformat(),
+            "ip_address": client_ip,
+            "status": "PENDING_SIGNUP",
+            "created_at": now.isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"status": "ok", "clicked_at_utc": now.isoformat()}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/trial/affiliate/{affiliate_id} — page load data
 # Part 3, 3.4, 3.5
 # ─────────────────────────────────────────────────────────────────────────────

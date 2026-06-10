@@ -152,8 +152,9 @@ def test_proof_artifact():
     
     print(json.dumps(proof, indent=2))
     
-    # Save to file
-    proof_file = "/Users/rohithaditya/Downloads/Permutation-Carlos/backend/SECTION_14_HTTP500_PROOF.json"
+    # Save to file (use path relative to this test file so it works on any host)
+    import pathlib
+    proof_file = pathlib.Path(__file__).parent.parent / "SECTION_14_HTTP500_PROOF.json"
     with open(proof_file, 'w') as f:
         json.dump(proof, f, indent=2)
     

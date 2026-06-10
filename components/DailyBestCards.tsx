@@ -170,10 +170,13 @@ const DailyBestCards: React.FC = () => {
           <div className="mt-3 text-center">
             <div className="text-xs text-light-gray mb-1">Model Projection</div>
             <div className="text-lg font-bold text-white">{card.recommended_bet}</div>
-            {card.odds && card.odds !== 0 && (
+            {card.odds && card.odds !== 0 && Math.abs(card.odds) !== 999900 && (
               <div className="text-sm text-gold">
                 {card.odds > 0 ? '+' : ''}{card.odds}
               </div>
+            )}
+            {card.odds && Math.abs(card.odds) === 999900 && (
+              <div className="text-sm text-light-gray/50">Line pending</div>
             )}
           </div>
         )}
@@ -285,7 +288,9 @@ const DailyBestCards: React.FC = () => {
               <div className="bg-navy/50 rounded-lg p-3 border border-gold/20 text-center">
                 <div className="text-[10px] text-light-gray uppercase mb-1">Odds</div>
                 <div className="text-xl font-bold text-gold">
-                  {card.parlay_odds && card.parlay_odds > 0 ? '+' : ''}{card.parlay_odds}
+                  {card.parlay_odds && Math.abs(card.parlay_odds) !== 999900
+                    ? `${card.parlay_odds > 0 ? '+' : ''}${card.parlay_odds}`
+                    : 'Line pending'}
                 </div>
               </div>
               <div className="bg-navy/50 rounded-lg p-3 border border-gold/20 text-center">

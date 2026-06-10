@@ -634,12 +634,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             >
               {cycleGate.ctaPlatform}
             </a>
-            <a
-              href={cycleGate.ctaSyndicateUrl}
-              className="block w-full border border-yellow-400/50 text-yellow-400 font-semibold py-3 px-6 rounded-lg text-sm hover:bg-yellow-400/10 transition-colors"
-            >
-              {cycleGate.ctaSyndicate}
-            </a>
+            {cycleGate.ctaSyndicate && (
+              <a
+                href={cycleGate.ctaSyndicateUrl}
+                className="block w-full border border-yellow-400/50 text-yellow-400 font-semibold py-3 px-6 rounded-lg text-sm hover:bg-yellow-400/10 transition-colors"
+              >
+                {cycleGate.ctaSyndicate}
+              </a>
+            )}
           </div>
           <p className="text-gray-500 text-xs pt-2">
             Or watch for signals on the free Telegram channel.
@@ -1416,7 +1418,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div className="bg-navy/50 p-3 rounded">
-                      <div className="text-xs text-gray-400 mb-1">Vegas Line</div>
+                      <div className="text-xs text-gray-400 mb-1">Market Line</div>
                       <div className="text-base font-bold text-white">
                         O/U {simulation.sharp_analysis.total.vegas_total}
                       </div>
@@ -2137,7 +2139,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {/* Tooltip */}
           <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-4 bg-charcoal/95 border border-gold/40 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10 backdrop-blur-sm">
             <p className="text-xs text-light-gray leading-relaxed">
-              Over/Under shows projected total score compared to Vegas line. Model lean indicates statistical edge when probability exceeds 55%. Edge vs market quantifies point differential.
+              Over/Under shows projected total score compared to market line. Model lean indicates statistical edge when probability exceeds 55%. Edge vs market quantifies point differential.
             </p>
           </div>
         </div>
