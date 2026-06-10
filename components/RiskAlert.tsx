@@ -27,7 +27,7 @@ const RiskAlert: React.FC<RiskAlertProps> = ({
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-3xl font-bold text-bold-red mb-2">Tilt Alert</h2>
           <p className="text-light-gray">
-            Responsible Gaming Protection Activated
+            Risk Management Protection Activated
           </p>
         </div>
 
@@ -61,7 +61,7 @@ const RiskAlert: React.FC<RiskAlertProps> = ({
           </div>
         </div>
 
-        {/* Responsible Gaming Tips */}
+        {/* Risk Management Tips */}
         <div className="space-y-3 mb-6">
           <h3 className="text-sm font-semibold text-light-gray uppercase tracking-wide">
             Take a Step Back:
@@ -91,13 +91,13 @@ const RiskAlert: React.FC<RiskAlertProps> = ({
           onClick={onClose}
           className="w-full bg-electric-blue hover:bg-blue-600 text-white font-semibold py-3 rounded-lg transition-colors"
         >
-          I Understand - Continue Responsibly
+          I Understand - Continue
         </button>
 
         {/* Footer Note */}
         <p className="text-center text-xs text-light-gray mt-4">
-          BeatVegas promotes responsible betting. If you feel you have a gambling problem, 
-          please visit <a href="https://www.ncpgambling.org" target="_blank" rel="noopener noreferrer" className="text-electric-blue hover:underline">ncpgambling.org</a>
+          BeatVegas provides statistical simulation outputs only - not betting advice. Problem gambling help: 1-800-522-4700 | 
+          <a href="https://www.ncpgambling.org" target="_blank" rel="noopener noreferrer" className="text-electric-blue hover:underline">ncpgambling.org</a>
         </p>
       </div>
     </div>

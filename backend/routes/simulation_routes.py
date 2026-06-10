@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException, Header, Depends, status
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -26,6 +26,126 @@ from legacy_config import (
 
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cycle deduction — called on every authenticated simulation view
+# ─────────────────────────────────────────────────────────────────────────────
+
+_TIER_CYCLE_MAX_MAP = {
+    "intelligence_preview": "preview_max",
+    "syndicate": "syndicate_max",
+    "telegram_syndicate": "telegram_syndicate_max",
+    "platform": "platform_max",
+    "beatvegas_platform": "beatvegas_platform_max",
+}
+
+
+def _deduct_simulation_cycle(user_id: str, tier: str):
+    """
+    Deduct 1 Intelligence Cycle from the user's entitlement budget.
+
+    - Returns (None, balance_dict)  → cycle deducted, caller continues normally.
+    - Returns (HTTPException(402), None) → budget exhausted, caller must raise it.
+    - Fires growth_agent.trigger_upgrade_prompt() when crossing the 80% threshold.
+    - All limits and costs come from AGENT_CONFIG["cycles"] — zero hardcoded values.
+    """
+    from config.agent_config import AGENT_CONFIG
+
+    cfg = AGENT_CONFIG.get("cycles", {})
+    max_key = _TIER_CYCLE_MAX_MAP.get(tier)
+    if not max_key:
+        return None, None  # unrecognised or unlimited tier — pass through
+
+    tier_max = cfg.get(max_key, 0)
+    if tier_max <= 0:
+        return None, None  # unlimited tier — pass through
+
+    cost = cfg.get("cost_decision_detail", cfg.get("cost_per_simulation_view", 1000))
+    warn_pct = cfg.get("depletion_warn_pct", 80)
+    block_pct = cfg.get("depletion_block_pct", 100)
+
+    # Bootstrap entitlement row if absent (first simulation view after signup)
+    db["user_entitlements"].update_one(
+        {"user_id": user_id},
+        {
+            "$setOnInsert": {
+                "user_id": user_id,
+                "tier": tier,
+                "tokens_allocated_current_period": tier_max,
+                "tokens_used_current_period": 0,
+                "active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+        upsert=True,
+    )
+
+    ent = db["user_entitlements"].find_one({"user_id": user_id}, {"_id": 0})
+    alloc = int(ent.get("tokens_allocated_current_period") or 0)
+    if alloc <= 0:
+        # Allocation not yet set — seed it now
+        db["user_entitlements"].update_one(
+            {"user_id": user_id},
+            {"$set": {"tokens_allocated_current_period": tier_max}},
+        )
+        alloc = tier_max
+
+    used = int(ent.get("tokens_used_current_period") or 0)
+    pct_used = (used / alloc) * 100
+
+    # Hard gate — user already exhausted their budget
+    if pct_used >= block_pct:
+        return HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "code": "ALLOCATION_EXHAUSTED",
+                "title": "Your Intelligence Preview analyses have been used.",
+                "message": (
+                    f"You completed {used // cost} decision analyses on the starter tier. "
+                    "Platform subscribers get 100 full analyses per month."
+                ),
+                "cta_platform": "Subscribe to Platform — $97/month",
+                "cta_platform_url": "https://beatvegas.app/upgrade",
+                "cta_syndicate": "Join Syndicate — $39/month",
+                "cta_syndicate_url": "https://beatvegas.app/upgrade",
+                "cycles_used": used,
+                "cycles_allocated": alloc,
+            },
+        )
+
+    # Deduct
+    db["user_entitlements"].update_one(
+        {"user_id": user_id},
+        {"$inc": {"tokens_used_current_period": cost}},
+    )
+
+    # Addendum 2: Track lifetime Preview cycles used — never decrements, never resets.
+    # Used on Syndicate cancellation to compute remaining Preview allocation.
+    if tier in ("intelligence_preview", "preview"):
+        db["user_entitlements"].update_one(
+            {"user_id": user_id},
+            {"$inc": {"preview_cycles_used_lifetime": cost}},
+        )
+    new_used = used + cost
+    new_pct = (new_used / alloc) * 100
+
+    # Fire upgrade prompt when crossing 80% — idempotent in GrowthAgent
+    if new_pct >= warn_pct:
+        try:
+            from services.phase5_growth_agent import growth_agent
+            growth_agent.trigger_upgrade_prompt(user_id)
+        except Exception as _exc:
+            logger.warning("[cycle_deduct] upgrade prompt failed user=%s err=%s", user_id, _exc)
+
+    return None, {
+        "cycles_used": new_used,
+        "cycles_remaining": max(0, alloc - new_used),
+        "cycles_allocated": alloc,
+        "analyses_completed": new_used // cost,
+        "analyses_remaining": max(0, (alloc - new_used) // cost),
+        "warn_active": new_pct >= warn_pct,
+    }
 
 
 def _apply_truth_mode_to_simulation(
@@ -210,7 +330,17 @@ async def get_simulation(
             user_tier = get_user_tier(current_user)
         else:
             user_tier = "free"
-        
+
+        # ── Cycle deduction gate ──────────────────────────────────────────────
+        # Deduct 1 Intelligence Cycle for authenticated users with a tracked tier.
+        # Returns 402 if the budget is exhausted before serving the simulation.
+        _cycle_balance = None
+        if current_user:
+            _user_id = str(current_user.get("_id", current_user.get("id", "")))
+            _gate, _cycle_balance = _deduct_simulation_cycle(_user_id, user_tier)
+            if _gate:
+                raise _gate
+
         assigned_iterations = SIMULATION_TIERS.get(user_tier, SIM_TIER_FREE)
         print(f"🎯 Simulation for {event_id}: tier={user_tier}, iterations={assigned_iterations}")
         precision_level = PRECISION_LABELS.get(assigned_iterations, "STANDARD")
@@ -573,6 +703,10 @@ async def get_simulation(
         if not is_valid:
             logger.error(f"❌ [Canonical Contract] Validation failed for {event_id}: {errors}")
             simulation["integrity_warnings"] = simulation.get("integrity_warnings", []) + errors
+        
+        # Inject live cycle balance so frontend can update sidebar counter immediately
+        if _cycle_balance:
+            simulation["_cycle_balance"] = _cycle_balance
         
         return simulation
         

@@ -14,6 +14,7 @@ import uuid
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 from db.mongo import db
+from services.observability_service import observability_service
 from db.schemas.logging_calibration_schemas import (
     Grading,
     BetStatus,
@@ -189,6 +190,94 @@ class GradingService:
             graded_id = existing["graded_id"]
         else:
             self.grading_collection.insert_one(grading.model_dump())
+
+        # Append-only observability records for settlement
+        trace_id = (
+            published.get("trace_id")
+            or prediction.get("trace_id")
+            or f"trace_grade_{publish_id}"
+        )
+        snapshot_hash = (
+            published.get("snapshot_hash")
+            or prediction.get("snapshot_hash")
+            or prediction.get("market_snapshot_id_used")
+            or published.get("locked_market_snapshot_id")
+        )
+        p_predicted = prediction.get("p_win") or prediction.get("p_cover") or prediction.get("p_over")
+        actual_outcome = None
+        if result_code == ResultCode.WIN:
+            actual_outcome = 1
+        elif result_code == ResultCode.LOSS:
+            actual_outcome = 0
+
+        ece_bucket_error = None
+        if p_predicted is not None and actual_outcome is not None:
+            ece_bucket_error = abs(float(p_predicted) - float(actual_outcome))
+
+        observability_service.log_settlement_metrics(
+            graded_id=graded_id,
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            result_code=result_code.value,
+            bet_status=BetStatus.SETTLED.value,
+            brier=brier,
+            logloss=logloss,
+            ece_bucket_error=ece_bucket_error,
+            clv=clv,
+            p_predicted=p_predicted,
+            actual_outcome=actual_outcome,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={"unit_return": unit_return, "cohort_tags": cohort_tags},
+        )
+
+        observability_service.log_truth_dataset_row(
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            feature_snapshot={
+                "market_key": prediction.get("market_key"),
+                "selection": prediction.get("selection"),
+                "ticket_terms": published.get("ticket_terms", {}),
+                "cohort_tags": cohort_tags,
+            },
+            label={
+                "result_code": result_code.value,
+                "actual_outcome": actual_outcome,
+                "unit_return": unit_return,
+            },
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+        )
+
+        observability_service.log_clv_capture(
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            entry_price=published.get("ticket_terms", {}).get("price"),
+            closing_price=close_snapshot.get("price_american") if close_snapshot else None,
+            clv=clv,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+        )
+
+        observability_service.log_prediction_lifecycle(
+            stage="SETTLED",
+            decision_id=prediction.get("decision_id"),
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={
+                "bet_status": BetStatus.SETTLED.value,
+                "result_code": result_code.value,
+            },
+        )
         
         clv_str = f"{clv:.2f}" if clv is not None else "0.00"
         brier_str = f"{brier:.4f}" if brier is not None else "0.0000"
@@ -277,6 +366,44 @@ class GradingService:
         )
         
         self.grading_collection.insert_one(grading.model_dump())
+
+        trace_id = published.get("trace_id") or prediction.get("trace_id") or f"trace_grade_{publish_id}"
+        snapshot_hash = (
+            published.get("snapshot_hash")
+            or prediction.get("snapshot_hash")
+            or prediction.get("market_snapshot_id_used")
+            or published.get("locked_market_snapshot_id")
+        )
+
+        observability_service.log_settlement_metrics(
+            graded_id=graded_id,
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            result_code=ResultCode.VOID.value,
+            bet_status=BetStatus.VOID.value,
+            brier=None,
+            logloss=None,
+            ece_bucket_error=None,
+            clv=0.0,
+            p_predicted=None,
+            actual_outcome=None,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={"void_reason": reason},
+        )
+
+        observability_service.log_prediction_lifecycle(
+            stage="VOIDED",
+            decision_id=prediction.get("decision_id"),
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={"void_reason": reason},
+        )
         
         logger.info(f"❌ Graded as VOID: {graded_id} ({reason})")
         

@@ -1,0 +1,4 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/v1/odds/list,"ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x....>, 'Connection to 127.0.0.1 timed out. (connect timeout=None)')",2104,2026-06-06T10:11:34Z,2026-06-06T10:12:25Z
+GET,/docs,"ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x....>, 'Connection to 127.0.0.1 timed out. (connect timeout=None)')",1224,2026-06-06T10:11:34Z,2026-06-06T10:12:25Z
+GET,/api/v1/subscription/status,"ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x....>, 'Connection to 127.0.0.1 timed out. (connect timeout=None)')",1276,2026-06-06T10:11:34Z,2026-06-06T10:12:25Z

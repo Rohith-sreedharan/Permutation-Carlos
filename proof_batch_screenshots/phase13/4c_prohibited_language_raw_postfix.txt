@@ -1,0 +1,91 @@
+/root/Permutation-Carlos/components/TermsOfService.tsx: *  • No bet placement, no wagering facilitation, no wallet
+/root/Permutation-Carlos/components/TermsOfService.tsx:              construed as a recommendation to wager any amount of money.
+/root/Permutation-Carlos/components/TermsOfService.tsx:            any wager placed based on Platform content.
+/root/Permutation-Carlos/components/TermsOfService.tsx:            <li>Never wager money you cannot afford to lose.</li>
+/root/Permutation-Carlos/components/TermsOfService.tsx:            <li>Seek help if gambling is negatively affecting your life.</li>
+/root/Permutation-Carlos/components/TermsOfService.tsx:              Contact the National Council on Problem Gambling:{' '}
+/root/Permutation-Carlos/components/ParlayBuilder.tsx:            Enter canonical decision IDs. Client-side probabilities and odds are disabled.
+/root/Permutation-Carlos/components/ParlayBuilder.tsx:                  <div className="text-light-gray text-xs uppercase mb-1">Payout Odds</div>
+/root/Permutation-Carlos/components/PerformanceMetrics.tsx:            Avg odds: {metrics.avg_odds > 0 ? '+' : ''}{metrics.avg_odds.toFixed(0)}
+/root/Permutation-Carlos/components/WarRoom.tsx:      {/* Model Pick */}
+/root/Permutation-Carlos/components/WarRoom.tsx:        <p className="text-xs text-light-gray mb-1">Model Pick</p>
+/root/Permutation-Carlos/components/EdgeIndicator.tsx:              Statistical output only. Not a betting recommendation. This shows the pricing difference between our simulation output and the sportsbook line.
+/root/Permutation-Carlos/components/OnboardingWizard.tsx: *  - Agentic language throughout. Zero betting / wagering / sportsbook framing.
+/root/Permutation-Carlos/components/OnboardingWizard.tsx:          <span className="text-lg">&#9889;</span> Not a Sportsbook
+/root/Permutation-Carlos/components/EventListItem.tsx:// UI TRUST LAYER: Suppress extreme certainty for non-PICK states
+/root/Permutation-Carlos/components/EventListItem.tsx:  return pickState !== 'PICK' || confidence < 0.20;
+/root/Permutation-Carlos/components/SocialMetaTags.tsx:      // Build title with pick details
+/root/Permutation-Carlos/components/SocialMetaTags.tsx:      description = `Engine Projection: ${metrics}. Decision Engine validated signal with real-time odds tracking and advanced analytics.`;
+/root/Permutation-Carlos/components/CreatorProfile.tsx:  odds: number;
+/root/Permutation-Carlos/components/CreatorProfile.tsx:          <div className="text-light-gray text-sm mb-2">Avg Odds</div>
+/root/Permutation-Carlos/components/CreatorProfile.tsx:                  {slip.selection} @ {slip.odds > 0 ? '+' : ''}{slip.odds}
+/root/Permutation-Carlos/components/SharpsRoom.tsx:  const clvTimeSeries = clvData.picks.slice(0, 30).map((pick, idx) => ({
+/root/Permutation-Carlos/components/SharpsRoom.tsx:    clv: pick.clv,
+/root/Permutation-Carlos/components/SharpsRoom.tsx:    date: new Date(pick.timestamp).toLocaleDateString()
+/root/Permutation-Carlos/components/LegalDisclaimer.tsx:            This platform provides decision engine outputs. Edges represent pricing discrepancies between our intelligence model and the sportsbook line - not guaranteed outcomes. Use these insights as part of your decision framework.
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:  odds: number;
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                <th className="text-left text-gray-400 pb-2 pr-4">Odds</th>
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                recentBets.map((bet) => (
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                  <tr key={bet._id} className="border-b border-gray-800 hover:bg-dark-navy/50">
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                      {new Date(bet.created_at).toLocaleDateString()}
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                    <td className="py-3 pr-4 text-white font-medium">{bet.selection}</td>
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                    <td className="py-3 pr-4 text-gray-300">${bet.stake}</td>
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                    <td className="py-3 pr-4 text-gray-300">{bet.odds.toFixed(2)}</td>
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                        bet.outcome === 'win' ? 'bg-[#10B981]/20 text-[#10B981]' :
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                        bet.outcome === 'loss' ? 'bg-deep-red/20 text-deep-red' :
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                        {bet.outcome.toUpperCase()}
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                      bet.profit && bet.profit > 0 ? 'text-[#10B981]' :
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                      bet.profit && bet.profit < 0 ? 'text-deep-red' :
+/root/Permutation-Carlos/components/BettingCommandCenter.tsx:                      {bet.profit ? `$${bet.profit.toFixed(2)}` : '-'}
+/root/Permutation-Carlos/components/WarRoomOverlays.tsx:            {pickState === 'PICK' && '✓ PICK'}
+/root/Permutation-Carlos/components/WarRoomOverlays.tsx:        Model context is <strong>statistical output only</strong>. Not a bet recommendation. Your
+/root/Permutation-Carlos/components/GameDetail.tsx: *   Root Cause: Backend simulation.win_probability may be pulling from market odds instead of sim distribution
+/root/Permutation-Carlos/components/GameDetail.tsx:// UI TRUST LAYER: Suppress extreme certainty for non-PICK states
+/root/Permutation-Carlos/components/GameDetail.tsx:  // Suppress if NOT a PICK or confidence < 20
+/root/Permutation-Carlos/components/GameDetail.tsx:  return pickState !== 'PICK' || confidence < 20;
+/root/Permutation-Carlos/components/GameDetail.tsx:  const [lineMovementData, setLineMovementData] = useState<Array<{ time: string; odds: number; fairValue: number }>>([]);
+/root/Permutation-Carlos/components/GameDetail.tsx:        // Check for stale odds warning
+/root/Permutation-Carlos/components/GameDetail.tsx:          console.warn(`⚠️ 1H simulation uses stale odds (${data.integrity_status.odds_age_hours?.toFixed(1)}h old)`);
+/root/Permutation-Carlos/components/GameDetail.tsx:      const odds = 1.85 + (Math.random() - 0.5) * 0.15; // Market odds fluctuation
+/root/Permutation-Carlos/components/GameDetail.tsx:        odds: parseFloat(odds.toFixed(2)),
+/root/Permutation-Carlos/components/GameDetail.tsx:                        // Assume standard -110 odds (American)
+/root/Permutation-Carlos/components/GameDetail.tsx:                <Line type="monotone" dataKey="odds" stroke="#D4A64A" strokeWidth={3} name="Market Odds" />
+/root/Permutation-Carlos/components/GameDetail.tsx:                💡 <span className="font-bold text-white">Model Comparison:</span> Model estimate ({lineMovementData[lineMovementData.length - 1]?.fairValue.toFixed(2)}) is {lineMovementData[lineMovementData.length - 1]?.fairValue > lineMovementData[lineMovementData.length - 1]?.odds ? 'above' : 'below'} market odds ({lineMovementData[lineMovementData.length - 1]?.odds.toFixed(2)}), showing a variance of {Math.abs(lineMovementData[lineMovementData.length - 1]?.fairValue - lineMovementData[lineMovementData.length - 1]?.odds).toFixed(2)} points.
+/root/Permutation-Carlos/components/GameDetail.tsx:                Not sportsbook handle or ticket data. Based on {communityPulseData.reduce((sum, item) => sum + (item.picks || 0), 0)} user submissions.
+/root/Permutation-Carlos/components/GameDetail.tsx:{/* Responsible gaming disclosure — visible on every pick surface */}
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:  const [odds, setOdds] = useState('');
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:    if (!selection || !stake || !odds) {
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:          odds: parseFloat(odds),
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:        {/* Stake and Odds Row */}
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:              Odds <span className="text-[#D4A64A]">*</span>
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:              value={odds}
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:        {/* Sport and Pick Type Row */}
+/root/Permutation-Carlos/components/ManualBetEntry.tsx:            <label className="block text-sm font-medium text-gray-400 mb-1">Pick Type</label>
+/root/Permutation-Carlos/components/SignalCard.tsx:  state: 'PICK' | 'LEAN' | 'NO_PLAY';
+/root/Permutation-Carlos/components/SignalCard.tsx:    PICK: 'bg-green-500/20 border-green-500 text-green-400',
+/root/Permutation-Carlos/components/WaitlistPage.tsx:          If gambling is affecting your life, call{' '}
+/root/Permutation-Carlos/components/AffiliateTrial.tsx:            Problem gambling help:{' '}
+/root/Permutation-Carlos/components/ParlayArchitect.tsx:                <p className="text-xs text-lightGold/70">Parlay odds</p>
+/root/Permutation-Carlos/components/CLVTracker.tsx:            <span className="text-sm">Pick-by-pick CLV analysis</span>
+/root/Permutation-Carlos/components/CLVTracker.tsx:              {clvData.slice(0, 10).map((pick, index) => (
+/root/Permutation-Carlos/components/CLVTracker.tsx:                    {new Date(pick.pick_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+/root/Permutation-Carlos/components/CLVTracker.tsx:                  <td className="py-2 text-light-gray">{pick.sport}</td>
+/root/Permutation-Carlos/components/CLVTracker.tsx:                  <td className="py-2 font-medium">{pick.team}</td>
+/root/Permutation-Carlos/components/CLVTracker.tsx:                  <td className="py-2">{(pick.predicted_prob * 100).toFixed(1)}%</td>
+/root/Permutation-Carlos/components/CLVTracker.tsx:                  <td className="py-2 text-light-gray">{(pick.market_prob * 100).toFixed(1)}%</td>
+/root/Permutation-Carlos/components/CLVTracker.tsx:                  <td className={`py-2 font-semibold ${pick.clv > 0 ? 'text-neon-green' : 'text-bold-red'}`}>
+/root/Permutation-Carlos/components/CLVTracker.tsx:                    {pick.clv > 0 ? '+' : ''}{(pick.clv * 100).toFixed(2)}%
+/root/Permutation-Carlos/components/CLVTracker.tsx:                    {pick.outcome === 'win' && <span className="text-neon-green">✓ Win</span>}
+/root/Permutation-Carlos/components/CLVTracker.tsx:                    {pick.outcome === 'loss' && <span className="text-bold-red">✗ Loss</span>}
+/root/Permutation-Carlos/components/CLVTracker.tsx:                    {pick.outcome === 'pending' && <span className="text-gold">⏱ Pending</span>}
+/root/Permutation-Carlos/components/CLVTracker.tsx:          Closing Line Value measures the difference between your bet's price and the market's final assessment (closing line).
+/root/Permutation-Carlos/components/DailyBestCards.tsx:  odds?: number;
+/root/Permutation-Carlos/components/DailyBestCards.tsx:            {card.odds && card.odds !== 0 && (
+/root/Permutation-Carlos/components/DailyBestCards.tsx:                {card.odds > 0 ? '+' : ''}{card.odds}
+/root/Permutation-Carlos/components/DailyBestCards.tsx:                <div className="text-[10px] text-light-gray uppercase mb-1">Odds</div>
+/root/Permutation-Carlos/components/EventCard.tsx:// UI TRUST LAYER: Suppress extreme certainty for non-PICK states
+/root/Permutation-Carlos/components/EventCard.tsx:  return pickState !== 'PICK' || confidence < 0.20;
+/root/Permutation-Carlos/components/EventCard.tsx:          bets.map((bet, index) => (
+/root/Permutation-Carlos/components/EventCard.tsx:            <div key={`${bet.type}-${bet.pick}-${index}`} className="flex justify-between items-center text-sm">
+/root/Permutation-Carlos/components/EventCard.tsx:                <span className="text-light-gray">{bet.type}</span>
+/root/Permutation-Carlos/components/EventCard.tsx:                <span className="font-semibold text-white">{bet.pick} {bet.value}</span>

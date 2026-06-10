@@ -2,7 +2,7 @@
 Affiliate System Routes
 Handle referral tracking and commission management
 """
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Header
 from datetime import datetime, timezone
 from typing import Optional, Literal
 from pydantic import BaseModel, EmailStr
@@ -13,6 +13,18 @@ from db.schemas.commissions import CommissionEarned, AffiliateAccount
 
 
 router = APIRouter(prefix="/api/affiliate", tags=["Affiliate"])
+
+
+def _get_user_id_from_auth(authorization: Optional[str]) -> str:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    token = parts[1]
+    if token.startswith("user:"):
+        return token.split(":", 1)[1]
+    return token
 
 
 class RegisterSubscriberRequest(BaseModel):
@@ -294,4 +306,47 @@ async def get_affiliate_leaderboard(limit: int = 50):
     return {
         "status": "ok",
         "leaderboard": leaderboard
+    }
+
+
+@router.get("/earnings")
+async def get_affiliate_earnings(Authorization: Optional[str] = Header(None)):
+    user_id = _get_user_id_from_auth(Authorization)
+    account = db["affiliate_accounts"].find_one({"affiliate_id": user_id})
+    if not account:
+        return {
+            "lifetimeEarnings": 0.0,
+            "pendingPayout": 0.0,
+            "nextPayoutDate": "",
+            "isConnected": False,
+            "payouts": [],
+        }
+
+    commissions = list(db["affiliate_commission_log"].find({"affiliate_id": user_id}))
+    payouts = list(db["affiliate_payout_log"].find({"affiliate_id": user_id}).sort("created_at_utc", -1).limit(25))
+
+    lifetime = round(sum(float(c.get("amount", 0.0)) for c in commissions if c.get("status") == "PAID"), 2)
+    pending = round(sum(float(c.get("amount", 0.0)) for c in commissions if c.get("status") == "ELIGIBLE"), 2)
+    next_payout_date = ""
+    eligible_dates = sorted([c.get("net_30_date") for c in commissions if c.get("status") == "ELIGIBLE" and c.get("net_30_date")])
+    if eligible_dates:
+        next_payout_date = eligible_dates[0]
+
+    payout_rows = []
+    for p in payouts:
+        payout_rows.append(
+            {
+                "id": p.get("payout_id") or str(p.get("_id")),
+                "date": p.get("created_at_utc") or datetime.now(timezone.utc).isoformat(),
+                "amount": float(p.get("amount", 0.0)),
+                "status": "completed" if p.get("status") == "PAID" else "pending",
+            }
+        )
+
+    return {
+        "lifetimeEarnings": lifetime,
+        "pendingPayout": pending,
+        "nextPayoutDate": next_payout_date,
+        "isConnected": bool(account.get("stripe_connect_status") == "CONNECTED"),
+        "payouts": payout_rows,
     }

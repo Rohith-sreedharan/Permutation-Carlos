@@ -34,7 +34,7 @@ export default function EdgeIndicator({ edge, className = '' }: EdgeIndicatorPro
           <div className="text-xs text-light-gray leading-relaxed">
             <div className="text-gold font-semibold mb-1">Model–Market Discrepancy Indicator</div>
             <div>
-              Statistical output only. Not a betting recommendation. This shows the pricing difference between our simulation output and the sportsbook line.
+              Statistical output only. Not a betting recommendation. This shows the pricing difference between our simulation output and the market-implied line.
             </div>
           </div>
         </div>

@@ -6,11 +6,24 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+nohup.out
 
 node_modules
 dist
 dist-ssr
 *.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+.venv/
+
+# Test outputs
+playwright-report/
+test-results/
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +35,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# MongoDB
+*.wt
+.mongo-local/
+diagnostic.data/

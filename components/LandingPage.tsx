@@ -1,8 +1,9 @@
+
+
+
 import React, { useState, useEffect } from 'react';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-
-const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
+import { API_BASE_URL } from '../services/api';
+import React, { useState, useEffect } from 'react';
   const [email, setEmail] = useState('');
   const [founderCount, setFounderCount] = useState(243);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -75,7 +76,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
           </h2>
 
           <p className="text-xl md:text-2xl text-muted-text mb-12 max-w-2xl mx-auto leading-relaxed">
-            Monte Carlo simulations running <span className="text-light-gold font-bold">100,000 iterations</span> to
+            BeatVegas Decision Engine running <span className="text-light-gold font-bold">100,000 Intelligence Cycles</span> to
             expose market inefficiencies. Access institutional-grade forecasting before the public.
           </p>
 
@@ -180,7 +181,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
             See What The House <span className="text-gold">Can't Hide</span>
           </h3>
           <p className="text-xl text-muted-text mb-12 max-w-2xl mx-auto">
-            Every outcome simulated 100,000 times. Discover the distribution the sportsbooks don't want you to see.
+            Every outcome processed through 100,000 Intelligence Cycles. Discover the distribution the sportsbooks don't want you to see.
           </p>
           
           {/* Placeholder for animated distribution curve */}
@@ -198,7 +199,7 @@ const LandingPage: React.FC<{ onLaunch: () => void }> = ({ onLaunch }) => {
               })}
             </div>
             <div className="mt-6 text-sm text-muted-text">
-              Monte Carlo Distribution Curve • 100,000 Simulations
+              Outcome Distribution Chart • 100,000 Intelligence Cycles
             </div>
           </div>
         </div>

@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
-import { PlusCircle, DollarSign, TrendingUp } from 'lucide-react';
-import Swal from 'sweetalert2';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface ManualBetEntryProps {
-  onBetSubmitted?: () => void;
+import Swal from 'sweetalert2';
+import { API_BASE_URL } from '../services/api';
+import Swal from 'sweetalert2';
 }
 
 const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
@@ -35,7 +34,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
     try {
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`${API_BASE_URL}/api/bets/manual`, {
+      const response = await fetch(`${API_BASE_URL}/api/tracker/manual`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -51,7 +50,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit bet');
+        throw new Error('Failed to submit entry');
       }
 
       const data = await response.json();
@@ -63,9 +62,9 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
           title: '🚨 Tilt Alert',
           html: `
             <div class="text-left">
-              <p class="mb-2">Bet logged successfully, but we detected:</p>
+              <p class="mb-2">Entry logged successfully, but we detected:</p>
               <p class="text-yellow-400 font-bold">${data.tilt_warning}</p>
-              <p class="mt-3 text-sm text-gray-400">Consider taking a break before placing your next bet.</p>
+              <p class="mt-3 text-sm text-gray-400">Consider taking a break before logging your next entry.</p>
             </div>
           `,
           background: '#1A1F27',
@@ -75,7 +74,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
       } else {
         Swal.fire({
           icon: 'success',
-          title: 'Bet Tracked!',
+          title: 'Entry Saved!',
           text: `${selection} logged successfully`,
           background: '#1A1F27',
           color: '#fff',
@@ -99,7 +98,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
       Swal.fire({
         icon: 'error',
         title: 'Submission Failed',
-        text: 'Could not log bet. Please try again.',
+        text: 'Could not save entry. Please try again.',
         background: '#1A1F27',
         color: '#fff'
       });
@@ -112,7 +111,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
     <div className="bg-[#1A1F27] rounded-lg p-6 border border-[#D4A64A]/20">
       <div className="flex items-center gap-3 mb-4">
         <PlusCircle className="w-6 h-6 text-[#D4A64A]" />
-        <h2 className="text-xl font-bold text-white">Log a Bet Manually</h2>
+        <h2 className="text-xl font-bold text-white">Log a Manual Entry</h2>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -129,7 +128,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
             className="w-full bg-dark-navy border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#D4A64A]"
           />
           <div className="text-xs text-gray-500 mt-1">
-            Enter exactly as shown on your bet slip
+            Enter exactly as shown on your source slip
           </div>
         </div>
 
@@ -194,7 +193,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
             >
               <option value="single">Single</option>
               <option value="parlay">Parlay</option>
-              <option value="prop">Prop Bet</option>
+              <option value="prop">Prop</option>
             </select>
           </div>
         </div>
@@ -208,12 +207,12 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
           {submitting ? (
             <>
               <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-              Logging Bet...
+              Saving Entry...
             </>
           ) : (
             <>
               <TrendingUp className="w-4 h-4" />
-              Track This Bet
+              Save Entry
             </>
           )}
         </button>
@@ -223,7 +222,7 @@ const ManualBetEntry: React.FC<ManualBetEntryProps> = ({ onBetSubmitted }) => {
       <div className="mt-4 p-3 bg-dark-navy rounded-lg border border-gray-800">
         <div className="text-xs text-gray-400">
           <strong className="text-[#D4A64A]">Pro Tip:</strong> Include event IDs when possible for AI edge analysis. 
-          We'll compare your picks against our model predictions.
+          We'll compare your selections against our model projections.
         </div>
       </div>
     </div>

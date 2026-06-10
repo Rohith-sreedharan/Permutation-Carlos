@@ -21,6 +21,7 @@ from db.schemas.logging_calibration_schemas import (
     CalibrationSegment,
     CalibrationStatus
 )
+from services.observability_service import observability_service
 import logging
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -88,7 +89,7 @@ class CalibrationService:
         
         # Train calibration for each segment
         segment_results = []
-        overall_metrics = {"ece": [], "brier": [], "mce": []}
+        overall_metrics = {"ece": [], "brier": [], "mce": [], "logloss": []}
         
         for segment_key, segment_data in segments.items():
             if len(segment_data) < self.MIN_SAMPLES_SEGMENT:
@@ -111,6 +112,7 @@ class CalibrationService:
                 overall_metrics["ece"].append(result["metrics"]["ece"])
                 overall_metrics["brier"].append(result["metrics"]["brier_mean"])
                 overall_metrics["mce"].append(result["metrics"]["mce"])
+                overall_metrics["logloss"].append(result["metrics"]["logloss_mean"])
         
         if not segment_results:
             logger.error("❌ No segments had sufficient data for calibration")
@@ -120,6 +122,7 @@ class CalibrationService:
         overall_ece = np.mean(overall_metrics["ece"])
         overall_brier = np.mean(overall_metrics["brier"])
         overall_mce = np.mean(overall_metrics["mce"])
+        overall_logloss = np.mean(overall_metrics["logloss"])
         
         # Create calibration version
         cal_version = CalibrationVersion(
@@ -157,6 +160,58 @@ class CalibrationService:
             f"✅ Created calibration version: {calibration_version} "
             f"(ECE={overall_ece:.4f}, Brier={overall_brier:.4f})"
         )
+
+        trace_id = f"trace_calibration_{calibration_version}"
+        snapshot_hash = f"calibration:{calibration_version}:{method}:{training_days}"
+        observability_service.log_calibration_record(
+            calibration_version=calibration_version,
+            method=method,
+            trained_on_start=start_date.isoformat(),
+            trained_on_end=end_date.isoformat(),
+            sample_count=len(training_data),
+            brier=float(overall_brier),
+            logloss=float(overall_logloss),
+            ece=float(overall_ece),
+            status=CalibrationStatus.CANDIDATE.value,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={
+                "overall_mce": float(overall_mce),
+                "segment_count": len(segment_results),
+                "activation_candidate": True,
+            },
+        )
+
+        # Run drift detection against recent settlement metrics.
+        recent_rows = list(
+            observability_service.settlement_collection.find(
+                {
+                    "timestamp": {
+                        "$gte": (end_date - timedelta(days=14)).isoformat(),
+                        "$lte": end_date.isoformat(),
+                    }
+                }
+            )
+        )
+        baseline_rows = list(
+            observability_service.settlement_collection.find(
+                {
+                    "timestamp": {
+                        "$gte": (end_date - timedelta(days=28)).isoformat(),
+                        "$lt": (end_date - timedelta(days=14)).isoformat(),
+                    }
+                }
+            )
+        )
+        baseline_metrics = observability_service.compute_aggregate_metrics(baseline_rows)
+        if baseline_metrics.get("sample_count", 0.0) > 0 and len(recent_rows) > 0:
+            observability_service.run_drift_detection(
+                baseline_metrics=baseline_metrics,
+                recent_rows=recent_rows,
+                threshold_delta=0.03,
+                trace_id=trace_id,
+                snapshot_hash=snapshot_hash,
+            )
         
         # Check activation gate
         should_activate = self._check_activation_gate(calibration_version)
@@ -219,12 +274,27 @@ class CalibrationService:
             outcome = 1 if result_code == "WIN" else 0
             
             # Build training sample
+            trace_id = (
+                published.get("trace_id")
+                or prediction.get("trace_id")
+                or grading.get("trace_id")
+            )
+            snapshot_hash = (
+                published.get("snapshot_hash")
+                or prediction.get("snapshot_hash")
+                or prediction.get("market_snapshot_id_used")
+                or published.get("locked_market_snapshot_id")
+            )
             sample = {
                 "predicted_prob": p_win,
                 "actual_outcome": outcome,
                 "cohort_tags": grading.get("cohort_tags", {}),
                 "grading": grading,
-                "prediction": prediction
+                "prediction": prediction,
+                # Preserve lineage continuity for calibration audits.
+                "decision_id": prediction.get("decision_id"),
+                "trace_id": trace_id,
+                "snapshot_hash": snapshot_hash,
             }
             
             training_data.append(sample)
@@ -302,6 +372,7 @@ class CalibrationService:
         ece = self._compute_ece(calibrated_probs, y)
         mce = self._compute_mce(calibrated_probs, y)
         brier_mean = np.mean((calibrated_probs - y) ** 2)
+        logloss_mean = self._compute_logloss(calibrated_probs, y)
         
         # Generate reliability diagram data
         reliability_diagram = self._generate_reliability_diagram(calibrated_probs, y)
@@ -313,10 +384,21 @@ class CalibrationService:
             "metrics": {
                 "ece": float(ece),
                 "mce": float(mce),
-                "brier_mean": float(brier_mean)
+                "brier_mean": float(brier_mean),
+                "logloss_mean": float(logloss_mean),
             },
             "reliability_diagram": reliability_diagram
         }
+
+    def _compute_logloss(
+        self,
+        predicted_probs: np.ndarray,
+        actual_outcomes: np.ndarray,
+    ) -> float:
+        """Compute average log loss with clipping for stability."""
+        p = np.clip(predicted_probs, 1e-6, 1 - 1e-6)
+        y = actual_outcomes
+        return float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)))
     
     def _train_isotonic(self, X: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
         """Train isotonic regression calibration"""

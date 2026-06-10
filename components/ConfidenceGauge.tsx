@@ -22,6 +22,12 @@ export default function ConfidenceGauge({
 }: ConfidenceGaugeProps) {
   const [displayConfidence, setDisplayConfidence] = useState(animated ? 0 : confidence);
 
+  const getStabilityBand = (value: number): 'Low' | 'Medium' | 'High' => {
+    if (value >= 70) return 'High';
+    if (value >= 45) return 'Medium';
+    return 'Low';
+  };
+
   // Animate on mount
   useEffect(() => {
     if (animated) {
@@ -84,11 +90,11 @@ export default function ConfidenceGauge({
         <div 
           className="absolute inset-0 flex items-center justify-center"
         >
-          <span 
-            className={`font-bold ${sizeConfig.fontSize}`}
+          <span
+            className={`font-bold ${size === 'sm' ? 'text-[10px]' : size === 'md' ? 'text-xs' : 'text-base'}`}
             style={{ color }}
           >
-            {Math.round(displayConfidence)}
+            {getStabilityBand(displayConfidence)}
           </span>
         </div>
       </div>

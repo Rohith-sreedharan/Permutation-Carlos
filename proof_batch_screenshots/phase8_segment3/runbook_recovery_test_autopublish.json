@@ -1,0 +1,40 @@
+{
+  "scenario": "telegram_autopublish_disabled",
+  "trace_id": "b59d862c-b5ce-4ae7-987a-b95f6b7b1a26",
+  "started_at_utc": "2026-05-27T13:26:43.478793+00:00",
+  "finished_at_utc": "2026-05-27T13:26:45.584858+00:00",
+  "time_to_recovery_seconds": 2.106,
+  "disable_reason": "Segment 3 runbook recovery drill",
+  "disable_action": {
+    "action_id": "68eceec9-7118-4e93-97b0-a58efb713209",
+    "agent_id": "agent.response.v1",
+    "action": "AUTOPUBLISH_DISABLED",
+    "reason": "Segment 3 runbook recovery drill",
+    "trace_id": "b59d862c-b5ce-4ae7-987a-b95f6b7b1a26",
+    "timestamp_utc": "2026-05-27T13:26:43.505723+00:00",
+    "source_agent_id": "agent.distribution.v1",
+    "metadata": {
+      "re_enable_requires_operator": true
+    }
+  },
+  "disabled_state": {
+    "agent_id": "agent.distribution.v1",
+    "enabled": false,
+    "operator_id": null,
+    "reason": "Segment 3 runbook recovery drill",
+    "updated_at_utc": "2026-05-27T13:26:43.478801+00:00"
+  },
+  "reenable_result": {
+    "approved": true,
+    "approval_id": "754b40ae-e61f-4f5c-871e-5136a8dae41b",
+    "operator_id": "op_001"
+  },
+  "enabled_state": {
+    "agent_id": "agent.distribution.v1",
+    "enabled": true,
+    "operator_id": "op_001",
+    "reason": "Segment 3 runbook recovery drill complete",
+    "updated_at_utc": "2026-05-27T13:26:45.532455+00:00"
+  },
+  "recovery_wait_seconds": 2.0
+}

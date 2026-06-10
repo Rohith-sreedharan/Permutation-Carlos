@@ -1,0 +1,6 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/api/v1/odds/list,"ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x....>, 'Connection to 127.0.0.1 timed out. (connect timeout=None)')",731,2026-06-06T10:10:09Z,2026-06-06T10:10:55Z
+GET,/api/v1/odds/list,HTTPError('500 Server Error: Internal Server Error for url: /api/v1/odds/list'),2,2026-06-06T10:10:41Z,2026-06-06T10:10:45Z
+GET,/docs,"ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x....>, 'Connection to 127.0.0.1 timed out. (connect timeout=None)')",426,2026-06-06T10:10:09Z,2026-06-06T10:10:55Z
+GET,/api/v1/odds/list,"ConnectionResetError(54, 'Connection reset by peer')",1,2026-06-06T10:10:48Z,2026-06-06T10:10:48Z
+GET,/api/v1/subscription/status,"ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x....>, 'Connection to 127.0.0.1 timed out. (connect timeout=None)')",400,2026-06-06T10:10:09Z,2026-06-06T10:10:55Z

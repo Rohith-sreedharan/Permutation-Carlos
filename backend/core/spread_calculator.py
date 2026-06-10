@@ -117,7 +117,7 @@ class SpreadCalculator:
         Classification (based on max EV or fallback):
         EDGE: EV >= 3.0% OR (edge_gap >= 3.0 AND win_prob >= 55%)
         LEAN: 0.5% <= EV < 3.0% OR (edge_gap >= 2.0 AND win_prob >= 52%)
-        NEUTRAL: 0% <= EV < 0.5%
+        NEUTRAL: 0% <= EV < 0.5%  (mapped to MARKET_ALIGNED)
         NO_PLAY: EV < 0%
         """
         EDGE_THRESHOLD = 3.0
@@ -149,7 +149,7 @@ class SpreadCalculator:
                 classification = 'LEAN'
                 max_ev = 0.0
             else:
-                classification = 'NEUTRAL'
+                classification = 'MARKET_ALIGNED'
                 max_ev = 0.0
         elif ev_diff < EV_TIE_TOLERANCE:
             # EV tie: use probability as tie-breaker
@@ -163,7 +163,7 @@ class SpreadCalculator:
             elif max_ev >= LEAN_THRESHOLD:
                 classification = 'LEAN'
             elif max_ev >= 0:
-                classification = 'NEUTRAL'
+                classification = 'MARKET_ALIGNED'
             else:
                 classification = 'NO_PLAY'
         else:
@@ -178,7 +178,7 @@ class SpreadCalculator:
             elif max_ev >= LEAN_THRESHOLD:
                 classification = 'LEAN'
             elif max_ev >= 0:
-                classification = 'NEUTRAL'
+                classification = 'MARKET_ALIGNED'
             else:
                 classification = 'NO_PLAY'
         

@@ -166,6 +166,8 @@ def build_claim_doc(
     for l in legs:
         legs_payload.append({
             "event_id": l.event_id,
+            "decision_id": l.decision_id,
+            "snapshot_hash": l.snapshot_hash,
             "sport": l.sport,
             "league": l.league,
             "start_time_utc": l.start_time_utc.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -182,6 +184,8 @@ def build_claim_doc(
             "leg_weight": round(compute_leg_weight(l), 6),
             "canonical_state": l.canonical_state,
             "team_key": l.team_key,
+            "true_probability": l.true_probability,
+            "american_odds": l.american_odds,
         })
     
     return {

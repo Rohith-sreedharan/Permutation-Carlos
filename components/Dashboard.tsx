@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchEvents, fetchEventsByDateRealtime, fetchEventsFromDB, getPredictions } from '../services/api';
+import { DASHBOARD_COPY, PLAN_IDS, PRODUCT_LIMITS, type PlanId } from '../uiCopy/products';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
 import EventListItem from './EventListItem';
@@ -25,9 +26,30 @@ type TimeOrder = 'soonest' | 'latest';
 interface DashboardProps {
   onAuthError: () => void;
   onGameClick?: (gameId: string) => void;
+  currentPlan?: PlanId | null;
+  cyclesRemaining?: number;
+  tokensRemaining?: number;
+  telegramConnected?: boolean;
+  billingPeriodEnd?: string;
+  overageCapRemaining?: number;
+  onUpgradeToPlatform?: () => void;
+  onJoinTelegram?: () => void;
+  onGetPlatform?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+  onAuthError,
+  onGameClick,
+  currentPlan,
+  cyclesRemaining,
+  tokensRemaining,
+  telegramConnected,
+  billingPeriodEnd,
+  overageCapRemaining = PRODUCT_LIMITS.PARLAY_OVERAGE_MONTHLY_CAP_USD,
+  onUpgradeToPlatform,
+  onJoinTelegram,
+  onGetPlatform,
+}) => {
   const [eventsWithPredictions, setEventsWithPredictions] = useState<EventWithPrediction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [polling, setPolling] = useState<boolean>(false);
@@ -59,8 +81,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
                         : undefined;
 
       // Use database fetch which supports all sports and EST filtering
+      // upcoming_only=false so in-progress/completed games still show on the dashboard
       console.log('[Dashboard] Fetching with:', { sportKey, targetDate, activeSport, dateFilter });
-      const eventsData = await fetchEventsFromDB(sportKey, targetDate, true, 200);
+      const eventsData = await fetchEventsFromDB(sportKey, targetDate, false, 200);
       console.log('[Dashboard] Fetched events:', eventsData.length);
 
       const predictionsData = await getPredictions();
@@ -221,7 +244,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-450 mx-auto">
       {/* Modern Horizontal Loading Bar */}
       {polling && (
         <div className="fixed top-0 left-0 right-0 z-50">
@@ -238,13 +261,114 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
         </div>
       )}
 
-      <PageHeader title="AI Betting Dashboard">
-        <div className="flex items-center space-x-2 bg-charcoal p-1 rounded-lg">
+      {/* Subscription Status Bar */}
+      {currentPlan === PLAN_IDS.BEATVEGAS_PLATFORM && (
+        <div className="bg-charcoal rounded-xl border border-electric-blue/30 px-5 py-4 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-bold uppercase tracking-widest text-electric-blue bg-electric-blue/10 px-3 py-1 rounded-full">
+              {DASHBOARD_COPY.PLATFORM_SUBSCRIBER.planBadge}
+            </span>
+            <span className={`text-xs flex items-center gap-1.5 ${telegramConnected ? 'text-neon-green' : 'text-light-gray/60'}`}>
+              <span className={`w-2 h-2 rounded-full ${telegramConnected ? 'bg-neon-green' : 'bg-light-gray/40'}`}></span>
+              {DASHBOARD_COPY.PLATFORM_SUBSCRIBER.telegramLabel}: {telegramConnected ? 'Connected' : 'Not connected'}
+            </span>
+          </div>
+          {cyclesRemaining !== undefined && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-light-gray/80">
+                  {cyclesRemaining <= 0
+                    ? <>{DASHBOARD_COPY.CYCLES_WIDGET.exhausted} · <span className="text-bold-red">{DASHBOARD_COPY.CYCLES_WIDGET.exhaustedNote}</span></>
+                    : <>{DASHBOARD_COPY.CYCLES_WIDGET.normal(cyclesRemaining)}{cyclesRemaining < 10000 && <span className="ml-2 text-vibrant-yellow">{DASHBOARD_COPY.CYCLES_WIDGET.lowWarning}</span>}</>
+                  }
+                </span>
+                {billingPeriodEnd && cyclesRemaining > 0 && (
+                  <span className="text-xs text-light-gray/50">Resets {billingPeriodEnd}</span>
+                )}
+              </div>
+              <div className="w-full bg-navy rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${cyclesRemaining <= 0 ? 'w-0' : cyclesRemaining < 10000 ? 'bg-vibrant-yellow' : 'bg-neon-green'}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (cyclesRemaining / PRODUCT_LIMITS.INTELLIGENCE_CYCLES_MONTHLY) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {tokensRemaining !== undefined && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-light-gray/80">
+                  {tokensRemaining <= 0
+                    ? <>{DASHBOARD_COPY.TOKENS_WIDGET.exhausted} · <span className="text-bold-red">{DASHBOARD_COPY.TOKENS_WIDGET.exhaustedNote}</span> {DASHBOARD_COPY.TOKENS_WIDGET.capLabel} <span className="text-vibrant-yellow">${overageCapRemaining}</span></>
+                    : <>{DASHBOARD_COPY.TOKENS_WIDGET.normal(tokensRemaining)}{tokensRemaining < 150 && <span className="ml-2 text-vibrant-yellow">{DASHBOARD_COPY.TOKENS_WIDGET.lowWarning}</span>}</>
+                  }
+                </span>
+                {billingPeriodEnd && tokensRemaining > 0 && (
+                  <span className="text-xs text-light-gray/50">Resets {billingPeriodEnd}</span>
+                )}
+              </div>
+              <div className="w-full bg-navy rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${tokensRemaining <= 0 ? 'w-0' : tokensRemaining < 150 ? 'bg-vibrant-yellow' : 'bg-electric-blue'}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (tokensRemaining / PRODUCT_LIMITS.PARLAY_TOKENS_MONTHLY) * 100))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {currentPlan === PLAN_IDS.TELEGRAM_SYNDICATE && (
+        <div className="bg-charcoal rounded-xl border border-electric-blue/20 px-5 py-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-neon-green bg-neon-green/10 px-3 py-1 rounded-full">
+                {DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.planBadge}
+              </span>
+              <p className="text-xs text-light-gray/70 mt-2">
+                {DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.upgradeNote}{' '}
+                <span className="text-white">{DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.upgradePrice}</span>
+              </p>
+            </div>
+            {onUpgradeToPlatform && (
+              <button
+                onClick={onUpgradeToPlatform}
+                className="text-xs font-bold px-4 py-2 bg-electric-blue hover:bg-electric-blue/90 text-white rounded-lg transition-colors whitespace-nowrap"
+              >
+                {DASHBOARD_COPY.TELEGRAM_SUBSCRIBER.upgradeCta}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {currentPlan === null && (
+        <div className="bg-charcoal rounded-xl border border-electric-blue/20 px-5 py-5 text-center space-y-4">
+          <p className="text-white font-semibold text-base">{DASHBOARD_COPY.NO_SUBSCRIPTION.welcome}</p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <button
+              onClick={onJoinTelegram}
+              className="text-sm font-bold px-5 py-2.5 bg-neon-green/10 hover:bg-neon-green/20 text-neon-green border border-neon-green/30 rounded-lg transition-colors"
+            >
+              {DASHBOARD_COPY.NO_SUBSCRIPTION.telegramCta}
+            </button>
+            <button
+              onClick={onGetPlatform}
+              className="text-sm font-bold px-5 py-2.5 bg-electric-blue hover:bg-electric-blue/90 text-white rounded-lg transition-colors"
+            >
+              {DASHBOARD_COPY.NO_SUBSCRIPTION.platformCta}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <PageHeader title="Sports Intelligence Command Center">
+        <div className="flex items-center gap-2 bg-charcoal p-1 rounded-lg overflow-x-auto w-full sm:w-auto [&::-webkit-scrollbar]:hidden">
           {sports.map(sport => (
             <button
               key={sport}
               onClick={() => setActiveSport(sport)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
                 activeSport === sport ? 'bg-electric-blue text-white' : 'text-light-gray hover:bg-navy'
               }`}
             >
@@ -255,14 +379,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
       </PageHeader>
       
       {/* DATE & TIME SORT CONTROLS - Command Center Vibe */}
-      <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-lg p-4 border border-electric-blue/20 shadow-xl">
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
+      <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-xl p-5 border border-electric-blue/20 shadow-xl">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
           {/* Date Filter */}
-          <div className="flex items-center space-x-3">
-            <span className="text-xs text-neon-green uppercase font-bold tracking-wider flex items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            <span className="text-xs text-neon-green uppercase font-bold tracking-wider flex items-center gap-1 shrink-0">
               📅 FILTER:
             </span>
-            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-electric-blue/10">
+            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-electric-blue/10 overflow-x-auto [&::-webkit-scrollbar]:hidden">
               {[
                 { value: 'today', label: 'Today' },
                 { value: 'tomorrow', label: 'Tomorrow' },
@@ -272,7 +396,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
                 <button
                   key={value}
                   onClick={() => setDateFilter(value as DateFilter)}
-                  className={`px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
+                  className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
                     dateFilter === value 
                       ? 'bg-electric-blue text-white shadow-lg shadow-electric-blue/50 scale-105' 
                       : 'text-light-gray hover:bg-charcoal hover:text-white'
@@ -282,18 +406,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
                 </button>
               ))}
             </div>
-            <span className="text-[11px] text-light-gray/70 ml-2">Times shown in UTC</span>
+            <span className="text-[11px] text-light-gray/70 sm:ml-2">Times shown in Eastern Time (ET)</span>
           </div>
 
           {/* Time Order Toggle */}
-          <div className="flex items-center space-x-3">
-            <span className="text-xs text-vibrant-yellow uppercase font-bold tracking-wider flex items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+            <span className="text-xs text-vibrant-yellow uppercase font-bold tracking-wider flex items-center gap-1 shrink-0">
               ⏱ ORDER:
             </span>
-            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-vibrant-yellow/10">
+            <div className="flex items-center space-x-1 bg-navy/80 p-1 rounded-lg border border-vibrant-yellow/10 overflow-x-auto [&::-webkit-scrollbar]:hidden">
               <button
                 onClick={() => setTimeOrder('soonest')}
-                className={`px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
                   timeOrder === 'soonest' 
                     ? 'bg-neon-green text-navy shadow-lg shadow-neon-green/50 scale-105' 
                     : 'text-light-gray hover:bg-charcoal hover:text-white'
@@ -303,7 +427,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
               </button>
               <button
                 onClick={() => setTimeOrder('latest')}
-                className={`px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
+                className={`shrink-0 whitespace-nowrap px-3 sm:px-4 py-2 text-xs font-bold rounded-md transition-all duration-200 ${
                   timeOrder === 'latest' 
                     ? 'bg-vibrant-yellow text-navy shadow-lg shadow-vibrant-yellow/50 scale-105' 
                     : 'text-light-gray hover:bg-charcoal hover:text-white'
@@ -316,18 +440,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:max-w-xs">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 py-2">
+        <div className="relative w-full md:max-w-sm">
           <input
             type="text"
             placeholder="Search by team name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-charcoal border border-navy rounded-lg px-4 py-2 text-white placeholder-light-gray focus:ring-2 focus:ring-electric-blue focus:outline-none pl-10"
+            className="w-full bg-charcoal border border-navy rounded-lg px-4 py-2.5 text-white placeholder-light-gray focus:ring-2 focus:ring-electric-blue focus:outline-none pl-10"
           />
           <svg className="w-5 h-5 text-light-gray absolute left-3 top-1/2 -translate-y-1/2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         </div>
-        <div className="flex items-center space-x-2 bg-charcoal p-1 rounded-lg">
+        <div className="flex items-center justify-center md:justify-start space-x-2 bg-charcoal p-1 rounded-lg w-full md:w-auto">
           <button onClick={() => setLayout('grid')} className={`p-2 rounded-md transition-colors ${layout === 'grid' ? 'bg-electric-blue text-white' : 'text-light-gray hover:bg-navy'}`}>
             <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
           </button>
@@ -339,20 +463,62 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
 
       {loading ? <LoadingSpinner/> : (
         <>
+          {/* Upgrade banner — Syndicate users: Platform CTA only */}
+          {currentPlan === PLAN_IDS.TELEGRAM_SYNDICATE && (
+            <div className="mb-4 flex items-center justify-between gap-3 bg-[#0a0e1a] border border-yellow-400/30 rounded-lg px-4 py-2">
+              <span className="text-yellow-400 text-xs font-medium whitespace-nowrap">
+                Syndicate — 10,000 cycles/month&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
+              </span>
+              <a
+                href="https://beatvegas.app/upgrade"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors whitespace-nowrap"
+              >
+                Upgrade to Platform — $97/month →
+              </a>
+            </div>
+          )}
+          {/* Upgrade banner — Preview users: both Syndicate + Platform CTAs */}
+          {currentPlan !== PLAN_IDS.BEATVEGAS_PLATFORM && currentPlan !== PLAN_IDS.TELEGRAM_SYNDICATE && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 bg-[#0a0e1a] border border-yellow-400/30 rounded-lg px-4 py-2">
+              <span className="text-yellow-400 text-xs font-medium">
+                Intelligence Preview — 10,000 cycles&nbsp;&nbsp;|&nbsp;&nbsp;Platform — 100,000 cycles — 10x more
+              </span>
+              <div className="flex gap-2 shrink-0">
+                <a
+                  href="https://beatvegas.app/upgrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-transparent border border-yellow-400 text-yellow-400 font-bold text-xs px-3 py-1 rounded hover:bg-yellow-400/10 transition-colors whitespace-nowrap"
+                >
+                  Join Syndicate $39/month
+                </a>
+                <a
+                  href="https://beatvegas.app/upgrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-yellow-400 text-[#0a0e1a] font-bold text-xs px-3 py-1 rounded hover:bg-yellow-300 transition-colors whitespace-nowrap"
+                >
+                  Upgrade $97/month →
+                </a>
+              </div>
+            </div>
+          )}
           {showFallbackNote && (
             <div className="mb-3 text-xs text-light-gray/70">
               No games for this date. Showing <span className="text-neon-green font-bold">All Upcoming</span>.
             </div>
           )}
           {filteredEvents.length === 0 ? (
-            <div className="text-center py-16 bg-charcoal rounded-lg border border-navy">
+            <div className="text-center py-20 bg-charcoal rounded-xl border border-navy">
               <div className="text-6xl mb-4">🎯</div>
               <p className="text-light-gray text-xl font-semibold mb-2">No games found</p>
               <p className="text-light-gray/60 text-sm">Try adjusting your filters or check back later for upcoming games.</p>
             </div>
           ) : (
             layout === 'grid' ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
                 {filteredEvents.map((event) => (
                   <EventCard 
                     key={event.id} 
@@ -362,7 +528,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onAuthError, onGameClick }) => {
                 ))}
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {filteredEvents.map((event) => (
                   <EventListItem 
                     key={event.id} 

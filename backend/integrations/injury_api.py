@@ -4,10 +4,14 @@ Fetches real injury reports from ESPN and CollegeFootballData
 """
 import requests
 from typing import Dict, List, Any, Optional
-from bs4 import BeautifulSoup
 import logging
 from datetime import datetime
 import os
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +69,10 @@ def fetch_espn_injuries(sport_key: str) -> List[Dict[str, Any]]:
         return []
     
     try:
+        if BeautifulSoup is None:
+            logger.warning("BeautifulSoup is unavailable; skipping ESPN injury scrape")
+            return []
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
         }
@@ -162,7 +170,7 @@ def fetch_espn_injuries(sport_key: str) -> List[Dict[str, Any]]:
                     "position": position,
                     "injury": injury_desc,
                     "status": status,
-                    "date_updated": datetime.now().strftime("%Y-%m-%d"),
+                    "date_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                     "source": "ESPN"
                 })
         

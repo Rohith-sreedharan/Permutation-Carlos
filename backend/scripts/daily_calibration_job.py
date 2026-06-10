@@ -60,7 +60,7 @@ def run_daily_calibration():
     calibration_logger = CalibrationLogger()
     
     # Use yesterday's date (games that finished)
-    target_date = datetime.now().date() - timedelta(days=1)
+    target_date = datetime.now(timezone.utc).date() - timedelta(days=1)
     
     results = {}
     for sport in SPORTS:

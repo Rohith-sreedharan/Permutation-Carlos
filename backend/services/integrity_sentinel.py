@@ -5,7 +5,7 @@ Status: LOCKED - INSTITUTIONAL GRADE
 Monitors critical integrity metrics and auto-disables features if thresholds exceeded.
 
 MONITORED METRICS:
-1. integrity_violation_rate (missing snapshot_hash, selection_id, etc.)
+1. integrity_violation_rate (canonical assertion failures + missing trace/snapshot continuity)
 2. missing_selection_id_rate
 3. missing_snapshot_hash_rate
 4. post_validation_fail_rate (Telegram validation failures)
@@ -22,27 +22,39 @@ ACTION: Set FEATURE_TELEGRAM_AUTOPUBLISH = OFF + alert ops team
 """
 
 import logging
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
-from pymongo.database import Database
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from pymongo.database import Database
 
 
 logger = logging.getLogger(__name__)
 
 
+def _load_threshold(agent_config_key: str, default: float) -> float:
+    """Read a threshold from agent_config; fall back to default if absent."""
+    try:
+        from config.agent_config import AGENT_CONFIG
+        return float(AGENT_CONFIG.get("sentinel", {}).get(agent_config_key, default))
+    except Exception:
+        return default
+
+
 @dataclass
 class MetricThreshold:
-    """Threshold definition for a metric"""
+    """Threshold definition for a metric."""
+
     metric_name: str
     threshold: float
     window_minutes: int
-    action: str  # "DISABLE_TELEGRAM", "ALERT", "ROLLBACK"
+    action: str
 
 
 @dataclass
 class MetricValue:
-    """Current metric value"""
+    """Current metric value."""
+
     metric_name: str
     value: float
     timestamp: datetime
@@ -51,475 +63,595 @@ class MetricValue:
 
 
 class IntegritySentinel:
-    """
-    Monitors integrity metrics and enforces kill switches.
-    
-    CRITICAL: This runs continuously (every 1-5 minutes).
-    If thresholds breached → immediate action (no delays).
-    """
-    
-    # Metric thresholds (from spec)
+    """Monitors integrity metrics and enforces kill switches."""
+
     THRESHOLDS = [
-        MetricThreshold(
-            metric_name="integrity_violation_rate",
-            threshold=0.005,  # 0.5%
-            window_minutes=5,
-            action="DISABLE_TELEGRAM"
-        ),
-        MetricThreshold(
-            metric_name="missing_selection_id_rate",
-            threshold=0.001,  # 0.1%
-            window_minutes=5,
-            action="DISABLE_TELEGRAM"
-        ),
-        MetricThreshold(
-            metric_name="missing_snapshot_hash_rate",
-            threshold=0.001,  # 0.1%
-            window_minutes=5,
-            action="DISABLE_TELEGRAM"
-        ),
-        MetricThreshold(
-            metric_name="post_validation_fail_rate",
-            threshold=0.01,  # 1%
-            window_minutes=5,
-            action="DISABLE_TELEGRAM"
-        ),
-        MetricThreshold(
-            metric_name="simulation_fetch_fail_rate",
-            threshold=0.05,  # 5%
-            window_minutes=5,
-            action="ALERT"
-        ),
-        MetricThreshold(
-            metric_name="edge_rate_collapse",
-            threshold=0.9,  # 90% drop from baseline
-            window_minutes=30,
-            action="ALERT"
-        ),
+        MetricThreshold("integrity_violation_rate", 0.005, 5, "DISABLE_TELEGRAM"),
+        MetricThreshold("missing_selection_id_rate", 0.001, 5, "DISABLE_TELEGRAM"),
+        MetricThreshold("missing_snapshot_hash_rate", 0.001, 5, "DISABLE_TELEGRAM"),
+        MetricThreshold("post_validation_fail_rate", 0.01, 5, "DISABLE_TELEGRAM"),
+        MetricThreshold("simulation_fetch_fail_rate", 0.05, 5, "ALERT"),
+        MetricThreshold("edge_rate_collapse", 0.9, 30, "ALERT"),
+        # ── Phase 2C security event monitors (thresholds from agent_config) ──
+        MetricThreshold("geo_violation_rate", _load_threshold("GEO_VIOLATION_ALERT_COUNT", 50), 15, "ALERT"),
+        MetricThreshold("auth_anomaly_rate", _load_threshold("AUTH_ANOMALY_THRESHOLD", 10), 5, "ALERT"),
+        MetricThreshold("rate_limit_breach_rate", _load_threshold("RATE_LIMIT_BREACH_ALERT_THRESHOLD", 100), 15, "ALERT"),
+        MetricThreshold("duplicate_decision_record_rate", _load_threshold("DUPLICATE_DR_ALERT_COUNT", 5), 60, "ALERT"),
+        # ── Phase 3C billing monitors (all thresholds from agent_config) ──────
+        MetricThreshold("billing_write_fail_rate", _load_threshold("BILLING_WRITE_FAIL_ALERT_THRESHOLD", 1), 5, "ALERT"),
+        MetricThreshold("entitlement_violation_rate", _load_threshold("ENTITLEMENT_VIOLATION_ALERT_THRESHOLD", 3), 15, "ALERT"),
+        MetricThreshold("overage_warn_rate", _load_threshold("OVERAGE_WARN_PCT", 80), 60, "ALERT"),
+        MetricThreshold("overage_block_rate", _load_threshold("OVERAGE_BLOCK_PCT", 100), 60, "ALERT"),
+        MetricThreshold("subscription_expiry_rate", _load_threshold("SUBSCRIPTION_EXPIRY_CHECK_WINDOW_MIN", 5), 5, "ALERT"),
+        MetricThreshold("webhook_failure_rate", _load_threshold("WEBHOOK_FAIL_ALERT_THRESHOLD", 3), 15, "ALERT"),
+        # ── Phase 9 AC-5 monitors (thresholds from agent_config only) ───────
+        MetricThreshold("prohibited_language_api_response_rate", _load_threshold("PROHIBITED_LANGUAGE_API_RESPONSE_ALERT_COUNT", 1), 15, "CRITICAL_ALERT"),
+        MetricThreshold("self_exclusion_bypass_rate", _load_threshold("SELF_EXCLUSION_BYPASS_ALERT_COUNT", 1), 15, "CRITICAL_ALERT"),
+        MetricThreshold("data_deletion_sla_warning_rate", _load_threshold("DATA_DELETION_SLA_WARNING_COUNT", 1), 60, "WARNING_ALERT"),
+        MetricThreshold("data_deletion_sla_breach_rate", _load_threshold("DATA_DELETION_SLA_BREACH_COUNT", 1), 60, "CRITICAL_ALERT"),
+        MetricThreshold("affiliate_fraud_rate", _load_threshold("AFFILIATE_FRAUD_RATE_ALERT_COUNT", 1), 60, "WARNING_ALERT"),
+        MetricThreshold("affiliate_fraud_cluster", _load_threshold("AFFILIATE_FRAUD_CLUSTER_ALERT_COUNT", 1), 60, "CRITICAL_ALERT"),
     ]
-    
+
     def __init__(self, db: Database, alert_webhook_url: Optional[str] = None):
-        """
-        Initialize sentinel.
-        
-        Args:
-            db: MongoDB database connection
-            alert_webhook_url: Webhook URL for alerts (Slack, Telegram, etc.)
-        """
         self.db = db
         self.alert_webhook_url = alert_webhook_url
-        
-        # Baseline metrics (for anomaly detection)
         self.baseline_edge_rate: Optional[float] = None
-    
+
+    def _get_collection(self, *names: str):
+        for name in names:
+            try:
+                return self.db.get_collection(name)
+            except Exception:
+                pass
+
+            try:
+                return self.db[name]
+            except Exception:
+                pass
+
+            collection = getattr(self.db, name, None)
+            if collection is not None:
+                return collection
+
+        raise AttributeError(f"Collection not available: {names}")
+
+    def _window_query(self, field_name: str, window_start: datetime) -> Dict[str, Any]:
+        return {field_name: {"$gte": window_start.isoformat()}}
+
+    def _count_documents(self, collection_names: List[str], query: Dict[str, Any]) -> int:
+        for name in collection_names:
+            try:
+                return int(self._get_collection(name).count_documents(query))
+            except Exception:
+                continue
+        return 0
+
+    def _safe_find_one(
+        self,
+        collection_names: List[str],
+        query: Dict[str, Any],
+        sort_field: str,
+    ) -> Optional[Dict[str, Any]]:
+        for name in collection_names:
+            try:
+                collection = self._get_collection(name)
+                return collection.find_one(query, sort=[(sort_field, -1)])
+            except TypeError:
+                try:
+                    docs = list(collection.find(query))
+                    docs.sort(key=lambda doc: str(doc.get(sort_field, "")), reverse=True)
+                    return docs[0] if docs else None
+                except Exception:
+                    continue
+            except Exception:
+                continue
+        return None
+
     def check_all_metrics(self) -> Dict[str, MetricValue]:
-        """
-        Check all monitored metrics.
-        
-        Returns:
-            Dict of metric_name -> MetricValue
-        """
-        metrics = {}
-        
-        # Check each threshold
+        metrics: Dict[str, MetricValue] = {}
         for threshold in self.THRESHOLDS:
             metric_value = self._compute_metric(threshold)
             metrics[threshold.metric_name] = metric_value
-            
-            # Log if breached
             if metric_value.breached:
                 logger.error(
-                    f"METRIC BREACH: {threshold.metric_name} = {metric_value.value:.4f} "
-                    f"(threshold: {threshold.threshold})"
+                    "METRIC BREACH: %s = %.4f (threshold: %s)",
+                    threshold.metric_name,
+                    metric_value.value,
+                    threshold.threshold,
                 )
-        
         return metrics
-    
+
+    def get_latest_status(self) -> Optional[Dict[str, Any]]:
+        return self._safe_find_one(["sentinel_log"], {}, "timestamp")
+
     def enforce_kill_switches(self, metrics: Dict[str, MetricValue]) -> List[str]:
-        """
-        Enforce kill switches based on metric breaches.
-        
-        Returns:
-            List of actions taken
-        """
-        actions_taken = []
-        
+        actions_taken: List[str] = []
+        autorollback_triggered = False
+
         for threshold in self.THRESHOLDS:
             metric_value = metrics.get(threshold.metric_name)
-            
             if not metric_value or not metric_value.breached:
                 continue
-            
-            # Execute action
+
             if threshold.action == "DISABLE_TELEGRAM":
                 if self._disable_telegram_autopublish():
                     actions_taken.append(f"DISABLED_TELEGRAM (due to {threshold.metric_name})")
                     self._send_alert(
                         severity="CRITICAL",
-                        message=f"Auto-disabled Telegram publishing due to {threshold.metric_name} = {metric_value.value:.4f} (threshold: {threshold.threshold})",
+                        message=(
+                            f"Auto-disabled Telegram publishing due to {threshold.metric_name} = "
+                            f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                        ),
                         metric=metric_value,
                     )
-            
+                    rollback_action = None
+                    if not autorollback_triggered:
+                        rollback_action = self._maybe_trigger_autorollback(threshold.metric_name)
+                    if rollback_action:
+                        autorollback_triggered = rollback_action.startswith("AUTOROLLBACK_TRIGGERED")
+                        actions_taken.append(f"{rollback_action} ({threshold.metric_name})")
+
             elif threshold.action == "ALERT":
                 self._send_alert(
                     severity="WARNING",
-                    message=f"Metric threshold breached: {threshold.metric_name} = {metric_value.value:.4f} (threshold: {threshold.threshold})",
+                    message=(
+                        f"Metric threshold breached: {threshold.metric_name} = "
+                        f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                    ),
                     metric=metric_value,
                 )
                 actions_taken.append(f"ALERTED ({threshold.metric_name})")
-            
-            elif threshold.action == "ROLLBACK":
-                # Future: implement automated rollback
+
+            elif threshold.action == "WARNING_ALERT":
+                self._send_alert(
+                    severity="WARNING",
+                    message=(
+                        f"Warning threshold breached: {threshold.metric_name} = "
+                        f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                    ),
+                    metric=metric_value,
+                )
+                actions_taken.append(f"WARNING_ALERTED ({threshold.metric_name})")
+
+            elif threshold.action == "CRITICAL_ALERT":
                 self._send_alert(
                     severity="CRITICAL",
-                    message=f"ROLLBACK REQUIRED: {threshold.metric_name} = {metric_value.value:.4f} (threshold: {threshold.threshold})",
+                    message=(
+                        f"Critical threshold breached: {threshold.metric_name} = "
+                        f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                    ),
+                    metric=metric_value,
+                )
+                actions_taken.append(f"CRITICAL_ALERTED ({threshold.metric_name})")
+
+            elif threshold.action == "ROLLBACK":
+                self._send_alert(
+                    severity="CRITICAL",
+                    message=(
+                        f"ROLLBACK REQUIRED: {threshold.metric_name} = "
+                        f"{metric_value.value:.4f} (threshold: {threshold.threshold})"
+                    ),
                     metric=metric_value,
                 )
                 actions_taken.append(f"ROLLBACK_REQUIRED ({threshold.metric_name})")
-        
+
         return actions_taken
-    
-    def run_check_cycle(self) -> Dict:
-        """
-        Run one complete check cycle.
-        
-        Returns:
-            Status dict
-        """
+
+    def run_check_cycle(self, enforce_actions: bool = True) -> Dict[str, Any]:
         logger.info("Running IntegritySentinel check cycle")
-        
-        # Check metrics
+
         metrics = self.check_all_metrics()
-        
-        # Enforce kill switches
-        actions = self.enforce_kill_switches(metrics)
-        
-        # Build status
+        actions = self.enforce_kill_switches(metrics) if enforce_actions else []
+
         status = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "metrics": {k: v.value for k, v in metrics.items()},
-            "breaches": [k for k, v in metrics.items() if v.breached],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "metrics": {key: metric.value for key, metric in metrics.items()},
+            "metric_details": {
+                key: {
+                    "value": metric.value,
+                    "threshold": metric.threshold,
+                    "breached": metric.breached,
+                    "timestamp": metric.timestamp.isoformat(),
+                }
+                for key, metric in metrics.items()
+            },
+            "breaches": [key for key, metric in metrics.items() if metric.breached],
             "actions_taken": actions,
+            "enforce_actions": enforce_actions,
         }
-        
-        # Log to sentinel_log collection
+
         self.db.sentinel_log.insert_one(status)
-        
-        logger.info(f"Check cycle complete: {len(status['breaches'])} breaches, {len(actions)} actions")
-        
+        logger.info(
+            "Check cycle complete: %s breaches, %s actions",
+            len(status["breaches"]),
+            len(actions),
+        )
         return status
-    
+
     def _compute_metric(self, threshold: MetricThreshold) -> MetricValue:
-        """
-        Compute metric value and check against threshold.
-        
-        Returns:
-            MetricValue with breach status
-        """
-        window_start = datetime.utcnow() - timedelta(minutes=threshold.window_minutes)
-        
+        window_start = datetime.now(timezone.utc) - timedelta(minutes=threshold.window_minutes)
+
         if threshold.metric_name == "integrity_violation_rate":
             value = self._compute_integrity_violation_rate(window_start)
-        
         elif threshold.metric_name == "missing_selection_id_rate":
             value = self._compute_missing_selection_id_rate(window_start)
-        
         elif threshold.metric_name == "missing_snapshot_hash_rate":
             value = self._compute_missing_snapshot_hash_rate(window_start)
-        
         elif threshold.metric_name == "post_validation_fail_rate":
             value = self._compute_post_validation_fail_rate(window_start)
-        
         elif threshold.metric_name == "simulation_fetch_fail_rate":
             value = self._compute_simulation_fetch_fail_rate(window_start)
-        
         elif threshold.metric_name == "edge_rate_collapse":
             value = self._compute_edge_rate_collapse(window_start)
-        
+        # ── Phase 2C security event metrics ──────────────────────────────────
+        elif threshold.metric_name == "geo_violation_rate":
+            value = self._compute_sentinel_event_count("GEO_VIOLATION", window_start)
+        elif threshold.metric_name == "auth_anomaly_rate":
+            value = self._compute_sentinel_event_count("AUTH_ANOMALY", window_start)
+        elif threshold.metric_name == "rate_limit_breach_rate":
+            value = self._compute_sentinel_event_count("RATE_LIMIT_BREACH", window_start)
+        elif threshold.metric_name == "duplicate_decision_record_rate":
+            value = self._compute_sentinel_event_count("DUPLICATE_DECISION_RECORD", window_start)
+        # ── Phase 3C billing metrics ──────────────────────────────────────────
+        elif threshold.metric_name == "billing_write_fail_rate":
+            value = self._compute_sentinel_event_count("BILLING_WRITE_FAIL", window_start)
+        elif threshold.metric_name == "entitlement_violation_rate":
+            value = self._compute_sentinel_event_count("ENTITLEMENT_VIOLATION", window_start)
+        elif threshold.metric_name == "overage_warn_rate":
+            value = self._compute_sentinel_event_count("OVERAGE_WARN", window_start)
+        elif threshold.metric_name == "overage_block_rate":
+            value = self._compute_sentinel_event_count("OVERAGE_BLOCK", window_start)
+        elif threshold.metric_name == "subscription_expiry_rate":
+            value = self._compute_sentinel_event_count("SUBSCRIPTION_EXPIRED", window_start)
+        elif threshold.metric_name == "webhook_failure_rate":
+            value = self._compute_sentinel_event_count("WEBHOOK_FAILURE", window_start)
+        # ── Phase 9 AC-5 metrics ─────────────────────────────────────────────
+        elif threshold.metric_name == "prohibited_language_api_response_rate":
+            value = self._compute_sentinel_event_count("PROHIBITED_LANGUAGE_API_RESPONSE", window_start)
+        elif threshold.metric_name == "self_exclusion_bypass_rate":
+            value = self._compute_sentinel_event_count("SELF_EXCLUSION_BYPASS", window_start)
+        elif threshold.metric_name == "data_deletion_sla_warning_rate":
+            value = self._compute_pending_data_deletion_older_than_days(
+                int(_load_threshold("DATA_DELETION_SLA_WARNING_DAYS", 25))
+            )
+        elif threshold.metric_name == "data_deletion_sla_breach_rate":
+            value = self._compute_pending_data_deletion_older_than_days(
+                int(_load_threshold("DATA_DELETION_SLA_BREACH_DAYS", 30))
+            )
+        elif threshold.metric_name == "affiliate_fraud_rate":
+            value = self._compute_affiliate_fraud_rate(window_start)
+        elif threshold.metric_name == "affiliate_fraud_cluster":
+            value = self._compute_affiliate_fraud_cluster(window_start)
         else:
-            logger.warning(f"Unknown metric: {threshold.metric_name}")
+            logger.warning("Unknown metric: %s", threshold.metric_name)
             value = 0.0
-        
-        breached = value > threshold.threshold
-        
+
         return MetricValue(
             metric_name=threshold.metric_name,
             value=value,
-            timestamp=datetime.utcnow(),
-            breached=breached,
+            timestamp=datetime.now(timezone.utc),
+            breached=value > threshold.threshold,
             threshold=threshold.threshold,
         )
-    
+
     def _compute_integrity_violation_rate(self, window_start: datetime) -> float:
-        """
-        Compute rate of integrity violations (any type).
-        
-        Integrity violations include:
-        - Missing snapshot_hash
-        - Missing selection_id
-        - Probability mismatches
-        - etc.
-        """
-        # Query prediction_log for recent entries
-        total = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start}
-        })
-        
+        lifecycle_query = {
+            "stage": {"$in": ["PREDICTION_CREATED", "DECISION_COMPUTED", "PUBLISHED", "DISTRIBUTION_GOVERNANCE"]},
+            **self._window_query("timestamp", window_start),
+        }
+        total = self._count_documents(["prediction_lifecycle_log"], lifecycle_query)
+        if total == 0:
+            total = self._count_documents(["decision_audit_log"], self._window_query("timestamp", window_start))
         if total == 0:
             return 0.0
-        
-        # Count violations (integrity_violations field exists and non-empty)
-        violations = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start},
-            "integrity_violations": {"$exists": True, "$ne": []}
-        })
-        
-        return violations / total
-    
+
+        assertion_violations = self._count_documents(["assertion_failure_log"], self._window_query("created_at_utc", window_start))
+        lifecycle_missing_ids = self._count_documents(
+            ["prediction_lifecycle_log"],
+            {
+                **lifecycle_query,
+                "$or": [
+                    {"trace_id": {"$exists": False}},
+                    {"trace_id": None},
+                    {"trace_id": ""},
+                    {"snapshot_hash": {"$exists": False}},
+                    {"snapshot_hash": None},
+                    {"snapshot_hash": ""},
+                ],
+            },
+        )
+        audit_missing_ids = self._count_documents(
+            ["decision_audit_log"],
+            {
+                **self._window_query("timestamp", window_start),
+                "$or": [
+                    {"trace_id": {"$exists": False}},
+                    {"trace_id": None},
+                    {"trace_id": ""},
+                    {"snapshot_hash": {"$exists": False}},
+                    {"snapshot_hash": None},
+                    {"snapshot_hash": ""},
+                ],
+            },
+        )
+        return (assertion_violations + lifecycle_missing_ids + audit_missing_ids) / total
+
     def _compute_missing_selection_id_rate(self, window_start: datetime) -> float:
-        """Compute rate of missing selection_id"""
-        total = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start}
-        })
-        
+        total = self._count_documents(["decision_records"], self._window_query("created_at", window_start))
         if total == 0:
             return 0.0
-        
-        missing = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start},
-            "$or": [
-                {"selection_id": {"$exists": False}},
-                {"selection_id": None},
-                {"selection_id": ""},
-            ]
-        })
-        
+
+        missing = self._count_documents(
+            ["decision_records"],
+            {
+                **self._window_query("created_at", window_start),
+                "$or": [
+                    {
+                        "payload.spread": {"$ne": None},
+                        "payload.spread.selection_id": {"$in": [None, ""]},
+                    },
+                    {
+                        "payload.total": {"$ne": None},
+                        "payload.total.selection_id": {"$in": [None, ""]},
+                    },
+                    {
+                        "payload.moneyline": {"$ne": None},
+                        "payload.moneyline.selection_id": {"$in": [None, ""]},
+                    },
+                ],
+            },
+        )
         return missing / total
-    
+
     def _compute_missing_snapshot_hash_rate(self, window_start: datetime) -> float:
-        """Compute rate of missing snapshot_hash"""
-        total = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start}
-        })
-        
+        total = self._count_documents(["prediction_lifecycle_log"], self._window_query("timestamp", window_start))
         if total == 0:
             return 0.0
-        
-        missing = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start},
-            "$or": [
-                {"snapshot_hash": {"$exists": False}},
-                {"snapshot_hash": None},
-                {"snapshot_hash": ""},
-            ]
-        })
-        
+
+        missing = self._count_documents(
+            ["prediction_lifecycle_log", "decision_audit_log"],
+            {
+                **self._window_query("timestamp", window_start),
+                "$or": [
+                    {"snapshot_hash": {"$exists": False}},
+                    {"snapshot_hash": None},
+                    {"snapshot_hash": ""},
+                ],
+            },
+        )
         return missing / total
-    
+
     def _compute_post_validation_fail_rate(self, window_start: datetime) -> float:
-        """Compute rate of Telegram post validation failures"""
-        total = self.db.telegram_post_log.count_documents({
-            "created_at": {"$gte": window_start}
-        })
-        
+        total = self._count_documents(["telegram_post_log"], self._window_query("created_at", window_start))
         if total == 0:
             return 0.0
-        
-        failed = self.db.telegram_post_log.count_documents({
-            "created_at": {"$gte": window_start},
-            "validation_failed": True
-        })
-        
+
+        failed = self._count_documents(
+            ["telegram_post_log"],
+            {**self._window_query("created_at", window_start), "validation_failed": True},
+        )
         return failed / total
-    
+
     def _compute_simulation_fetch_fail_rate(self, window_start: datetime) -> float:
-        """Compute rate of simulation fetch failures"""
-        # This would query API request logs or similar
-        # For now, placeholder
-        return 0.0
-    
-    def _compute_edge_rate_collapse(self, window_start: datetime) -> float:
-        """
-        Detect edge rate collapse (anomaly detection).
-        
-        Returns:
-            Collapse ratio (0.0 = no collapse, 1.0 = 100% collapse)
-        """
-        # Compute current edge rate
-        total = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start}
-        })
-        
+        total = self._count_documents(["odds_refresh_log"], self._window_query("refreshed_at", window_start))
         if total == 0:
             return 0.0
-        
-        edges = self.db.prediction_log.count_documents({
-            "created_at": {"$gte": window_start},
-            "tier": "EDGE"
-        })
-        
+
+        failed = self._count_documents(
+            ["odds_refresh_log"],
+            {**self._window_query("refreshed_at", window_start), "success": False},
+        )
+        return failed / total
+
+    def _compute_edge_rate_collapse(self, window_start: datetime) -> float:
+        total = self._count_documents(["decision_audit_log"], self._window_query("timestamp", window_start))
+        if total == 0:
+            return 0.0
+
+        edges = self._count_documents(
+            ["decision_audit_log"],
+            {**self._window_query("timestamp", window_start), "classification": "EDGE"},
+        )
         current_edge_rate = edges / total
-        
-        # Get baseline (if not set, compute from last 7 days)
+
         if self.baseline_edge_rate is None:
-            baseline_start = datetime.utcnow() - timedelta(days=7)
-            baseline_total = self.db.prediction_log.count_documents({
-                "created_at": {"$gte": baseline_start}
-            })
-            
+            baseline_start = datetime.now(timezone.utc) - timedelta(days=7)
+            baseline_total = self._count_documents(["decision_audit_log"], self._window_query("timestamp", baseline_start))
             if baseline_total > 0:
-                baseline_edges = self.db.prediction_log.count_documents({
-                    "created_at": {"$gte": baseline_start},
-                    "tier": "EDGE"
-                })
+                baseline_edges = self._count_documents(
+                    ["decision_audit_log"],
+                    {**self._window_query("timestamp", baseline_start), "classification": "EDGE"},
+                )
                 self.baseline_edge_rate = baseline_edges / baseline_total
             else:
-                self.baseline_edge_rate = 0.05  # Default 5% edge rate
-        
-        # Compute collapse ratio
+                self.baseline_edge_rate = 0.05
+
         if self.baseline_edge_rate == 0:
             return 0.0
-        
+
         collapse_ratio = 1.0 - (current_edge_rate / self.baseline_edge_rate)
-        
-        return max(0.0, collapse_ratio)  # Clamp to [0, inf)
-    
-    def _disable_telegram_autopublish(self) -> bool:
+        return max(0.0, collapse_ratio)
+
+    # ── Phase 2C: sentinel_event_log counters ─────────────────────────────────
+
+    def _compute_sentinel_event_count(self, event_type: str, window_start: datetime) -> float:
         """
-        Disable Telegram autopublish feature flag.
-        
-        Returns:
-            True if flag was changed, False if already disabled
+        Count events of the given type in sentinel_event_log within the window.
+        Returns raw count (not a rate) — thresholds are absolute counts, not fractions.
         """
-        # Update feature flag
-        result = self.db.feature_flags.update_one(
-            {"flag_name": "FEATURE_TELEGRAM_AUTOPUBLISH"},
-            {
-                "$set": {
-                    "enabled": False,
-                    "changed_by": "IntegritySentinel",
-                    "changed_at": datetime.utcnow(),
-                    "reason": "Auto-disabled due to integrity metric breach"
-                }
-            },
-            upsert=True
+        return float(
+            self._count_documents(
+                ["sentinel_event_log"],
+                {
+                    "event_type": event_type,
+                    **self._window_query("timestamp", window_start),
+                },
+            )
         )
-        
-        if result.modified_count > 0 or result.upserted_id:
-            logger.critical("DISABLED Telegram autopublish via kill switch")
-            return True
-        
-        logger.warning("Telegram autopublish already disabled")
-        return False
-    
+
+    def _compute_pending_data_deletion_older_than_days(self, days: int) -> float:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return float(
+            self._count_documents(
+                ["data_deletion_log"],
+                {
+                    "status": "PENDING",
+                    "requested_at_utc": {"$lte": cutoff.isoformat()},
+                },
+            )
+        )
+
+    def _compute_affiliate_fraud_rate(self, window_start: datetime) -> float:
+        dup = self._compute_sentinel_event_count("DUPLICATE_CLICK", window_start)
+        self_ref = self._compute_sentinel_event_count("SELF_REFERRAL", window_start)
+        return float(dup + self_ref)
+
+    def _compute_affiliate_fraud_cluster(self, window_start: datetime) -> float:
+        size = int(_load_threshold("AFFILIATE_FRAUD_CLUSTER_SIZE", 3))
+        rows = list(
+            self._get_collection("sentinel_event_log").find(
+                {
+                    "event_type": {"$in": ["DUPLICATE_CLICK", "SELF_REFERRAL"]},
+                    **self._window_query("timestamp", window_start),
+                },
+                {"affiliate_id": 1},
+            )
+        )
+        counts: Dict[str, int] = {}
+        for row in rows:
+            aid = str(row.get("affiliate_id", ""))
+            if not aid:
+                continue
+            counts[aid] = counts.get(aid, 0) + 1
+        clusters = [aid for aid, cnt in counts.items() if cnt >= size]
+        return float(len(clusters))
+
+    def _disable_telegram_autopublish(self) -> bool:
+        from services.feature_flags import FeatureFlagService
+
+        flags = FeatureFlagService(self.db)
+        return flags.set_flag(
+            flag_name="FEATURE_TELEGRAM_AUTOPUBLISH",
+            enabled=False,
+            changed_by="IntegritySentinel",
+            reason="Auto-disabled due to integrity metric breach",
+        )
+
+    def _should_autorollback(self) -> bool:
+        from services.feature_flags import FeatureFlagService
+
+        return FeatureFlagService(self.db).is_enabled("FEATURE_AUTOROLLBACK_ON_INTEGRITY")
+
+    def _maybe_trigger_autorollback(self, triggering_metric: str) -> Optional[str]:
+        if not self._should_autorollback():
+            return None
+
+        from services.rollback_controller import RollbackController
+
+        rollback = RollbackController(self.db)
+        if not rollback.get_lkg_config():
+            self.db.ops_alerts.insert_one(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "severity": "CRITICAL",
+                    "message": f"AUTOROLLBACK_SKIPPED_NO_LKG for {triggering_metric}",
+                    "triggering_metric": triggering_metric,
+                }
+            )
+            return "AUTOROLLBACK_SKIPPED_NO_LKG"
+
+        result = rollback.rollback_to_lkg(
+            triggered_by="IntegritySentinel",
+            reason=f"Integrity breach on {triggering_metric}",
+            dry_run=False,
+        )
+        return "AUTOROLLBACK_TRIGGERED" if result.get("success") else "AUTOROLLBACK_FAILED"
+
     def _send_alert(self, severity: str, message: str, metric: MetricValue):
-        """
-        Send alert to ops team.
-        
-        Args:
-            severity: CRITICAL, WARNING, INFO
-            message: Alert message
-            metric: Metric that triggered alert
-        """
         alert = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "severity": severity,
             "message": message,
             "metric": {
                 "name": metric.metric_name,
                 "value": metric.value,
                 "threshold": metric.threshold,
-            }
+            },
         }
-        
-        # Log to database
-        self.db.ops_alerts.insert_one(alert)
-        
-        # Send to webhook (if configured)
+        self.db.ops_alerts.insert_one(alert.copy())
+
         if self.alert_webhook_url:
             try:
                 import requests
-                requests.post(
-                    self.alert_webhook_url,
-                    json=alert,
-                    timeout=5
-                )
-            except Exception as e:
-                logger.error(f"Failed to send webhook alert: {e}")
-        
-        # Log locally
+
+                requests.post(self.alert_webhook_url, json=alert, timeout=5)
+            except Exception as exc:
+                logger.error("Failed to send webhook alert: %s", exc)
+
         log_fn = logger.critical if severity == "CRITICAL" else logger.warning
-        log_fn(f"[{severity}] {message}")
+        log_fn("[%s] %s", severity, message)
 
-
-# ==================== CONTINUOUS MONITOR ====================
 
 class SentinelDaemon:
-    """
-    Daemon that runs IntegritySentinel continuously.
-    
-    Run this in a separate process/container in production.
-    """
-    
+    """Daemon that runs IntegritySentinel continuously."""
+
     def __init__(
         self,
         db: Database,
         alert_webhook_url: Optional[str] = None,
-        check_interval_seconds: int = 60
+        check_interval_seconds: int = 60,
     ):
         self.sentinel = IntegritySentinel(db, alert_webhook_url)
         self.check_interval_seconds = check_interval_seconds
         self.running = False
-    
+
     def start(self):
-        """Start daemon (blocking)"""
         import time
-        
+
         self.running = True
-        logger.info(f"Starting SentinelDaemon (check interval: {self.check_interval_seconds}s)")
-        
+        logger.info("Starting SentinelDaemon (check interval: %ss)", self.check_interval_seconds)
+
         while self.running:
             try:
                 status = self.sentinel.run_check_cycle()
-                
-                # Log summary
                 if status["breaches"]:
-                    logger.warning(f"Breaches detected: {status['breaches']}")
+                    logger.warning("Breaches detected: %s", status["breaches"])
                 else:
                     logger.debug("All metrics within thresholds")
-                
-            except Exception as e:
-                logger.exception(f"Error in sentinel check cycle: {e}")
-            
-            # Sleep until next check
+            except Exception as exc:
+                logger.exception("Error in sentinel check cycle: %s", exc)
             time.sleep(self.check_interval_seconds)
-    
+
     def stop(self):
-        """Stop daemon"""
         logger.info("Stopping SentinelDaemon")
         self.running = False
 
 
+_integrity_sentinel: Optional[IntegritySentinel] = None
+
+
+def get_integrity_sentinel() -> IntegritySentinel:
+    global _integrity_sentinel
+    if _integrity_sentinel is None:
+        from db.mongo import db
+
+        _integrity_sentinel = IntegritySentinel(db)
+    return _integrity_sentinel
+
+
 if __name__ == "__main__":
-    # Test sentinel
     import os
     from pymongo import MongoClient
-    
-    # Connect to DB
+
     mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
     db_name = os.getenv("MONGO_DB_NAME", "beatvegas")
     client = MongoClient(mongo_uri)
     db = client[db_name]
-    
-    # Create sentinel
-    sentinel = IntegritySentinel(
-        db=db,
-        alert_webhook_url=os.getenv("ALERT_WEBHOOK_URL")
-    )
-    
-    # Run one check cycle
+
+    sentinel = IntegritySentinel(db=db, alert_webhook_url=os.getenv("ALERT_WEBHOOK_URL"))
     status = sentinel.run_check_cycle()
-    
+
     print("=== IntegritySentinel Status ===")
     print(f"Timestamp: {status['timestamp']}")
     print(f"Metrics: {status['metrics']}")

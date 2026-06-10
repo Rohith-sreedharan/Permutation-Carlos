@@ -67,6 +67,12 @@ class Leg:
     team_key: Optional[str] = None  # useful for avoiding correlated legs
     canonical_state: Optional[str] = None  # original signal state for tracing
 
+    # lineage + canonical execution fields
+    decision_id: Optional[str] = None
+    snapshot_hash: Optional[str] = None
+    true_probability: Optional[float] = None
+    american_odds: Optional[int] = None
+
 
 @dataclass
 class ParlayRequest:

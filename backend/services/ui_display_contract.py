@@ -365,7 +365,7 @@ def compute_ui_display_copy(
             gap_text = f" Model/Market gap detected ({gap_pts:+.1f} pts — informational only). Monitor live."
         
         return UIDisplayCopy(
-            header_text="🔵 MARKET ALIGNED — NO EDGE",
+            header_text="🔵 MARKET ALIGNED",
             summary_text=f"No valid edge detected. Market efficiently priced.{gap_text}",
             model_direction_label="Model Direction (Informational only — not an official play)",
             action_summary=None,

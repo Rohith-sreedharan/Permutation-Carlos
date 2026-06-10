@@ -13,7 +13,7 @@ export default function TierShowcase() {
       
       {/* Simulation Badges */}
       <div className="space-y-4">
-        <h2 className="text-xl text-gold font-semibold">Simulation Power Badges</h2>
+        <h2 className="text-xl text-gold font-semibold">Decision Depth Badges</h2>
         <div className="flex flex-wrap gap-4">
           <SimulationBadge tier="free" showUpgradeHint={true} />
           <SimulationBadge tier="starter" />

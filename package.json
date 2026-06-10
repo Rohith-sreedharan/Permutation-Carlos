@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:integrity": "vitest run tests/mappingIntegrity.test.ts",
-    "test:suite": "chmod +x scripts/test_integrity_suite.sh && ./scripts/test_integrity_suite.sh"
+    "test:suite": "chmod +x scripts/test_integrity_suite.sh && ./scripts/test_integrity_suite.sh",
+    "compliance:language-audit": "python3 backend/scripts/phase9_ac3_language_audit.py --ci",
+    "compliance:affiliate-disclosure": "node scripts/check_affiliate_disclosures.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.555.0",
@@ -19,6 +21,7 @@
     "sweetalert2": "^11.7.27"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.7",
@@ -26,6 +29,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.21",
     "baseline-browser-mapping": "^2.9.15",
+    "jsdom": "^28.1.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.17",
     "typescript": "~5.8.2",

@@ -38,7 +38,14 @@ interface SimulationDebugPanelProps {
   event: any;
 }
 
+// Production guard — component must never render outside dev + explicit flag
+const IS_DEBUG_PANEL_ENABLED =
+  Boolean((import.meta as any).env?.DEV) &&
+  (import.meta as any).env?.VITE_ENABLE_DEBUG_PANEL === 'true';
+
 export const SimulationDebugPanel: React.FC<SimulationDebugPanelProps> = ({ simulation, event }) => {
+  if (!IS_DEBUG_PANEL_ENABLED) return null;
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedMarket, setSelectedMarket] = useState<'spread' | 'moneyline' | 'total'>('spread');
 

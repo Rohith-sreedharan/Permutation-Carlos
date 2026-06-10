@@ -6,10 +6,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
+from uuid import uuid4
 from db.mongo import db
-from services.parlay_architect import parlay_architect_service
+from core.parlay_architect import ParlayRequest, build_parlay, derive_tier, MarketType, Leg
 from services.stake_intelligence import stake_intelligence_service
 from services.parlay_calculator import parlay_calculator_service
+from services.canonical_parlay_service import canonical_parlay_service
+from services.parlay_execution_agent import parlay_execution_agent, BillingWriteFailure
 from middleware.auth import get_current_user, get_user_tier
 from utils.mongo_helpers import sanitize_mongo_doc
 from config.pricing import (
@@ -21,6 +24,23 @@ from config.pricing import (
 
 
 router = APIRouter()
+
+
+SPORT_KEY_TO_LEAGUES = {
+    "basketball_nba": ["NBA"],
+    "basketball_ncaab": ["NCAAB"],
+    "americanfootball_nfl": ["NFL"],
+    "americanfootball_ncaaf": ["NCAAF"],
+    "baseball_mlb": ["MLB"],
+    "icehockey_nhl": ["NHL"],
+    "all": None,
+}
+
+RISK_PROFILE_TO_CORE_PROFILE = {
+    "high_confidence": "premium",
+    "balanced": "balanced",
+    "high_volatility": "speculative",
+}
 
 
 class GenerateParlayRequest(BaseModel):
@@ -47,6 +67,58 @@ class AnalyzeStakeRequest(BaseModel):
     total_odds: float = Field(..., gt=1, description="Decimal odds (e.g., 5.2)")
     potential_payout: float = Field(..., gt=0, description="Stake × odds")
     ev_percent: float = Field(..., description="Expected value percentage")
+
+
+def _convert_candidates_to_core_legs(candidates: List[Dict[str, Any]]) -> List[Leg]:
+    legs: List[Leg] = []
+    market_type_map = {
+        "spread": MarketType.SPREAD,
+        "total": MarketType.TOTAL,
+        "moneyline": MarketType.MONEYLINE,
+    }
+
+    for cand in candidates:
+        confidence_pct = float(cand["true_probability"]) * 100.0
+        tier = derive_tier(
+            canonical_state=str(cand["canonical_state"]),
+            confidence=confidence_pct,
+            ev=0.0,
+            sport=str(cand.get("sport") or ""),
+        )
+        legs.append(
+            Leg(
+                event_id=str(cand["event_id"]),
+                sport=str(cand.get("sport") or "UNKNOWN"),
+                league=str(cand.get("league") or cand.get("sport") or "UNKNOWN"),
+                start_time_utc=datetime.now(timezone.utc),
+                market_type=market_type_map.get(str(cand.get("pick_type", "spread")).lower(), MarketType.SPREAD),
+                selection=str(cand.get("selection") or ""),
+                tier=tier,
+                confidence=confidence_pct,
+                clv=0.0,
+                total_deviation=0.0,
+                volatility="MEDIUM",
+                ev=0.0,
+                di_pass=True,
+                mv_pass=True,
+                is_locked=False,
+                injury_stable=True,
+                team_key=None,
+                canonical_state=str(cand["canonical_state"]),
+                decision_id=str(cand["decision_id"]),
+                snapshot_hash=str(cand["snapshot_hash"]),
+                true_probability=float(cand["true_probability"]),
+                american_odds=int(cand["american_odds"]),
+            )
+        )
+
+    return legs
+
+
+def _american_to_decimal(american: int) -> float:
+    if american < 0:
+        return 1 + (100.0 / abs(american))
+    return 1 + (american / 100.0)
 
 
 @router.post("/api/architect/generate")
@@ -139,13 +211,111 @@ async def generate_parlay(
                 detail=f"Invalid risk_profile. Must be one of: {', '.join(valid_profiles)}"
             )
         
-        # Generate parlay
-        parlay = parlay_architect_service.generate_optimal_parlay(
-            sport_key=request.sport_key,
-            leg_count=request.leg_count,
-            risk_profile=request.risk_profile,
-            user_tier=user_tier,
-            multi_sport=request.multi_sport or request.sport_key == "all"
+        leagues = SPORT_KEY_TO_LEAGUES.get(request.sport_key)
+        candidates = canonical_parlay_service.get_candidate_legs(sports=leagues, limit=400)
+        if len(candidates) < request.leg_count:
+            return {
+                "status": "BLOCKED",
+                "reason_code": "INSUFFICIENT_CANONICAL_CANDIDATES",
+                "reason_detail": {
+                    "available": len(candidates),
+                    "requested": request.leg_count,
+                    "requirements": {
+                        "release_status": "OFFICIAL",
+                        "classification": ["EDGE", "LEAN"],
+                        "di_pass": True,
+                        "mv_pass": True,
+                        "snapshot_hash": "required",
+                    },
+                },
+                "parlay_available": False,
+                "truth_mode_enforced": True,
+            }
+
+        run_id = str(uuid4())
+        trace_id = str(uuid4())
+        amount = 0.0 if user_tier.lower() in ["founder", "elite", "internal"] else -1.0
+        try:
+            parlay_execution_agent.enforce_billing_write_before_execution(
+                run_id=run_id,
+                user_id=str(user_email),
+                trace_id=trace_id,
+                amount=amount,
+            )
+        except BillingWriteFailure as exc:
+            raise HTTPException(status_code=503, detail="BILLING_WRITE_FAIL") from exc
+
+        core_profile = RISK_PROFILE_TO_CORE_PROFILE[request.risk_profile]
+        result = build_parlay(
+            _convert_candidates_to_core_legs(candidates),
+            ParlayRequest(
+                profile=core_profile,
+                legs=request.leg_count,
+                allow_same_event=False,
+                allow_same_team=True,
+                seed=None,
+                include_props=False,
+            ),
+        )
+
+        if result.status != "PARLAY":
+            return {
+                "status": "BLOCKED",
+                "reason_code": result.reason_code,
+                "reason_detail": result.reason_detail,
+                "parlay_available": False,
+                "truth_mode_enforced": True,
+            }
+
+        parlay_decimal_odds = 1.0
+        for leg in result.legs_selected:
+            if leg.american_odds is None:
+                raise HTTPException(status_code=500, detail="Missing canonical odds for selected leg")
+            parlay_decimal_odds *= _american_to_decimal(int(leg.american_odds))
+        parlay_decimal_odds = round(parlay_decimal_odds, 2)
+
+        avg_probability = sum(float(leg.true_probability or 0.0) for leg in result.legs_selected) / max(1, len(result.legs_selected))
+        combined_probability = 1.0
+        for leg in result.legs_selected:
+            combined_probability *= float(leg.true_probability or 0.0)
+        expected_value = parlay_calculator_service.calculate_parlay_ev(
+            parlay_probability=combined_probability,
+            decimal_odds=parlay_decimal_odds,
+        )["ev_percent"]
+
+        parlay = {
+            "parlay_id": f"parlay_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+            "sport": request.sport_key,
+            "leg_count": len(result.legs_selected),
+            "risk_profile": request.risk_profile,
+            "legs": [
+                {
+                    "event": leg.event_id,
+                    "line": leg.selection,
+                    "bet_type": leg.market_type.value,
+                    "probability": leg.true_probability,
+                    "confidence": round(float(leg.confidence), 2),
+                    "ev": leg.ev,
+                    "decision_id": leg.decision_id,
+                    "snapshot_hash": leg.snapshot_hash,
+                    "canonical_state": leg.canonical_state,
+                }
+                for leg in result.legs_selected
+            ],
+            "parlay_odds": parlay_decimal_odds,
+            "expected_value": expected_value,
+            "confidence_rating": round(avg_probability * 100.0, 1),
+            "transparency_message": "Canonical decision_id-only parlay. Lineage enforced.",
+            "trace_id": trace_id,
+        }
+
+        db.parlay_architect_generations.insert_one(
+            {
+                **parlay,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "user_id": user_email,
+                "run_id": run_id,
+            }
         )
         
         # Get universal pricing
@@ -441,24 +611,17 @@ async def analyze_stake(request: AnalyzeStakeRequest):
         raise HTTPException(status_code=500, detail=f"Stake context interpretation failed: {str(e)}")
 
 
-class ParlayLeg(BaseModel):
-    """Single leg in a parlay"""
-    event_id: str
-    pick_type: str  # "spread", "total", "moneyline"
-    selection: str  # e.g., "Miami -5", "Over 215.5"
-    true_probability: float = Field(..., gt=0, lt=1, description="Model probability (0-1)")
-    american_odds: int
-    sport: str
-
-
 class CalculateParlayRequest(BaseModel):
-    """Request model for parlay probability and EV calculation"""
-    legs: List[ParlayLeg]
+    """Canonical parlay calculation request (decision IDs only)."""
+    decision_ids: List[str] = Field(..., min_length=2, description="Canonical decision IDs")
     stake_amount: Optional[float] = Field(None, gt=0, description="Optional stake for payout calculation")
 
 
 @router.post("/api/architect/calculate-parlay")
-async def calculate_parlay_probability_and_ev(request: CalculateParlayRequest):
+async def calculate_parlay_probability_and_ev(
+    request: CalculateParlayRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
     """
     📊 Calculate Parlay Probability & Expected Value
     
@@ -514,11 +677,40 @@ async def calculate_parlay_probability_and_ev(request: CalculateParlayRequest):
     ```
     """
     try:
-        if len(request.legs) < 2:
+        if len(request.decision_ids) < 2:
             raise HTTPException(status_code=400, detail="Parlay must have at least 2 legs")
-        
-        # Convert Pydantic models to dicts for service layer
-        legs_data = [leg.dict() for leg in request.legs]
+
+        run_id = str(uuid4())
+        trace_id = str(uuid4())
+        user_id = str(current_user.get("email") or current_user.get("sub") or current_user.get("id") or "unknown")
+        try:
+            parlay_execution_agent.enforce_billing_write_before_execution(
+                run_id=run_id,
+                user_id=user_id,
+                trace_id=trace_id,
+                amount=-1.0,
+            )
+        except BillingWriteFailure as exc:
+            raise HTTPException(status_code=503, detail="BILLING_WRITE_FAIL") from exc
+
+        try:
+            resolved_legs = canonical_parlay_service.resolve_decision_ids(request.decision_ids)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        legs_data = [
+            {
+                "event_id": leg["event_id"],
+                "pick_type": leg["pick_type"],
+                "selection": leg["selection"],
+                "true_probability": leg["true_probability"],
+                "american_odds": leg["american_odds"],
+                "sport": leg["sport"],
+            }
+            for leg in resolved_legs
+        ]
         
         # 1. Calculate parlay probability
         prob_result = parlay_calculator_service.calculate_parlay_probability(legs_data)
@@ -528,8 +720,8 @@ async def calculate_parlay_probability_and_ev(request: CalculateParlayRequest):
         
         # 2. Calculate decimal odds from American odds
         decimal_odds = 1.0
-        for leg in request.legs:
-            american = leg.american_odds
+        for leg in resolved_legs:
+            american = int(leg["american_odds"])
             if american < 0:
                 leg_decimal = 1 + (100 / abs(american))
             else:
@@ -547,7 +739,7 @@ async def calculate_parlay_probability_and_ev(request: CalculateParlayRequest):
         # 4. Calculate volatility
         volatility = parlay_calculator_service.calculate_volatility_level(
             parlay_probability=combined_prob,
-            leg_count=len(request.legs),
+            leg_count=len(resolved_legs),
             odds=decimal_odds
         )
         
@@ -587,7 +779,16 @@ async def calculate_parlay_probability_and_ev(request: CalculateParlayRequest):
             **payout_data,
             
             # Metadata
-            "leg_count": len(request.legs),
+            "leg_count": len(resolved_legs),
+            "resolved_legs": [
+                {
+                    "decision_id": leg["decision_id"],
+                    "snapshot_hash": leg["snapshot_hash"],
+                    "canonical_state": leg["canonical_state"],
+                    "event_id": leg["event_id"],
+                }
+                for leg in resolved_legs
+            ],
             "notes": "Pure math - not betting advice"
         }
         

@@ -1,12 +1,32 @@
 
 import type { Event, Prediction, AffiliateStat, Referral, ChatMessage, TopAnalyst, User, Bet, AuthResponse, UserCredentials, UserRegistration, MonteCarloSimulation, CLVDataPoint, CLVStats, PerformanceMetrics } from '../types';
+import type { GameDecisions } from '../types/MarketDecision';
 
-// Use environment variable or fall back to localhost for development
-export const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  window.location.hostname === 'localhost' 
-    ? 'http://localhost:8000' 
-    : `${window.location.protocol}//${window.location.host}`
-);
+// EXPLICIT PRODUCTION/DEV ROUTING (no guessing)
+export const API_BASE_URL = (() => {
+  const viteEnv = import.meta.env.VITE_API_URL;
+  const hostname = window.location.hostname;
+  
+  // If env var set, use it (for .env.local dev override)
+  if (viteEnv) {
+    return viteEnv;
+  }
+  
+  // EXPLICIT: beta.beatvegas.app → production API
+  if (hostname.includes('beta.beatvegas.app') || hostname.includes('beatvegas.app')) {
+    return 'https://beta.beatvegas.app';
+  }
+  
+  // EXPLICIT: localhost → local API
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  
+  // DEFAULT: same-origin (production catchall)
+  return `${window.location.protocol}//${window.location.host}`;
+})();
+
+console.log('[API] Using API_BASE_URL:', API_BASE_URL);
 
 // --- Safe JSON Parser ---
 /**
@@ -29,17 +49,39 @@ const safeJsonParse = async (response: Response): Promise<any> => {
     }
 };
 
-// --- Token Management ---
+// --- Token Management (Phase 12 WS4: Safari iOS resilience) ---
+//
+// Safari on iOS aggressively clears localStorage when tabs are suspended or
+// when "Prevent Cross-Site Tracking" is active. To survive this:
+//  1. Write token to BOTH localStorage AND sessionStorage on every set.
+//  2. On get, read localStorage first; fall back to sessionStorage if missing.
+//  3. When falling back, re-hydrate localStorage so the token is persistent again.
+//  4. Never store token in plaintext in a non-storage location (Phase 2 requirement).
+//
+// This approach keeps the same API surface — callers use getToken/setToken/removeToken.
+
 export const getToken = (): string | null => {
-    return localStorage.getItem('authToken');
+    let token = localStorage.getItem('authToken');
+    if (!token) {
+        // Safari may have cleared localStorage — check sessionStorage fallback
+        token = sessionStorage.getItem('authToken');
+        if (token) {
+            // Re-hydrate localStorage so the token survives a full tab reload
+            try { localStorage.setItem('authToken', token); } catch (_) { /* storage full */ }
+        }
+    }
+    return token;
 };
 
 export const setToken = (token: string): void => {
     localStorage.setItem('authToken', token);
+    // Mirror to sessionStorage as Safari iOS fallback
+    try { sessionStorage.setItem('authToken', token); } catch (_) { /* private mode */ }
 };
 
 export const removeToken = (): void => {
     localStorage.removeItem('authToken');
+    sessionStorage.removeItem('authToken');
 };
 
 // --- Generic API Request ---
@@ -64,6 +106,12 @@ export const apiRequest = async <T = any>(
 
     if (!response.ok) {
         const errorData = await safeJsonParse(response).catch(() => ({ detail: 'Request failed' }));
+        // Phase 12 WS4: On 401 — token expired or invalid. Clear token and emit a
+        // custom event so App.tsx can redirect to login without a broken UI state.
+        if (response.status === 401) {
+            removeToken();
+            window.dispatchEvent(new CustomEvent('beatvegas:auth:expired'));
+        }
         throw new Error(errorData.detail || `HTTP ${response.status}`);
     }
 
@@ -73,7 +121,7 @@ export const apiRequest = async <T = any>(
 
 // --- Authentication ---
 export const registerUser = async (userData: UserRegistration): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -93,7 +141,7 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
     params.append('username', credentials.email);
     params.append('password', credentials.password);
     
-    const response = await fetch(`${API_BASE_URL}/api/token`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/token`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -119,7 +167,7 @@ export const loginUser = async (credentials: UserCredentials): Promise<AuthRespo
 };
 
 export const verify2FALogin = async (tempToken: string, code: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_BASE_URL}/api/verify-2fa?temp_token=${encodeURIComponent(tempToken)}&code=${encodeURIComponent(code)}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/verify-2fa?temp_token=${encodeURIComponent(tempToken)}&code=${encodeURIComponent(code)}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -339,10 +387,31 @@ export const getTopAnalysts = async (): Promise<TopAnalyst[]> => {
 export const getUserProfile = async () => {
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/account/profile`, { headers });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch profile');
     const data = await safeJsonParse(res);
     return data.profile || data;
+};
+
+// Phase 5A: Onboarding status and completion —————————————————————————————————
+/** Returns { onboarding_complete, user_id, email, tier }. Does NOT clear token on 401. */
+export const getOnboardingStatus = async (): Promise<{ onboarding_complete: boolean; user_id: string; email: string; tier: string }> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/onboarding/status`, { headers });
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to fetch onboarding status');
+    return safeJsonParse(res);
+};
+
+/** Marks onboarding as complete on the server. Called only from OnboardingWizard screen 3. */
+export const completeOnboarding = async (): Promise<void> => {
+    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE_URL}/api/onboarding/complete`, {
+        method: 'POST',
+        headers,
+    });
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
+    if (!res.ok) throw new Error('Failed to complete onboarding');
 };
 
 export const getUserWallet = async () => {
@@ -554,20 +623,37 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/simulations/${eventId}`, { headers });
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 402) {
+        const error = await safeJsonParse(res).catch(() => null);
+        const detail = error?.detail || {};
+        // Throw a structured error the UI can detect and render as the upgrade gate
+        const gateError = new Error('CYCLES_EXHAUSTED') as any;
+        gateError.code = 'ALLOCATION_EXHAUSTED';
+        gateError.title = detail.title || 'Your Intelligence Cycles have been used.';
+        gateError.message = detail.message || 'Platform subscribers get 100,000 cycles and full decision engine access.';
+        gateError.ctaPlatform = detail.cta_platform || 'Subscribe to Platform — $97/month';
+        gateError.ctaPlatformUrl = detail.cta_platform_url || 'https://beatvegas.app/upgrade';
+        gateError.ctaSyndicate = detail.cta_syndicate || 'Join Syndicate — $39/month';
+        gateError.ctaSyndicateUrl = detail.cta_syndicate_url || 'https://beatvegas.app/upgrade';
+        throw gateError;
+    }
     if (res.status === 404) {
-        // Event not found - likely stale data or invalid game_id
-        const error = await safeJsonParse(res);
-        throw new Error(error.detail || `Event ${eventId} not found. This game may have been removed or is no longer available.`);
+        // Fail closed without exposing internal identifiers
+        throw new Error(`HTTP 404: Intelligence output unavailable for this game. Retry or check back later.`);
     }
     if (res.status === 422) {
         // Handle structural market errors (staleness is now graceful)
         const error = await safeJsonParse(res);
         if (error.detail?.error === 'STRUCTURAL_MARKET_ERROR') {
-            throw new Error(error.detail.message || 'Market data has structural errors');
+            throw new Error(`HTTP 422: ${error.detail.message || 'Market data has structural errors'}`);
         }
-        throw new Error(error.detail?.message || 'Cannot generate simulation');
+        throw new Error(`HTTP 422: ${error.detail?.message || 'Cannot generate simulation'}`);
     }
-    if (!res.ok) throw new Error('Failed to fetch simulation');
+    if (!res.ok) {
+        const error = await safeJsonParse(res).catch(() => null);
+        const detail = error?.detail?.message || error?.detail || 'Failed to fetch simulation';
+        throw new Error(`HTTP ${res.status}: ${detail}`);
+    }
     
     const data = await safeJsonParse(res);
     
@@ -586,6 +672,31 @@ export const fetchSimulation = async (eventId: string): Promise<MonteCarloSimula
     }
     
     return data;
+};
+
+/**
+ * Fetch game decisions from the unified decisions endpoint
+ * ZONE 3: Primary API for rendering market signal cards
+ */
+export const fetchGameDecisions = async (league: string, gameId: string): Promise<GameDecisions> => {
+    const headers = ensureAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/games/${league}/${gameId}/decisions`, { headers });
+    
+    if (res.status === 401) {
+        removeToken();
+        throw new Error('Session expired. Please log in again.');
+    }
+    
+    if (res.status === 404) {
+        throw new Error('Intelligence output unavailable for this game. Retry or check back later.');
+    }
+    
+    if (!res.ok) {
+        const error = await safeJsonParse(res);
+        throw new Error(error.detail || `Failed to fetch game decisions (${res.status})`);
+    }
+    
+    return safeJsonParse(res);
 };
 
 export const requestSimulation = async (eventId: string, iterations: number = 100000): Promise<MonteCarloSimulation> => {
@@ -618,37 +729,24 @@ export const fetchPerformanceReport = async (timeRange: '7d' | '30d' | '90d' | '
     return safeJsonParse(res);
 };
 
-// --- Beat Vegas - Tier Management endpoints ---
-export const getUserTier = async (): Promise<{ tier: 'starter' | 'pro' | 'sharps_room' | 'founder'; features: string[] }> => {
-    const headers = ensureAuthHeaders();
-    const res = await fetch(`${API_BASE_URL}/api/account/tier`, { headers });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
-    if (!res.ok) throw new Error('Failed to fetch user tier');
-    return safeJsonParse(res);
-};
-
-export const upgradeTier = async (targetTier: 'pro' | 'sharps_room' | 'founder'): Promise<{ success: boolean; message: string }> => {
-    const headers = { ...ensureAuthHeaders(), 'Content-Type': 'application/json' };
-    const res = await fetch(`${API_BASE_URL}/api/account/upgrade`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ tier: targetTier }),
-    });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
-    if (!res.ok) throw new Error('Failed to upgrade tier');
-    return safeJsonParse(res);
-};
-
 // --- Subscription Management ---
 export const getSubscriptionStatus = async (): Promise<{
-    tier: string;
-    renewalDate: string;
+    plan_id?: 'telegram_syndicate' | 'beatvegas_platform' | null;
+    platform_access?: boolean;
+    telegram_access?: boolean;
+    engine_cycles_limit?: number;
+    engine_cycles_remaining?: number;
+    parlay_tokens_remaining?: number;
+    overage_charges_current_period?: number;
+    billing_period_end?: string;
+    renewalDate?: string;
+    tier?: string;
     paymentMethod?: { last4: string; brand: string };
     status: 'active' | 'canceled' | 'past_due';
 }> => {
     const headers = ensureAuthHeaders();
     const res = await fetch(`${API_BASE_URL}/api/subscription/status`, { headers });
-    if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
+    if (res.status === 401) { throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch subscription');
     return safeJsonParse(res);
 };
@@ -666,6 +764,63 @@ export const getAffiliateEarnings = async (): Promise<{
     if (res.status === 401) { removeToken(); throw new Error('Session expired. Please log in again.'); }
     if (!res.ok) throw new Error('Failed to fetch earnings');
     return safeJsonParse(res);
+};
+
+export const submitAffiliateInterest = async (payload: {
+    name: string;
+    email: string;
+    audience_desc?: string | null;
+    audience_size?: string | null;
+    referral_source?: string | null;
+}) => {
+    return apiRequest('/api/v1/affiliate-program/interest', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+};
+
+export const getAffiliateApplicants = async () => {
+    const data = await apiRequest<{ applicants: any[] }>('/api/v1/affiliate-program/aos/applicants');
+    return data.applicants || [];
+};
+
+export const inviteAffiliateApplicant = async (interestId: string, invitedByOperatorId: string) => {
+    return apiRequest(`/api/v1/affiliate-program/aos/applicants/${interestId}/invite`, {
+        method: 'POST',
+        body: JSON.stringify({ invited_by_operator_id: invitedByOperatorId }),
+    });
+};
+
+export const declineAffiliateApplicant = async (interestId: string) => {
+    return apiRequest(`/api/v1/affiliate-program/aos/applicants/${interestId}/decline`, {
+        method: 'POST',
+    });
+};
+
+export const getRecruitmentPopupStatus = async () => {
+    return apiRequest('/api/v1/affiliate-program/recruitment/popup-status');
+};
+
+export const dismissRecruitmentPopup = async () => {
+    return apiRequest('/api/v1/affiliate-program/recruitment/dismiss', { method: 'POST' });
+};
+
+export const getMyAffiliateDashboard = async () => {
+    return apiRequest('/api/v1/affiliate-program/me/dashboard');
+};
+
+export const updateMyNotificationPreference = async (notificationPreference: 'email_only' | 'platform_only' | 'both') => {
+    return apiRequest('/api/v1/affiliate-program/me/notification-preference', {
+        method: 'POST',
+        body: JSON.stringify({ notification_preference: notificationPreference }),
+    });
+};
+
+export const updateMyLeaderboardPreferences = async (displayName: string, optOut: boolean) => {
+    return apiRequest('/api/v1/affiliate-program/me/leaderboard-preferences', {
+        method: 'POST',
+        body: JSON.stringify({ display_name: displayName, opt_out: optOut }),
+    });
 };
 
 // --- Risk Profile ---

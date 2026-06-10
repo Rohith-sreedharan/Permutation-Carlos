@@ -16,7 +16,14 @@ pytest>=7.0.0
 openai>=1.6.0
 python-dateutil>=2.8.0
 pandas>=2.0.0
+beautifulsoup4>=4.12.3
 bcrypt>=4.0.0
 pyotp>=2.9.0
 qrcode[pil]>=7.4.0
 webauthn>=2.0.0
+# Phase 2A.1: GeoIP enforcement (MaxMind GeoLite2)
+geoip2>=4.8.0
+# Phase 2A.2: JWT authentication (replaces plaintext user:<id> tokens)
+PyJWT>=2.8.0
+# Phase 2A.3: Rate limiting
+slowapi>=0.1.9

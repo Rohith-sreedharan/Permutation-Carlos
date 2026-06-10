@@ -80,7 +80,7 @@ class IncidentLogger:
         
         # Create incident record
         incident = {
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(timezone.utc),
             "incident_type": incident_type,
             "severity": severity,
             "description": description,
@@ -136,7 +136,7 @@ class IncidentLogger:
             Change log ID
         """
         change_log = {
-            "timestamp": datetime.now(),
+            "timestamp": datetime.now(timezone.utc),
             "change_type": "CONFIG_CHANGE",
             "sport": sport,
             "parameter": parameter,
@@ -174,7 +174,7 @@ class IncidentLogger:
                     "$set": {
                         "resolved": True,
                         "resolution": resolution,
-                        "resolved_at": datetime.now()
+                        "resolved_at": datetime.now(timezone.utc)
                     }
                 }
             )
@@ -193,7 +193,7 @@ class IncidentLogger:
         unresolved_only: bool = False
     ) -> List[Dict[str, Any]]:
         """Get recent incidents"""
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         
         query: Dict[str, Any] = {"timestamp": {"$gte": cutoff}}
         
@@ -221,7 +221,7 @@ class IncidentLogger:
         days: int = 30
     ) -> List[Dict[str, Any]]:
         """Get configuration change history"""
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         
         query: Dict[str, Any] = {"timestamp": {"$gte": cutoff}}
         

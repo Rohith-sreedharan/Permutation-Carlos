@@ -246,7 +246,7 @@ async def get_performance_by_cohort(
     """
     Get performance breakdown by cohort (league, market, etc.)
     """
-    start_date = datetime.now() - timedelta(days=days_back)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
     
     # Aggregate by cohort
     pipeline = [
@@ -310,7 +310,7 @@ async def get_clv_distribution(days_back: int = Query(30, ge=1, le=365)):
     """
     Get CLV distribution histogram
     """
-    start_date = datetime.now() - timedelta(days=days_back)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
     
     gradings = list(grading_service.grading_collection.find({
         "bet_status": "SETTLED",
@@ -512,7 +512,7 @@ async def health_check():
     active_version = calibration_service.get_active_calibration_version()
     
     # Count recent gradings
-    start_date = datetime.now() - timedelta(days=7)
+    start_date = datetime.now(timezone.utc) - timedelta(days=7)
     recent_gradings = grading_service.grading_collection.count_documents({
         "graded_at": {"$gte": start_date}
     })
@@ -528,5 +528,5 @@ async def health_check():
         "active_calibration_version": active_version or "NONE",
         "recent_gradings_7d": recent_gradings,
         "recent_publishes_7d": recent_publishes,
-        "timestamp": datetime.now()
+        "timestamp": datetime.now(timezone.utc)
     }

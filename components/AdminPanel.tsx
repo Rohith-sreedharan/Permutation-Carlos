@@ -433,7 +433,7 @@ const AdminPanel: React.FC = () => {
                         <th className="text-left p-2">Tier</th>
                         <th className="text-left p-2">Created</th>
                         <th className="text-left p-2">Last Login</th>
-                        <th className="text-left p-2">Simulations</th>
+                        <th className="text-left p-2">Intelligence Cycles</th>
                         <th className="text-left p-2">Actions</th>
                       </tr>
                     </thead>

@@ -22,12 +22,13 @@ export interface MonteCarloSimulation {
 
 interface SimulationDisplayProps {
   simulation: MonteCarloSimulation;
-  userTier: 'starter' | 'pro' | 'sharps_room' | 'founder';
+  platformAccess: boolean;
+  telegramAccess: boolean;
 }
 
-const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userTier }) => {
-  const hasAdvancedAccess = ['sharps_room', 'founder'].includes(userTier);
-  const hasProAccess = ['pro', 'sharps_room', 'founder'].includes(userTier);
+const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, platformAccess, telegramAccess }) => {
+  const hasAdvancedAccess = platformAccess;
+  const hasProAccess = platformAccess || telegramAccess;
 
   const formatProbability = (prob: number) => (prob * 100).toFixed(2) + '%';
   const formatScore = (score: number) => score.toFixed(1);
@@ -42,9 +43,9 @@ const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userT
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold">Monte Carlo Simulation</h3>
+          <h3 className="text-lg font-bold">Decision Engine Output</h3>
           <p className="text-sm text-light-gray">
-            {simulation.iterations.toLocaleString()} iterations
+            {simulation.iterations.toLocaleString()} Intelligence Cycles
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -161,7 +162,7 @@ const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userT
         </div>
       )}
 
-      {/* Upgrade CTA for Starter users */}
+      {/* Upgrade CTA for users without sufficient entitlement */}
       {!hasProAccess && (
         <div className="bg-electric-blue/10 border border-electric-blue rounded-lg p-4 text-center">
           <p className="text-sm text-light-gray mb-2">
@@ -173,7 +174,7 @@ const SimulationDisplay: React.FC<SimulationDisplayProps> = ({ simulation, userT
         </div>
       )}
 
-      {/* Advanced Analytics - Sharps Room only */}
+      {/* Advanced Analytics - Platform only */}
       {hasAdvancedAccess && (
         <div className="border-t border-navy pt-4">
           <div className="flex items-center justify-between text-xs text-light-gray">

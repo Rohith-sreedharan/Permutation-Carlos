@@ -292,7 +292,7 @@ class UserIdentityService:
             return {"streak": profile.get("daily_login_streak", 0), "new_login": False}
         
         # Check if yesterday
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
         
         if last_login == yesterday:
             # Continue streak

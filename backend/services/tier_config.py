@@ -22,8 +22,8 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "support_level": "community"
         },
         "display_features": [
-            "2 game simulations per day",
-            "10K iteration Monte Carlo sims",
+            "2 game analyses per day",
+            "10K iteration Intelligence Cycles",
             "Basic win probability analysis",
             "Community access"
         ]
@@ -31,7 +31,7 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
     "starter": {
         "name": "Starter",
         "price_monthly": 29.99,
-        "description": "Perfect for casual bettors - basic Monte Carlo simulations",
+        "description": "Agentic simulation intelligence — decision signal analysis",
         "features": {
             "access_monte_carlo": True,
             "access_clv_tracker": False,
@@ -43,8 +43,8 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "support_level": "community"
         },
         "display_features": [
-            "5 AI picks per day",
-            "10K iteration Monte Carlo sims",
+            "5 intelligence signals per day",
+            "10K iteration Intelligence Cycles",
             "Basic win probability analysis",
             "Community access"
         ]
@@ -52,7 +52,7 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
     "pro": {
         "name": "Pro",
         "price_monthly": 49.99,
-        "description": "For serious bettors - full simulations + prop analysis",
+        "description": "Full agentic simulation intelligence + prop signal analysis",
         "features": {
             "access_monte_carlo": True,
             "access_clv_tracker": True,
@@ -64,8 +64,8 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "support_level": "email"
         },
         "display_features": [
-            "15 AI picks per day",
-            "50K iteration Monte Carlo sims",
+            "15 intelligence signals per day",
+            "50K iteration Intelligence Cycles",
             "CLV tracking & analysis",
             "Prop mispricing alerts",
             "Parlay correlation engine",
@@ -75,7 +75,7 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
     "sharps_room": {
         "name": "Sharps Room",
         "price_monthly": 99.99,
-        "description": "Elite tier for sharps - maximum simulations + advanced tools",
+        "description": "Elite agentic simulation intelligence + advanced decision tools",
         "features": {
             "access_monte_carlo": True,
             "access_clv_tracker": True,
@@ -87,8 +87,8 @@ SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
             "support_level": "priority"
         },
         "display_features": [
-            "Unlimited AI picks",
-            "100K iteration Monte Carlo sims",
+            "Unlimited intelligence signals",
+            "100K iteration Intelligence Cycles",
             "Full CLV tracker with history",
             "Advanced analytics dashboards",
             "All prop tools & correlations",

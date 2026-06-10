@@ -192,7 +192,14 @@ export function classifySpreadEdge(
   if (sharpAction && sharpAction !== 'NO_SHARP_PLAY') {
     stateReasons.push(`Sharp action identified: ${sharpAction}`);
     stateReasons.push(`Gap-based edge analysis (backend validated)`);
-    
+
+    const sharpActionLabel =
+      sharpAction === 'TAKE_POINTS' ? 'Take the Points' :
+      sharpAction === 'LAY_POINTS' ? 'Lay the Points' :
+      sharpAction === 'OVER' ? 'Over' :
+      sharpAction === 'UNDER' ? 'Under' :
+      sharpAction;
+
     return {
       state: EdgeState.EDGE,
       side: valueSide,
@@ -200,7 +207,7 @@ export function classifySpreadEdge(
       probability: 0.55 + (spreadDeviation / 40),
       confidence: confidence || 50,  // Use actual confidence or default
       confidenceComponents: null,
-      reason: `Official edge: ${sharpAction} — ${spreadDeviation.toFixed(1)} pt gap-validated edge`,
+      reason: `Official edge: ${sharpActionLabel} — ${spreadDeviation.toFixed(1)} pt gap-validated edge`,
       actionable: true,
       showBanner: true,
       telegramEligible: true,
@@ -533,7 +540,7 @@ export function getEdgeStateStyling(state: EdgeState): {
         bgColor: 'bg-gray-600/5',
         textColor: 'text-gray-400',
         icon: '⛔',
-        label: 'NO ACTION'
+        label: 'No Actionable Signal'
       };
   }
 }
@@ -592,5 +599,5 @@ export function getTelegramPostType(classification: EdgeClassification): 'play' 
  * GLOBAL DISCLAIMER - Add everywhere (UI + Telegram bio)
  */
 export const PLATFORM_DISCLAIMER = 
-  'BeatVegas surfaces model signals, but only releases trades that pass risk-adjusted execution thresholds.';
+  'BeatVegas surfaces engine signals, but only releases trades that pass risk-adjusted execution thresholds.';
 

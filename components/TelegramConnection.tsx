@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { TELEGRAM_CONNECTION_COPY } from '../uiCopy/products';
 
 interface TelegramStatus {
   linked: boolean;
   telegram_username: string | null;
   telegram_user_id: string | null;
+  telegram_connected_at?: string | null;
   has_access: boolean;
   channels: string[];
   entitlements: {
@@ -135,61 +137,143 @@ export default function TelegramConnection() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin h-8 w-8 border-4 border-amber-500 border-t-transparent rounded-full" />
+        <div className="animate-spin h-8 w-8 border-4 border-electric-blue border-t-transparent rounded-full" />
       </div>
     );
   }
 
   if (!status) {
     return (
-      <div className="bg-red-500/10 border border-red-500 rounded-lg p-4">
-        <p className="text-red-400">Failed to load Telegram status</p>
+      <div className="bg-bold-red/10 border border-bold-red rounded-lg p-4">
+        <p className="text-bold-red">Failed to load Telegram status.</p>
       </div>
     );
   }
 
+  const connected = TELEGRAM_CONNECTION_COPY.CONNECTED;
+  const notConnected = TELEGRAM_CONNECTION_COPY.NOT_CONNECTED;
+
+  // ─── Connected state ───────────────────────────────────────────────────────
+  if (status.linked && status.has_access) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-white">{connected.pageTitle}</h2>
+        </div>
+
+        {/* Status card */}
+        <div className="bg-charcoal border border-neon-green/30 rounded-xl p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="text-neon-green text-lg font-semibold">{connected.statusLabel}</span>
+          </div>
+
+          <div className="space-y-2 text-sm">
+            {status.telegram_username && (
+              <div className="flex justify-between">
+                <span className="text-light-gray">{connected.usernameLabel}</span>
+                <span className="text-white font-medium">@{status.telegram_username}</span>
+              </div>
+            )}
+            {status.telegram_connected_at && (
+              <div className="flex justify-between">
+                <span className="text-light-gray">{connected.connectedLabel}</span>
+                <span className="text-white font-medium">
+                  {new Date(status.telegram_connected_at).toLocaleDateString()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-navy pt-4">
+            <p className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Receiving</p>
+            <ul className="space-y-1">
+              {connected.receiving.map((item) => (
+                <li key={item} className="text-sm text-light-gray flex items-center gap-2">
+                  <span className="text-neon-green">•</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Notifications */}
+        {notifications.length > 0 && (
+          <div className="space-y-2">
+            {notifications.map((notification) => (
+              <div
+                key={notification.event_id}
+                className={`p-4 rounded-lg border ${
+                  notification.event_type === 'telegram_granted'
+                    ? 'bg-neon-green/10 border-neon-green/40'
+                    : 'bg-navy/40 border-navy'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-white mb-1">{notification.title}</h3>
+                    <p className="text-sm text-light-gray mb-2">{notification.message}</p>
+                    {notification.cta_url && notification.cta_text && (
+                      <a
+                        href={notification.cta_url}
+                        className="inline-flex items-center text-sm font-medium text-electric-blue hover:underline"
+                      >
+                        {notification.cta_text} →
+                      </a>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => markNotificationRead(notification.event_id)}
+                    className="text-light-gray/50 hover:text-white ml-4"
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleUnlink}
+            disabled={unlinking}
+            className="py-2 px-4 rounded-lg text-sm font-semibold border border-navy text-light-gray hover:text-white hover:border-light-gray/50 transition-all disabled:opacity-50"
+          >
+            {unlinking ? 'Disconnecting...' : connected.ctaDisconnect}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Not connected / instructions state ───────────────────────────────────
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-white mb-2">Telegram Integration</h2>
-        <p className="text-gray-400">
-          Connect your Telegram account to receive real-time qualified signals
-        </p>
+        <h2 className="text-2xl font-bold text-white">{notConnected.pageTitle}</h2>
+        <p className="text-light-gray mt-1">{notConnected.subheadline}</p>
       </div>
 
       {/* Notifications */}
       {notifications.length > 0 && (
         <div className="space-y-2">
-          {notifications.map(notification => (
+          {notifications.map((notification) => (
             <div
               key={notification.event_id}
-              className={`p-4 rounded-lg border ${
-                notification.event_type === 'telegram_granted'
-                  ? 'bg-green-500/10 border-green-500'
-                  : 'bg-amber-500/10 border-amber-500'
-              }`}
+              className="p-4 rounded-lg border bg-navy/40 border-navy"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="font-semibold text-white mb-1">
-                    {notification.title}
-                  </h3>
-                  <p className="text-sm text-gray-300 mb-2">
-                    {notification.message}
-                  </p>
-                  {notification.cta_url && notification.cta_text && (
-                    <a
-                      href={notification.cta_url}
-                      className="inline-flex items-center text-sm font-medium text-amber-400 hover:text-amber-300"
-                    >
-                      {notification.cta_text} →
-                    </a>
-                  )}
+                  <h3 className="font-semibold text-white mb-1">{notification.title}</h3>
+                  <p className="text-sm text-light-gray">{notification.message}</p>
                 </div>
                 <button
                   onClick={() => markNotificationRead(notification.event_id)}
-                  className="text-gray-400 hover:text-white ml-4"
+                  className="text-light-gray/50 hover:text-white ml-4"
+                  aria-label="Dismiss"
                 >
                   ✕
                 </button>
@@ -199,203 +283,67 @@ export default function TelegramConnection() {
         </div>
       )}
 
-      {/* Connection Status */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-2xl">
-              📱
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">
-                {status.linked ? 'Connected' : 'Not Connected'}
-              </h3>
-              {status.linked && status.telegram_username && (
-                <p className="text-gray-400">@{status.telegram_username}</p>
-              )}
-            </div>
-          </div>
-          
-          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-            status.linked
-              ? 'bg-green-500/20 text-green-400'
-              : 'bg-gray-700 text-gray-400'
-          }`}>
-            {status.linked ? '✓ Linked' : 'Not Linked'}
-          </div>
-        </div>
-
-        {/* Access Status */}
-        <div className="border-t border-gray-700 pt-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400">Telegram Signals Access</span>
-            <span className={`font-semibold ${
-              status.has_access ? 'text-green-400' : 'text-gray-500'
-            }`}>
-              {status.has_access ? 'Enabled' : 'Disabled'}
-            </span>
-          </div>
-
-          {status.has_access && status.channels.length > 0 && (
-            <div>
-              <p className="text-sm text-gray-400 mb-2">Active Channels:</p>
-              <div className="flex flex-wrap gap-2">
-                {status.channels.map(channel => (
-                  <span
-                    key={channel}
-                    className="px-3 py-1 bg-amber-500/20 text-amber-400 rounded-full text-sm font-medium"
-                  >
-                    #{channel}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Subscription Info */}
-          <div className="bg-gray-900 rounded p-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">BeatVegas Tier</span>
-              <span className="text-white font-medium">
-                {status.entitlements?.beatvegas_tier?.toUpperCase() || 'FREE'}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Platform Subscription</span>
-              <span className={`font-medium ${
-                status.entitlements.beatvegas_subscription_active
-                  ? 'text-green-400'
-                  : 'text-gray-500'
-              }`}>
-                {status.entitlements.beatvegas_subscription_active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">Telegram-Only Subscription</span>
-              <span className={`font-medium ${
-                status.entitlements.telegram_only_subscription_active
-                  ? 'text-green-400'
-                  : 'text-gray-500'
-              }`}>
-                {status.entitlements.telegram_only_subscription_active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="mt-6 flex gap-3">
-          {!status.linked ? (
-            <button
-              onClick={handleGenerateLinkToken}
-              className="flex-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold py-3 px-6 rounded-lg transition-colors"
-            >
-              Link Telegram Account
-            </button>
-          ) : (
-            <button
-              onClick={handleUnlink}
-              disabled={unlinking}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:opacity-50"
-            >
-              {unlinking ? 'Unlinking...' : 'Unlink Account'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Link Instructions */}
-      {showInstructions && linkToken && (
-        <div className="bg-amber-500/10 border border-amber-500 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">
-            Link Your Telegram Account
-          </h3>
-          
-          <div className="bg-gray-900 rounded-lg p-4 mb-4">
-            <p className="text-sm text-gray-400 mb-2">Your Link Code:</p>
-            <div className="flex items-center justify-between bg-black rounded p-4">
-              <span className="text-3xl font-mono font-bold text-amber-400 tracking-wider">
-                {linkToken}
-              </span>
-              <button
-                onClick={() => navigator.clipboard.writeText(linkToken)}
-                className="text-gray-400 hover:text-white text-sm"
-              >
-                Copy
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">Expires in 1 hour</p>
-          </div>
-
-          <div className="space-y-3 text-sm text-gray-300">
-            <p className="font-semibold text-white">Instructions:</p>
-            {instructions?.split('\n').map((line, i) => (
-              <p key={i} className="flex items-start gap-2">
-                <span className="text-amber-400 font-bold">{i + 1}.</span>
-                <span>{line.replace(/^\d+\.\s*/, '')}</span>
-              </p>
+      {/* Connect instructions */}
+      {!showInstructions ? (
+        <div className="bg-charcoal border border-navy rounded-xl p-6 space-y-4">
+          <ol className="space-y-3">
+            {notConnected.instructions.map((step, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm text-light-gray">
+                <span className="text-electric-blue font-bold shrink-0">{i + 1}.</span>
+                <span>{step}</span>
+              </li>
             ))}
-          </div>
+          </ol>
 
-          <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">
-            <span>💡</span>
-            <span>
-              The bot will confirm once your account is linked. You can then request to join signal channels.
-            </span>
-          </div>
+          <button
+            onClick={handleGenerateLinkToken}
+            className="w-full py-3 rounded-lg font-bold bg-electric-blue hover:bg-electric-blue/90 text-white transition-all"
+          >
+            Generate Verification Code
+          </button>
         </div>
-      )}
+      ) : (
+        <div className="bg-charcoal border border-electric-blue/40 rounded-xl p-6 space-y-4">
+          <ol className="space-y-3">
+            {notConnected.instructions.map((step, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm text-light-gray">
+                <span className="text-electric-blue font-bold shrink-0">{i + 1}.</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
 
-      {/* Eligibility Notice */}
-      {status.linked && !status.has_access && (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-white mb-3">
-            Telegram Access Not Included
-          </h3>
-          <p className="text-gray-400 mb-4">
-            You're currently on the {status.entitlements.beatvegas_tier.toUpperCase()} plan.
-            Telegram signal delivery requires the <strong>100k plan</strong> ($49.99/month) or higher.
-          </p>
-          <div className="flex gap-3">
-            <a
-              href="/billing/upgrade"
-              className="bg-amber-500 hover:bg-amber-600 text-black font-semibold py-2 px-6 rounded-lg transition-colors"
-            >
-              Upgrade to 100k Plan
-            </a>
-            <a
-              href="/billing/telegram-only"
-              className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors"
-            >
-              Get Telegram Only ($39)
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Success State */}
-      {status.linked && status.has_access && (
-        <div className="bg-green-500/10 border border-green-500 rounded-lg p-6">
-          <div className="flex items-start gap-4">
-            <span className="text-3xl">✅</span>
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                You're All Set!
-              </h3>
-              <p className="text-gray-300 mb-3">
-                You'll receive QUALIFIED signals in Telegram as they're generated.
-                Make sure you've joined the signal channels.
+          {linkToken && (
+            <div className="bg-navy rounded-lg p-4 space-y-2">
+              <p className="text-xs text-light-gray">{notConnected.codeLabel}</p>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-mono font-bold text-electric-blue tracking-widest">
+                  {linkToken}
+                </span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(linkToken)}
+                  className="text-xs text-light-gray/60 hover:text-white transition-all"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="text-xs text-light-gray/50">
+                {notConnected.expiryLabel} ~60 minutes
               </p>
-              <ul className="text-sm text-gray-400 space-y-1">
-                <li>• Max 3 qualified signals per day</li>
-                <li>• Signals posted when edge ≥ 7 pts and win prob ≥ 56%</li>
-                <li>• "Simulations: 100,000" displayed on all signals</li>
-                <li>• Sharp side action shown for spread markets</li>
-              </ul>
             </div>
-          </div>
+          )}
+
+          <p className="text-xs text-light-gray/50 text-center">{notConnected.statusWaiting}</p>
+
+          <button
+            onClick={() => window.open('https://t.me/BeatVegasBot', '_blank')}
+            className="text-xs text-electric-blue hover:underline"
+          >
+            {notConnected.guideCta}
+          </button>
         </div>
       )}
     </div>
   );
 }
+

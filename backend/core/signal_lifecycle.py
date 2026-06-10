@@ -186,7 +186,7 @@ def create_signal(
     
     Returns: Signal object
     """
-    signal_id = f"{game_id}_{intent.value}_{int(datetime.now().timestamp())}"
+    signal_id = f"{game_id}_{intent.value}_{int(datetime.now(timezone.utc).timestamp())}"
     
     return Signal(
         signal_id=signal_id,
@@ -257,7 +257,7 @@ def lock_signal_with_entry(
     Returns: Updated signal
     """
     signal.entry_snapshot = entry_snapshot
-    signal.published_at = datetime.now()
+    signal.published_at = datetime.now(timezone.utc)
     signal.status = SignalStatus.PUBLISHED
     
     return signal
@@ -278,7 +278,7 @@ def freeze_signal(
     
     Returns: Updated signal
     """
-    signal.freeze_until = datetime.now() + timedelta(minutes=freeze_duration_minutes)
+    signal.freeze_until = datetime.now(timezone.utc) + timedelta(minutes=freeze_duration_minutes)
     signal.freeze_reason = reason
     
     return signal
@@ -289,7 +289,7 @@ def is_frozen(signal: Signal) -> bool:
     if signal.freeze_until is None:
         return False
     
-    return datetime.now() < signal.freeze_until
+    return datetime.now(timezone.utc) < signal.freeze_until
 
 
 def lock_signal_at_game_start(signal: Signal) -> Signal:
@@ -301,7 +301,7 @@ def lock_signal_at_game_start(signal: Signal) -> Signal:
     
     Returns: Updated signal
     """
-    signal.locked_at = datetime.now()
+    signal.locked_at = datetime.now(timezone.utc)
     signal.status = SignalStatus.LOCKED
     
     return signal
@@ -327,7 +327,7 @@ def grade_signal(
     signal.final_score_team_a = final_score_team_a
     signal.final_score_team_b = final_score_team_b
     signal.result = result
-    signal.graded_at = datetime.now()
+    signal.graded_at = datetime.now(timezone.utc)
     signal.status = SignalStatus.GRADED
     
     return signal
@@ -429,7 +429,7 @@ signal = create_signal(
 
 # Wave 1: Discovery (T-6h)
 wave1_snapshot = MarketSnapshot(
-    timestamp=datetime.now(),
+    timestamp=datetime.now(timezone.utc),
     wave=SignalWave.WAVE_1_DISCOVERY,
     team_a_spread=-3.5,
     team_a_spread_odds=-110,
@@ -446,7 +446,7 @@ signal = add_market_snapshot(signal, wave1_snapshot)
 wave1_run = SimulationRun(
     sim_run_id="wave1_123",
     wave=SignalWave.WAVE_1_DISCOVERY,
-    timestamp=datetime.now(),
+    timestamp=datetime.now(timezone.utc),
     num_simulations=50000,
     model_version="v2.1",
     sport="NBA",

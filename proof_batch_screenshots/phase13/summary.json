@@ -1,0 +1,22 @@
+[
+  {
+    "filename": "00_affiliate_landing.png",
+    "description": "Affiliate trial landing page — 3 Days Free + Stripe card element",
+    "path": "/root/Permutation-Carlos/proof_batch_screenshots/phase13/00_affiliate_landing.png"
+  },
+  {
+    "filename": "01_dashboard.png",
+    "description": "Authenticated dashboard — intelligence cards",
+    "path": "/root/Permutation-Carlos/proof_batch_screenshots/phase13/01_dashboard.png"
+  },
+  {
+    "filename": "02_sidebar_no_dev_tab.png",
+    "description": "Sidebar — VITE_SIMSPORTS_LIVE=false — For Developers tab hidden",
+    "path": "/root/Permutation-Carlos/proof_batch_screenshots/phase13/02_sidebar_no_dev_tab.png"
+  },
+  {
+    "filename": "03_parlay_gate.png",
+    "description": "Parlay Architect — trial gate with Subscribe Now + Continue Trial CTAs",
+    "path": "/root/Permutation-Carlos/proof_batch_screenshots/phase13/03_parlay_gate.png"
+  }
+]

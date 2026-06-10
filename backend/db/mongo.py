@@ -2,9 +2,10 @@ import os
 import sys
 from pymongo import MongoClient, UpdateOne
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 import logging
+from config.phase10_tenant_shell import PHASE10_AUDIT_COLLECTIONS
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.timezone import now_utc, now_est, parse_iso_to_est, format_est_date
@@ -16,24 +17,25 @@ logger = logging.getLogger(__name__)
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DATABASE_NAME", "beatvegas")
+MONGO_MAX_POOL_SIZE = int(os.getenv("MONGO_MAX_POOL_SIZE", "50"))
 
-# Initialize MongoDB client with error handling
-try:
-    client = MongoClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=5000,  # 5 second timeout
-        connectTimeoutMS=10000,
-        socketTimeoutMS=10000,
-    )
-    # Test connection
-    client.admin.command('ping')
-    db = client[DB_NAME]
-    logger.info(f"✅ MongoDB connected successfully to {DB_NAME}")
-except Exception as e:
-    logger.error(f"❌ MongoDB connection failed: {e}")
-    logger.error(f"   MONGO_URI format should be: mongodb://username:password@host:port/database")
-    logger.error(f"   Or for auth: mongodb://username:password@host:port/?authSource=admin")
-    raise
+# Initialize MongoDB client — lazy connection (no blocking ping at import time).
+# pymongo MongoClient is non-blocking at construction; the first actual operation
+# triggers the connection. The blocking `admin.command('ping')` has been removed
+# from module-level code to prevent hanging the FastAPI event loop at startup.
+# Connection health is verified in the async startup handler via run_in_executor.
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=10000,
+    maxPoolSize=MONGO_MAX_POOL_SIZE,
+)
+db = client[DB_NAME]
+logger.info(
+    "MongoDB client initialised (lazy connection — not yet pinged, maxPoolSize=%s)",
+    MONGO_MAX_POOL_SIZE,
+)
 
 
 def ensure_indexes() -> None:
@@ -179,6 +181,136 @@ def ensure_indexes() -> None:
             ("market_type", 1),
             ("market_settlement", 1)
         ], name="sport_market_index", background=True)
+
+        # Phase 1+ persistence indexes: canonical decision bundles
+        db["decision_records"].create_index("identity_key", unique=True)
+        db["decision_records"].create_index("record_id", unique=True)
+        db["decision_records"].create_index([("game_id", 1), ("created_at", -1)])
+
+        # Distribution Governance indexes (Operational Architecture v1.0.0)
+        db["distribution_decision_log"].create_index("distribution_id", unique=True)
+        db["distribution_decision_log"].create_index("decision_id", unique=True)
+        db["distribution_decision_log"].create_index([("event_id", 1)])
+        db["distribution_decision_log"].create_index([("calendar_day", 1)])
+        db["distribution_decision_log"].create_index([("distribution_category", 1), ("calendar_day", 1)])
+        db["distribution_decision_log"].create_index([("market_type", 1), ("calendar_day", 1)])
+        db["distribution_decision_log"].create_index([("trace_id", 1)])
+
+        # Lifecycle + assertion support indexes used by governance services
+        db["prediction_lifecycle_log"].create_index([("decision_id", 1), ("timestamp", -1)])
+        db["prediction_lifecycle_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["prediction_lifecycle_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+        db["prediction_lifecycle_log"].create_index([("stage", 1), ("timestamp", -1)])
+        db["assertion_failure_log"].create_index([("code", 1), ("created_at_utc", -1)])
+
+        # Phase 2 observability indexes (append-only)
+        db["decision_audit_log"].create_index([("audit_id", 1)], unique=True)
+        db["decision_audit_log"].create_index([("event_id", 1), ("timestamp", -1)])
+        db["decision_audit_log"].create_index([("decision_id", 1), ("timestamp", -1)])
+        db["decision_audit_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["decision_audit_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["decision_settlement_metrics"].create_index([("metrics_id", 1)], unique=True)
+        db["decision_settlement_metrics"].create_index([("graded_id", 1), ("timestamp", -1)])
+        db["decision_settlement_metrics"].create_index([("publish_id", 1), ("timestamp", -1)])
+        db["decision_settlement_metrics"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["decision_settlement_metrics"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["truth_dataset"].create_index([("truth_row_id", 1)], unique=True)
+        db["truth_dataset"].create_index([("event_id", 1), ("timestamp", -1)])
+        db["truth_dataset"].create_index([("prediction_id", 1), ("timestamp", -1)])
+        db["truth_dataset"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["truth_dataset"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["clv_capture_log"].create_index([("clv_capture_id", 1)], unique=True)
+        db["clv_capture_log"].create_index([("event_id", 1), ("timestamp", -1)])
+        db["clv_capture_log"].create_index([("prediction_id", 1), ("timestamp", -1)])
+        db["clv_capture_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["clv_capture_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["calibration_records"].create_index([("calibration_record_id", 1)], unique=True)
+        db["calibration_records"].create_index([("calibration_version", 1), ("timestamp", -1)])
+        db["calibration_records"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["calibration_records"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        db["drift_detection_log"].create_index([("drift_id", 1)], unique=True)
+        db["drift_detection_log"].create_index([("drift_detected", 1), ("timestamp", -1)])
+        db["drift_detection_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["drift_detection_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+
+        # Billing + parlay execution observability indexes (Spec v2.0.1)
+        db["billing_state"].create_index([("user_id", 1)], unique=True)
+        db["billing_state"].create_index([("plan_id", 1)])
+        db["billing_state"].create_index([("status", 1)])
+        db["billing_state"].create_index([("next_billing_date", 1)])
+
+        db["billing_state_change_log"].create_index([("change_id", 1)], unique=True)
+        db["billing_state_change_log"].create_index([("user_id", 1)])
+        db["billing_state_change_log"].create_index([("trace_id", 1)])
+        db["billing_state_change_log"].create_index([("field_changed", 1)])
+        db["billing_state_change_log"].create_index([("created_at_utc", -1)])
+
+        db["parlay_execution_log"].create_index([("event_id", 1)], unique=True)
+        db["parlay_execution_log"].create_index([("run_id", 1)])
+        db["parlay_execution_log"].create_index([("user_id", 1)])
+        db["parlay_execution_log"].create_index([("trace_id", 1)])
+        db["parlay_execution_log"].create_index([("decision_id", 1)])
+        db["parlay_execution_log"].create_index([("event_type", 1)])
+        db["parlay_execution_log"].create_index([("created_at_utc", -1)])
+
+        db["parlay_overage_charge_log"].create_index([("charge_id", 1)], unique=True)
+        db["parlay_overage_charge_log"].create_index([("parlay_run_id", 1)], unique=True)
+        db["parlay_overage_charge_log"].create_index([("user_id", 1)])
+        db["parlay_overage_charge_log"].create_index([("trace_id", 1)])
+        db["parlay_overage_charge_log"].create_index([("billing_period_start", 1)])
+        db["parlay_overage_charge_log"].create_index([("created_at_utc", -1)])
+
+        # Phase 9 compliance indexes (append-only legal logs)
+        db["self_exclusion_log"].create_index([("exclusion_id", 1)], unique=True)
+        db["self_exclusion_log"].create_index([("user_id", 1), ("requested_at_utc", -1)])
+        db["self_exclusion_log"].create_index([("trace_id", 1)])
+
+        db["self_exclusion_reinstatement_queue"].create_index([("request_id", 1)], unique=True)
+        db["self_exclusion_reinstatement_queue"].create_index([("user_id", 1), ("requested_at_utc", -1)])
+        db["self_exclusion_reinstatement_queue"].create_index([("status", 1), ("requested_at_utc", -1)])
+
+        db["data_deletion_log"].create_index([("request_id", 1)])
+        db["data_deletion_log"].create_index([("user_id", 1), ("requested_at_utc", -1)])
+        db["data_deletion_log"].create_index([("status", 1), ("requested_at_utc", -1)])
+        db["data_deletion_log"].create_index([("trace_id", 1)])
+
+        # Phase 10 B2B shell: tenant table and tenant-scoped audit readiness.
+        db["tenants"].create_index([("tenant_id", 1)], unique=True)
+        db["tenants"].create_index([("tenant_type", 1), ("status", 1)])
+        db["tenants"].create_index([("entitlement_type", 1), ("status", 1)])
+
+        for collection in PHASE10_AUDIT_COLLECTIONS:
+            db[collection].create_index([("tenant_id", 1)])
+
+        # Phase 11 affiliate acquisition engine indexes
+        db["affiliate_invites"].create_index([("invite_id", 1)], unique=True)
+        db["affiliate_invites"].create_index([("affiliate_id", 1), ("status", 1)])
+        db["affiliate_invites"].create_index([("expires_at_utc", 1)])
+
+        db["affiliate_clicks"].create_index([("click_id", 1)], unique=True)
+        db["affiliate_clicks"].create_index([("affiliate_id", 1), ("clicked_at_utc", -1)])
+        db["affiliate_clicks"].create_index([("is_converted", 1), ("clicked_at_utc", -1)])
+
+        db["affiliate_attributions"].create_index([("attribution_id", 1)], unique=True)
+        db["affiliate_attributions"].create_index([("user_id", 1)], unique=True)
+        db["affiliate_attributions"].create_index([("affiliate_id", 1), ("locked_at_utc", -1)])
+
+        db["affiliate_commission_log"].create_index([("commission_id", 1)])
+        db["affiliate_commission_log"].create_index([("affiliate_id", 1), ("created_at_utc", -1)])
+        db["affiliate_commission_log"].create_index([("status", 1), ("net_30_date", 1)])
+        db["affiliate_commission_log"].create_index([("trace_id", 1)])
+
+        db["affiliate_payout_log"].create_index([("payout_id", 1)], unique=True)
+        db["affiliate_payout_log"].create_index([("affiliate_id", 1), ("created_at_utc", -1)])
+        db["affiliate_payout_log"].create_index([("status", 1), ("created_at_utc", -1)])
+
+        db["affiliate_payout_batches"].create_index([("batch_id", 1)], unique=True)
+        db["affiliate_payout_batches"].create_index([("run_date_utc", -1)])
         
         logger.info("✅ Database indexes created successfully")
         
@@ -255,24 +387,16 @@ def find_events(collection: str, filter: Optional[Dict[str, Any]] = None, limit:
             for bookmaker in doc['bookmakers']:
                 for market in bookmaker.get('markets', []):
                     if market['key'] == 'h2h':
-                        for outcome in market.get('outcomes', [])[:2]:  # Home and Away
-                            price = outcome['price']
-                            # Convert decimal odds to American format if needed
-                            if abs(price) < 50:  # Likely decimal odds (e.g., 1.02, 2.5)
-                                if price >= 2.0:
-                                    american_odds = int((price - 1) * 100)
-                                elif price > 1.0:  # Prevent division by zero
-                                    american_odds = int(-100 / (price - 1))
-                                else:
-                                    # Handle edge case: price = 1.0 or invalid
-                                    american_odds = 100
-                                formatted_price = f"+{american_odds}" if american_odds > 0 else str(american_odds)
-                            else:  # Already American odds
-                                formatted_price = f"+{int(price)}" if price > 0 else str(int(price))
-                            
+                        normalized_outcomes = _extract_canonical_h2h_outcomes(
+                            market=market,
+                            home_team=doc.get('home_team', ''),
+                            away_team=doc.get('away_team', ''),
+                        )
+                        for outcome_name, american_odds in normalized_outcomes:
+                            formatted_price = f"+{american_odds}" if american_odds > 0 else str(american_odds)
                             bets.append({
                                 'type': 'Moneyline',
-                                'pick': outcome['name'],
+                                'pick': outcome_name,
                                 'value': formatted_price
                             })
                     elif market['key'] == 'spreads' and not top_prop_bet:
@@ -289,6 +413,113 @@ def find_events(collection: str, filter: Optional[Dict[str, Any]] = None, limit:
             doc['top_prop_bet'] = top_prop_bet
     
     return docs
+
+
+def _extract_canonical_h2h_outcomes(
+    market: Dict[str, Any],
+    home_team: str,
+    away_team: str,
+) -> List[Tuple[str, int]]:
+    """Return strict 2-way moneyline outcomes for card rendering."""
+    outcomes = market.get('outcomes', []) or []
+    team_names = {home_team.strip().lower(), away_team.strip().lower()}
+
+    team_outcomes: List[Tuple[str, float]] = []
+    for outcome in outcomes:
+        name = str(outcome.get('name', '')).strip()
+        if not name or name.lower() not in team_names:
+            continue
+        price = _to_numeric(outcome.get('price'))
+        if price is None:
+            continue
+        team_outcomes.append((name, price))
+
+    # Normalize all team-vs-team outcomes to no-vig 2-way probabilities.
+    # This handles both native 2-way h2h and draw-inclusive 3-way h2h consistently.
+    if len(team_outcomes) == 2:
+        team_a_name, team_a_price = team_outcomes[0]
+        team_b_name, team_b_price = team_outcomes[1]
+
+        team_a_prob = _price_to_implied_probability(team_a_price)
+        team_b_prob = _price_to_implied_probability(team_b_price)
+        denom = team_a_prob + team_b_prob
+
+        if denom > 0:
+            team_a_prob_2way = team_a_prob / denom
+            team_b_prob_2way = team_b_prob / denom
+            team_a_american, team_b_american = _to_polarized_two_way_american(
+                team_a_prob_2way,
+                team_b_prob_2way,
+            )
+            return [
+                (team_a_name, team_a_american),
+                (team_b_name, team_b_american),
+            ]
+
+    return [(name, _price_to_american(price)) for name, price in team_outcomes[:2]]
+
+
+def _is_draw_like_name(name: str) -> bool:
+    return name.strip().lower() in {'draw', 'tie', 'x'}
+
+
+def _to_numeric(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _price_to_american(price: float) -> int:
+    # Odds API payloads can be decimal (< 50) or American (>= 50 magnitude)
+    if abs(price) >= 50:
+        return int(round(price))
+
+    if price <= 1.0:
+        return 100
+    if price >= 2.0:
+        return int(round((price - 1.0) * 100.0))
+    return int(round(-100.0 / (price - 1.0)))
+
+
+def _price_to_implied_probability(price: float) -> float:
+    if abs(price) >= 50:
+        if price > 0:
+            return 100.0 / (price + 100.0)
+        return abs(price) / (abs(price) + 100.0)
+
+    if price <= 1.0:
+        return 0.0
+    return 1.0 / price
+
+
+def _implied_probability_to_american(probability: float) -> int:
+    p = max(0.0001, min(0.9999, probability))
+    if p >= 0.5:
+        return int(round(-(p / (1.0 - p)) * 100.0))
+    return int(round(((1.0 - p) / p) * 100.0))
+
+
+def _to_polarized_two_way_american(probability_a: float, probability_b: float) -> Tuple[int, int]:
+    """
+    Convert two complementary probabilities to opposite-sign American odds for display.
+    """
+    if abs(probability_a - probability_b) < 1e-9:
+        return -100, 100
+
+    odds_a = _implied_probability_to_american(probability_a)
+    odds_b = _implied_probability_to_american(probability_b)
+
+    # Enforce opposite polarity for card display consistency.
+    if (odds_a > 0 and odds_b > 0) or (odds_a < 0 and odds_b < 0):
+        if probability_a > probability_b:
+            odds_a = -abs(odds_a)
+            odds_b = abs(odds_b)
+        else:
+            odds_b = -abs(odds_b)
+            odds_a = abs(odds_a)
+
+    return odds_a, odds_b
 
 
 def insert_log_entry(entry: Dict[str, Any]):

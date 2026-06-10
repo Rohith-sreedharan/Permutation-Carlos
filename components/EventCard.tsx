@@ -1,5 +1,13 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { EventWithPrediction } from '../types';
+import { formatAwayAtHome } from '../utils/matchupLabel';
+import { getDisplayTeamName } from '../utils/matchupLabel';
+import { CANONICAL_PROP_LABEL, getCanonicalPropHeadline } from '../utils/propDisplay';
+import { getSportDisplayName } from '../utils/sportLabels';
+import MarketDecisionCard from './MarketDecisionCard';
+import { fetchGameDecisions, fetchSimulation } from '../services/api';
+import type { MarketDecision } from '../types/MarketDecision';
+import { compareCardsByClassification, renderMarketSignalCard } from '../utils/cardMarketSignal';
 
 interface EventCardProps {
   event: EventWithPrediction;
@@ -32,6 +40,89 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
   } = event;
   const prediction = event.prediction;
   const gameTime = new Date(commence_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).replace(' ', ' ') + ' EST';
+  const matchupLabel = formatAwayAtHome({ away_team, home_team });
+  const canonicalPropHeadline = getCanonicalPropHeadline(event);
+  const [decision, setDecision] = useState<MarketDecision | null>(null);
+  const [decisionLoading, setDecisionLoading] = useState<boolean>(true);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const retryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mapSportKeyToLeague = (sportKey: string): string => {
+    const key = (sportKey || '').toLowerCase();
+    if (key.includes('basketball_nba')) return 'NBA';
+    if (key.includes('basketball_ncaab')) return 'NCAAB';
+    if (key.includes('americanfootball_nfl')) return 'NFL';
+    if (key.includes('americanfootball_ncaaf')) return 'NCAAF';
+    if (key.includes('icehockey_nhl')) return 'NHL';
+    if (key.includes('baseball_mlb')) return 'MLB';
+    return sportKey?.split('_').pop()?.toUpperCase() || 'NBA';
+  };
+
+  const league = useMemo(() => mapSportKeyToLeague(sport_key), [sport_key]);
+
+  const selectTopDecision = (decisions: {
+    spread: MarketDecision | null;
+    moneyline: MarketDecision | null;
+    total: MarketDecision | null;
+  }): MarketDecision | null => {
+    const candidates = [decisions.spread, decisions.moneyline, decisions.total].filter(Boolean) as MarketDecision[];
+    if (candidates.length === 0) return null;
+    return candidates.sort((a, b) => {
+      const ra = renderMarketSignalCard(a);
+      const rb = renderMarketSignalCard(b);
+      return compareCardsByClassification(ra, rb);
+    })[0];
+  };
+
+  const loadDecision = async () => {
+    if (!event.id) {
+      setDecisionLoading(false);
+      return;
+    }
+    setDecisionLoading(true);
+    setDecisionError(null);
+    try {
+      const data = await fetchGameDecisions(league, event.id);
+      const top = selectTopDecision(data);
+      setDecision(top);
+
+      // Auto-retry once if all markets are BLOCKED — simulation may not be
+      // generated yet. Fire fetchSimulation (which auto-generates it), then
+      // re-fetch the decision after a short delay.
+      const allBlocked =
+        top === null ||
+        (top as any).classification === 'BLOCKED' ||
+        (top as any).classification === undefined;
+      if (allBlocked) {
+        // Warm the simulation cache in background, then retry decision fetch
+        fetchSimulation(event.id).catch(() => null);
+        if (retryRef.current) clearTimeout(retryRef.current);
+        retryRef.current = setTimeout(async () => {
+          try {
+            const retryData = await fetchGameDecisions(league, event.id);
+            setDecision(selectTopDecision(retryData));
+          } catch {
+            // Keep the original BLOCKED result — silent retry failure
+          }
+        }, 4000);
+      }
+    } catch (err: any) {
+      setDecisionError(err?.message || 'Failed to load decision');
+      setDecision(null);
+    } finally {
+      setDecisionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (retryRef.current) clearTimeout(retryRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    loadDecision();
+  }, [event.id, league]);
 
   const confidencePercentage = prediction ? Math.round(prediction.confidence * 100) : 0;
   const suppressCertainty = shouldSuppressDisplay(event);
@@ -39,9 +130,9 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
   return (
     <div 
       onClick={onClick}
-      className={`bg-charcoal rounded-lg shadow-lg p-4 flex flex-col space-y-3 relative transition-all duration-300 border ${
-        isRecalculated ? 'border-neon-green shadow-neon-green/50 animate-pulse' : 'border-transparent hover:border-electric-blue'
-      } ${onClick ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+      className={`bg-charcoal rounded-xl shadow-lg p-5 flex flex-col space-y-4 relative transition-all duration-300 border ${
+        isRecalculated ? 'border-neon-green shadow-neon-green/50 animate-pulse' : 'border-navy/50 hover:border-electric-blue'
+      } ${onClick ? 'cursor-pointer hover:scale-[1.01] hover:shadow-xl' : ''}`}
     >
       {/* AI Recalculated Badge */}
       {isRecalculated && (
@@ -51,12 +142,21 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
         </div>
       )}
       
-      <div className="absolute top-4 right-4 bg-electric-blue/20 text-electric-blue text-xs font-bold px-2 py-1 rounded-full">{sport_key}</div>
+      <div className="absolute top-4 right-4 bg-electric-blue/20 text-electric-blue text-xs font-bold px-2 py-1 rounded-full">{getSportDisplayName(sport_key)}</div>
       <div>
-        <h3 className="text-2xl font-bold text-white font-teko">{home_team} vs.</h3>
-        <h3 className="text-2xl font-bold text-white font-teko">{away_team}</h3>
+        <h3 className="text-2xl font-bold text-white font-teko">{matchupLabel}</h3>
         <p className="text-sm text-light-gray">{gameTime}</p>
       </div>
+
+      <MarketDecisionCard
+        decision={decision}
+        league={league}
+        gameId={event.id}
+        isLoading={decisionLoading}
+        isError={!!decisionError}
+        errorMessage={decisionError || undefined}
+        onRetry={loadDecision}
+      />
       
       <div className="space-y-2">
         {bets.length > 0 ? (
@@ -67,19 +167,17 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
             </div>
           ))
         ) : (
-          <div className="text-sm text-light-gray italic">No betting lines available yet</div>
+          <div className="text-sm text-light-gray italic">No market lines available yet</div>
         )}
       </div>
 
       <div className="border-t border-navy pt-3">
-        <p className="text-xs text-light-gray font-semibold mb-2">TOP PROP MISPRICING</p>
+        <p className="text-xs text-light-gray font-semibold mb-2">{CANONICAL_PROP_LABEL}</p>
         {event.top_prop_mispricings && event.top_prop_mispricings.length > 0 ? (
           <div className="space-y-1">
-            <p className="text-sm font-bold text-white">
-              {event.top_prop_mispricings[0].player_name} – {event.top_prop_mispricings[0].market}
-            </p>
+            <p className="text-sm font-bold text-white">{canonicalPropHeadline}</p>
             <div className="flex items-center space-x-2 text-xs">
-              <span className="text-light-gray">{event.top_prop_mispricings[0].team}</span>
+              <span className="text-light-gray">{getDisplayTeamName(event.top_prop_mispricings[0].team)}</span>
               <span className="text-light-gray">·</span>
               <span className="text-electric-blue font-semibold">{event.top_prop_mispricings[0].position}</span>
             </div>
@@ -105,7 +203,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, isRecalculated = false, on
           </div>
         ) : (
           <p className="text-sm font-bold text-light-gray italic">
-            {top_prop_bet || 'No prop analysis available'}
+            {canonicalPropHeadline}
           </p>
         )}
       </div>

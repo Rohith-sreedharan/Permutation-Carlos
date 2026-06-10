@@ -54,7 +54,7 @@ export const TIERS: Record<string, TierConfig> = {
     stability_band: 0.035,  // ±3.5%
     confidence_multiplier: 1.0,
     min_edge_required: 0.03,
-    description: "Maximum precision Monte Carlo"
+    description: "Maximum Decision Engine precision"
   },
   founder: { 
     key: 'founder', 
@@ -91,20 +91,20 @@ export const getSimPowerMessage = (tierKey: string, context: 'game' | 'confidenc
   
   if (tier.sims >= MAX_SIMS) {
     if (context === 'game') {
-      return `Monte Carlo Simulation (${tier.sims.toLocaleString()} iterations – ${tier.label} max)\nRunning at full BeatVegas simulation depth.`;
+      return `Decision Engine (${tier.sims.toLocaleString()} Intelligence Cycles - ${tier.label} max)\nRunning at full Decision Depth.`;
     } else if (context === 'confidence') {
-      return `${tier.sims.toLocaleString()} sims active – maximum resolution.`;
+      return `${tier.sims.toLocaleString()} Intelligence Cycles active - maximum resolution.`;
     } else {
-      return `${tier.label} sim power (${(tier.sims / 1000).toFixed(0)}K) – full BeatVegas grid unlocked.`;
+      return `${tier.label} Decision Depth (${(tier.sims / 1000).toFixed(0)}K) - full BeatVegas grid unlocked.`;
     }
   }
 
   if (context === 'game') {
-    return `Monte Carlo Simulation (${tier.sims.toLocaleString()} iterations – ${tier.label} cap)\nHigher tiers re-run this matchup at ${nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()} sims for tighter edges.`;
+    return `Decision Engine (${tier.sims.toLocaleString()} Intelligence Cycles - ${tier.label} cap)\nHigher tiers re-run this matchup at ${nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()} Intelligence Cycles for tighter edges.`;
   } else if (context === 'confidence') {
-    return `${tier.sims.toLocaleString()} sims active. ${nextTier ? nextTier.label : 'Elite'} tier${nextTier ? 's' : ''} use ${nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()} sims on this matchup.`;
+    return `${tier.sims.toLocaleString()} Intelligence Cycles active. ${nextTier ? nextTier.label : 'Elite'} tier${nextTier ? 's' : ''} use ${nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()} Intelligence Cycles on this matchup.`;
   } else {
-    return `This parlay is built on ${(tier.sims / 1000).toFixed(0)}K simulations. ${nextTier ? nextTier.label : 'Elite'} tier${nextTier ? 's' : ''} deepen${nextTier ? '' : 's'} the sim grid to ${nextTier ? (nextTier.sims / 1000).toFixed(0) : '100'}K sims.`;
+    return `This parlay is built on ${(tier.sims / 1000).toFixed(0)}K Intelligence Cycles. ${nextTier ? nextTier.label : 'Elite'} tier${nextTier ? 's' : ''} deepen${nextTier ? '' : 's'} the engine grid to ${nextTier ? (nextTier.sims / 1000).toFixed(0) : '100'}K Intelligence Cycles.`;
   }
 };
 
@@ -127,7 +127,7 @@ export const shouldShowUpgradePrompt = (
   if (context.volatility === 'HIGH' && tier.sims < 50000) {
     return {
       show: true,
-      message: `High-variance matchup detected. More simulation power can reduce noise in spots like this.`,
+      message: `High outcome variance detected. More Decision Depth can reduce noise in spots like this.`,
       requiredTier: tier.sims < 25000 ? 'core' : 'pro'
     };
   }
@@ -136,7 +136,7 @@ export const shouldShowUpgradePrompt = (
   if (context.legCount && context.legCount >= 3 && tier.sims < 50000) {
     return {
       show: true,
-      message: `Multi-leg parlays benefit most from higher Simulation Power. ${nextTier.label} Tier re-runs this parlay at ${(nextTier.sims / 1000).toFixed(0)}K sims with improved correlation handling.`,
+      message: `Multi-leg parlays benefit most from higher Decision Depth. ${nextTier.label} Tier re-runs this parlay at ${(nextTier.sims / 1000).toFixed(0)}K Intelligence Cycles with improved correlation handling.`,
       requiredTier: nextTier.key
     };
   }
@@ -147,17 +147,17 @@ export const shouldShowUpgradePrompt = (
       movement: {
         minSims: 25000,
         tierKey: 'core',
-        message: 'Core Tier unlocks live line movement + model vs market tracking built on 25K simulations each game.'
+        message: 'Core Tier unlocks live line movement + model vs market tracking built on 25K Intelligence Cycles each game.'
       },
       confidence_bands: {
         minSims: 50000,
         tierKey: 'pro',
-        message: 'Pro Tier unlocks deeper confidence bands and higher-resolution margins of victory (50K sims).'
+        message: 'Pro Tier unlocks deeper confidence bands and higher-resolution margins of victory (50K Intelligence Cycles).'
       },
       advanced_correlation: {
         minSims: 100000,
         tierKey: 'elite',
-        message: 'Elite re-runs this matchup at 100K simulations with full correlation overlays and micro-edge detection.'
+        message: 'Elite re-runs this matchup at 100K Intelligence Cycles with full correlation overlays and micro-edge detection.'
       }
     };
 

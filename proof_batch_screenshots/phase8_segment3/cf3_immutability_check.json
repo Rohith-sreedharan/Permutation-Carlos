@@ -1,0 +1,14 @@
+{
+  "migration_ok": null,
+  "calibration_version": "v_SEG3_CF3_2ef10526",
+  "guard_blocked": true,
+  "error_message": "IMMUTABILITY VIOLATION: calibration_version 'v_SEG3_CF3_2ef10526' is ACTIVE and cannot be modified.",
+  "critical_event": {
+    "event_type": "CALIBRATION_IMMUTABILITY_VIOLATION",
+    "severity": "CRITICAL",
+    "calibration_version": "v_SEG3_CF3_2ef10526",
+    "source": "application_layer_guard",
+    "timestamp": "2026-05-27T13:32:29.057575+00:00",
+    "agent_id": "system.immutability_guard"
+  }
+}

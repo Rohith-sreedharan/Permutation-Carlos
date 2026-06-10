@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, Award, CheckCircle, Zap } from 'lucide-react';
-import PageHeader from './PageHeader';
-import LoadingSpinner from './LoadingSpinner';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+import React, { useState, useEffect } from 'react';
+import LoadingSpinner from './LoadingSpinner';
+import { API_BASE_URL } from '../services/api';
 
 interface LeaderboardEntry {
-  user_id: string;
   username: string;
   rank: string;
   units?: number;

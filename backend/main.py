@@ -15,6 +15,26 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# ── Phase 2A.3: Security headers — applied before all route handlers ──────────
+from middleware.security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── Phase 2A.1: GeoIP enforcement — applied before CORSMiddleware ─────────────
+from middleware.geoip import GeoIPMiddleware
+_geoip_enabled = os.getenv("GEOIP_ENABLED", "true").lower() not in ("false", "0", "no")
+app.add_middleware(GeoIPMiddleware, enabled=_geoip_enabled)
+
+# ── Phase 2A.3: Rate limiting ─────────────────────────────────────────────────
+from middleware.rate_limiter import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware)
+
+from middleware.api_versioning import APIVersioningMiddleware
+app.add_middleware(APIVersioningMiddleware)
+
+# ── Phase 9 AC-5: API response language guard (CRITICAL sentinel events) ─────
+from middleware.api_response_language_guard import APIResponseLanguageGuardMiddleware
+app.add_middleware(APIResponseLanguageGuardMiddleware)
+
 # Read CORS configuration from environment
 # Example values in backend/.env.example
 cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
@@ -22,6 +42,22 @@ if cors_origins.strip() == "*":
     allow_origins = ["*"]
 else:
     allow_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
+
+# Always include both production origins so CORS is correct regardless of
+# what is set in .env on the server (the .env is not git-tracked).
+# If env is wildcard, convert to an explicit list so credentials can be used.
+_production_origins = [
+    "https://beatvegas.app",
+    "https://beta.beatvegas.app",
+    "https://www.beatvegas.app",
+]
+if allow_origins == ["*"]:
+    # Wildcard + credentials is invalid per CORS spec; use explicit list instead
+    allow_origins = list(_production_origins)
+else:
+    for _origin in _production_origins:
+        if _origin not in allow_origins:
+            allow_origins.append(_origin)
 
 # Add common localhost variations for development
 if allow_origins != ["*"]:
@@ -69,7 +105,7 @@ except ImportError:
     print("Warning: ab_testing service not available")
 
 # Import routers
-from routes.auth_routes import router as auth_router
+from routes.auth_routes import router as auth_router, router_v1 as auth_router_v1
 from routes.whoami_routes import router as whoami_router
 from routes.odds_routes import router as odds_router
 from routes.core_routes import router as core_router
@@ -108,6 +144,7 @@ from routes.tracking_routes import router as tracking_router
 from routes.war_room_routes import router as war_room_router
 from routes.telegram_routes import router as telegram_router
 from routes.stripe_webhook_routes import router as stripe_webhook_router
+from routes.phase3_webhook_routes import router as phase3_webhook_router  # Phase 3A.2
 from routes.signal_routes import router as signal_router
 from routes.autonomous_edge_routes import router as autonomous_edge_router
 from routes.ncaab_routes import router as ncaab_router
@@ -120,8 +157,17 @@ from routes.market_state_routes import router as market_state_router
 from routes.parlay_architect_routes import router as parlay_architect_router
 from routes.calibration_routes import router as calibration_router  # NEW: Logging & Calibration System
 from routes.meta import router as meta_router  # NEW: Build/version metadata endpoint
+from routes.decisions import router as decisions_router  # NEW: Unified MarketDecision endpoint
+from routes.audit import router as audit_router  # NEW: Decision Audit Log Query Endpoint (Section 14)
+from routes.distribution_routes import router as distribution_router  # NEW: Distribution Governance endpoint
+from routes.integrity_routes import router as integrity_router  # NEW: Integrity Sentinel internal endpoint
+from routes.phase4_replay_routes import router as phase4_replay_router  # Phase 4E: Replay Harness
+from routes.phase4_grading_agent_routes import router as phase4_grading_router  # Phase 4F: Grading Agent
+from routes.phase4_calibration_agent_routes import router as phase4_calibration_router  # Phase 4G: Calibration Agent
+from routes.onboarding_routes import router as onboarding_router  # Phase 5A: Onboarding gate
 
 app.include_router(auth_router)
+app.include_router(auth_router_v1)
 app.include_router(whoami_router)
 app.include_router(odds_router)
 app.include_router(core_router)
@@ -141,7 +187,11 @@ app.include_router(mlb_router)  # NEW: MLB Edge Evaluation - Locked spec (moneyl
 app.include_router(analyzer_router)  # NEW: AI Analyzer - LLM-powered game explanations
 app.include_router(telegram_router)  # NEW: Telegram Signal Distribution System
 app.include_router(stripe_webhook_router)  # Enhanced Stripe webhooks with entitlements
+app.include_router(phase3_webhook_router)  # Phase 3A.2 idempotent billing webhook
 app.include_router(meta_router)  # NEW: Build/version metadata for validation
+app.include_router(audit_router)  # NEW: Decision Audit Log Query Endpoint (Section 14 compliance)
+app.include_router(distribution_router)  # NEW: Distribution Governance internal endpoint
+app.include_router(integrity_router)  # NEW: Integrity Sentinel internal endpoint
 app.include_router(simulation_router)
 app.include_router(performance_router)
 app.include_router(tier_router)
@@ -173,6 +223,76 @@ app.include_router(daily_preview_router)  # Daily Preview for marketing conversi
 app.include_router(market_state_router)  # Market State Registry - Single source of truth
 app.include_router(parlay_architect_router)  # NEW: Parlay Architect - Tiered pool system
 app.include_router(calibration_router)  # NEW: Logging & Calibration System - Exit-grade dataset
+app.include_router(decisions_router, prefix="/api", tags=["decisions"])  # NEW: Unified MarketDecision endpoint
+app.include_router(phase4_replay_router)        # Phase 4E: Replay Harness
+app.include_router(phase4_grading_router)       # Phase 4F: Grading Agent (agent.grading.v1)
+app.include_router(phase4_calibration_router)   # Phase 4G: Calibration Agent (agent.calibration.v1)
+app.include_router(onboarding_router)           # Phase 5A: Onboarding gate + /api/games (AC-2)
+
+# ── Phase 6: Distribution Agent + Parlay Engine + CI Drift Audit ─────────────
+from routes.phase6_routes import router as phase6_router
+app.include_router(phase6_router)               # Phase 6: agent.distribution.v1 + Parlay engine
+
+from routes.phase7_routes import router as phase7_router
+app.include_router(phase7_router)               # Phase 7: Public Trust Record + AOS Sentinel
+
+from routes.phase8_routes import router as phase8_router
+from routes.phase9_compliance_routes import router as phase9_compliance_router
+from routes.phase11_affiliate_routes import router as phase11_affiliate_router
+app.include_router(phase8_router)               # Phase 8: Recovery Agent + Operator approvals + AOS activation
+app.include_router(phase9_compliance_router)    # Phase 9: Compliance (self-exclusion + data deletion)
+app.include_router(phase11_affiliate_router)    # Phase 11: Affiliate acquisition engine
+
+# ── Phase 12: Apple Sign In ───────────────────────────────────────────────────
+from routes.apple_auth_routes import router as apple_auth_router
+app.include_router(apple_auth_router)           # Phase 12: Apple Sign In (web)
+
+# ── Phase 13: Affiliate 3-Day Trial System ───────────────────────────────────
+from routes.phase13_trial_routes import router as phase13_trial_router
+from routes.phase13_webhook_handlers import register_phase13_webhook_handlers
+from routes.phase13_referral_routes import router as phase13_referral_router
+app.include_router(phase13_trial_router)        # Phase 13: Affiliate trial routes
+register_phase13_webhook_handlers()             # Phase 13: Chain trial webhook handlers
+app.include_router(phase13_referral_router)     # Phase 13.18: Subscriber referral program
+
+
+def _register_v1_alias_routes() -> None:
+    """Create /api/v1 aliases for all existing /api routes without changing handlers."""
+    from fastapi.routing import APIRoute
+
+    existing_paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
+    source_routes = [
+        route
+        for route in app.routes
+        if isinstance(route, APIRoute)
+        and route.path.startswith("/api/")
+        and not route.path.startswith("/api/v1/")
+    ]
+
+    for route in source_routes:
+        suffix = route.path[len("/api"):]
+        versioned_path = f"/api/v1{suffix}"
+        if versioned_path in existing_paths:
+            continue
+
+        app.add_api_route(
+            versioned_path,
+            route.endpoint,
+            methods=list(route.methods),
+            tags=route.tags,
+            summary=route.summary,
+            description=route.description,
+            response_model=route.response_model,
+            status_code=route.status_code,
+            responses=route.responses,
+            name=f"v1_{route.name}",
+            dependencies=route.dependencies,
+            include_in_schema=True,
+        )
+        existing_paths.add(versioned_path)
+
+
+_register_v1_alias_routes()
 
 
 @app.websocket("/ws")
@@ -255,10 +375,22 @@ async def websocket_endpoint(websocket: WebSocket, connection_id: str | None = N
 @app.on_event("startup")
 async def startup_event():
     """Initialize database indexes and multi-agent system"""
+    import asyncio
     from db.mongo import ensure_indexes, db, client
-    
+
+    # ── Phase 13 fix: ping + ensure_indexes run in a thread so they never
+    # block the asyncio event loop. MongoClient is synchronous (pymongo);
+    # calling it directly in an async function freezes the server.
+    loop = asyncio.get_event_loop()
     try:
-        ensure_indexes()
+        await loop.run_in_executor(None, lambda: client.admin.command("ping"))
+        print("✓ MongoDB connected")
+    except Exception as e:
+        print(f"⚠️  MongoDB ping failed: {e}")
+        print("   App will continue — database-dependent routes will return 503")
+
+    try:
+        await loop.run_in_executor(None, ensure_indexes)
         print("✓ Database indexes initialized")
     except Exception as e:
         print(f"⚠️  Index creation skipped: {e}")
@@ -317,6 +449,31 @@ async def startup_event():
         print(f"⚠️ Calibration Scheduler startup error: {e}")
         print("   Manual calibration triggers still available")
 
+    # ── Phase 4: Run DB migrations ────────────────────────────────────────────
+    try:
+        from db.migrations.phase4_001_truth_dataset_v1_view import create_view
+        create_view(db=db)
+        print("✓ Phase 4C: truth_dataset_v1 view created")
+    except Exception as e:
+        print(f"⚠️ Phase 4C migration warning: {e}")
+
+    try:
+        from db.migrations.phase4_002_calibration_immutability import run_migration, start_watcher
+        run_migration(db=db)
+        start_watcher(db=db)
+        print("✓ Phase 4D: Calibration immutability enforcement active")
+    except Exception as e:
+        print(f"⚠️ Phase 4D migration warning: {e}")
+
+    # ── Phase 4A: Daily Simulation Scheduler ──────────────────────────────────
+    try:
+        from services.phase4_simulation_scheduler import start_phase4_simulation_scheduler
+        start_phase4_simulation_scheduler()
+        print("✓ Phase 4A: Simulation Scheduler active (agent.simulation.v1)")
+    except Exception as e:
+        print(f"⚠️ Phase 4A Simulation Scheduler startup error: {e}")
+        print("   Manual simulation triggers still available")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -348,6 +505,22 @@ async def shutdown_event():
     except Exception:
         pass
 
+    # Phase 4A: Shutdown simulation scheduler
+    try:
+        from services.phase4_simulation_scheduler import stop_phase4_simulation_scheduler
+        stop_phase4_simulation_scheduler()
+        print("✓ Phase 4A: Simulation Scheduler shutdown complete")
+    except Exception:
+        pass
+
+    # Phase 4D: Stop calibration change-stream watcher
+    try:
+        from db.migrations.phase4_002_calibration_immutability import stop_watcher
+        stop_watcher()
+        print("✓ Phase 4D: Calibration immutability watcher stopped")
+    except Exception:
+        pass
+
 
 @app.get("/")
 def root():
@@ -356,7 +529,7 @@ def root():
         "service": "BeatVegas & Omni Edge AI Platform",
         "version": "2.0.0",
         "features": [
-            "Monte Carlo Simulations (10K-100K iterations)",
+            "Intelligence Cycles (10K-100K iterations)",
             "Multi-Agent AI System (7 specialized agents)",
             "Tiered Subscriptions (Starter/Pro/Sharps Room/Founder)",
             "CLV Tracking (Pro+)",
@@ -372,12 +545,17 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
-    """Health check for load balancers"""
+    """Health check for load balancers — accessible at /health and /api/health"""
     from db.mongo import db
+    geoip_enabled = os.getenv("GEOIP_ENABLED", "true").lower() not in ("false", "0", "no")
+    geoip_db_path = os.getenv("GEOIP_COUNTRY_DB", "")
+    geoip_active = geoip_enabled and bool(geoip_db_path) and os.path.isfile(geoip_db_path)
+    geoip_status = "active" if geoip_active else ("disabled" if not geoip_enabled else "misconfigured")
     try:
         # Test MongoDB connection
         db.command("ping")
-        return {"status": "healthy", "database": "connected"}
+        return {"status": "healthy", "database": "connected", "geoip": geoip_status}
     except Exception as e:
-        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+        return {"status": "unhealthy", "database": "disconnected", "geoip": geoip_status, "error": str(e)}

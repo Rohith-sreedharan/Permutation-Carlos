@@ -233,8 +233,8 @@ async def get_customer_detail(
                         {
                             "id": sub.id,
                             "status": sub.status,
-                            "current_period_end": sub.current_period_end,  # type: ignore
-                            "plan": sub.plan.id if hasattr(sub, 'plan') and sub.plan else None  # type: ignore
+                            "current_period_end": sub.current_period_end,
+                            "plan": sub.plan.id if hasattr(sub, 'plan') and sub.plan else None
                         }
                         for sub in subscriptions.data
                     ]
@@ -436,7 +436,7 @@ async def cancel_subscription(
                 cancel_at_period_end=False
             )
             # Then delete/cancel it
-            stripe.Subscription.delete(subscription.id)  # type: ignore
+            stripe.Subscription.delete(subscription.id)
             cancelled_subs.append(subscription.id)
         
         # Update user tier
@@ -489,7 +489,7 @@ async def issue_refund(
         if reason:
             refund_params["reason"] = reason
         
-        refund = stripe.Refund.create(**refund_params)  # type: ignore
+        refund = stripe.Refund.create(**refund_params)
         
         # Log the action
         db.activity_logs.insert_one({
@@ -520,7 +520,7 @@ async def issue_refund(
 
 @router.get("/billing/revenue")
 async def get_revenue_stats(
-    period: str = Query("month", regex="^(day|week|month|year)$"),
+    period: str = Query("month", pattern="^(day|week|month|year)$"),
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
     """Get revenue statistics"""

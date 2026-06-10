@@ -43,7 +43,7 @@ class TelegramSafetyAuditor:
         print(f"Auditing last {hours_back} hours")
         print("="*80)
         
-        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_back)
         
         # 1. Check for LEAN leakage into EDGE channel
         await self._check_lean_leakage(cutoff_time)
@@ -294,7 +294,7 @@ class TelegramSafetyAuditor:
         high = [v for v in self.violations if v["severity"] == "HIGH"]
         
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "violations": self.violations,
             "warnings": self.warnings,
             "summary": {

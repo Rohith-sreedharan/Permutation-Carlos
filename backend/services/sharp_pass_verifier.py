@@ -55,7 +55,7 @@ class SharpPassVerifier:
             "win_rate": win_rate,
             "avg_clv": avg_clv,
             "status": "ELIGIBLE" if eligible else "REVIEW",
-            "submitted_at": datetime.now()
+            "submitted_at": datetime.now(timezone.utc)
         }
         
         result = self.db.sharp_pass_applications.insert_one(doc)
@@ -86,7 +86,7 @@ class SharpPassVerifier:
             {"_id": ObjectId(application_id)},
             {"$set": {
                 "status": "APPROVED",
-                "approved_at": datetime.now(),
+                "approved_at": datetime.now(timezone.utc),
                 "approved_by": admin_id
             }}
         )
@@ -96,7 +96,7 @@ class SharpPassVerifier:
             {"_id": ObjectId(app["user_id"])},
             {"$set": {
                 "sharp_pass_active": True,
-                "sharp_pass_activated_at": datetime.now()
+                "sharp_pass_activated_at": datetime.now(timezone.utc)
             }}
         )
         
@@ -149,7 +149,7 @@ class SharpPassVerifier:
             "losing_bets": analysis['losing_bets'],
             "push_bets": analysis['push_bets'],
             "status": status,
-            "submitted_at": datetime.now(),
+            "submitted_at": datetime.now(timezone.utc),
             "reviewed_at": None,
             "reviewed_by": None
         }
@@ -175,7 +175,7 @@ class SharpPassVerifier:
                 "sharp_pass_status": status,
                 "sharp_pass_score": sharp_score,
                 "sharp_pass_bet_count": bet_count,
-                "sharp_pass_updated_at": datetime.now()
+                "sharp_pass_updated_at": datetime.now(timezone.utc)
             }}
         )
     
@@ -236,7 +236,7 @@ class SharpPassVerifier:
             {"_id": ObjectId(user_id)},
             {"$set": {
                 "wire_pro_active": True,
-                "wire_pro_activated_at": datetime.now()
+                "wire_pro_activated_at": datetime.now(timezone.utc)
             }}
         )
     
@@ -251,7 +251,7 @@ class SharpPassVerifier:
             {"_id": ObjectId(application_id)},
             {"$set": {
                 "status": "REJECTED",
-                "reviewed_at": datetime.now(),
+                "reviewed_at": datetime.now(timezone.utc),
                 "reviewed_by": admin_id,
                 "rejection_reason": rejection_reason
             }}

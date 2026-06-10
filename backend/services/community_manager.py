@@ -34,7 +34,7 @@ class CommunityManager:
             "home_team": home_team,
             "away_team": away_team,
             "game_time": game_time,
-            "created_at": datetime.now(),
+            "created_at": datetime.now(timezone.utc),
             "expires_at": game_time + timedelta(hours=6)
         }
         
@@ -62,7 +62,7 @@ class CommunityManager:
             "content": content,
             "market_type": market_type,
             "parent_id": parent_id,
-            "created_at": datetime.now()
+            "created_at": datetime.now(timezone.utc)
         }
         
         result = self.db.community_posts.insert_one(doc)
@@ -132,7 +132,7 @@ class CommunityManager:
             {"$push": {"reactions": {
                 "user_id": user_id,
                 "reaction": reaction,
-                "created_at": datetime.now()
+                "created_at": datetime.now(timezone.utc)
             }}}
         )
     
@@ -148,7 +148,7 @@ class CommunityManager:
             query["sport"] = sport
         
         if active_only:
-            query["expires_at"] = {"$gt": datetime.now()}
+            query["expires_at"] = {"$gt": datetime.now(timezone.utc)}
         
         return list(
             self.db.community_channels

@@ -113,5 +113,5 @@ class SimulationEngine:
             "eligible": evaluation.eligible,
             "blocking_reason": evaluation.blocking_reason,
             "num_simulations": num_simulations,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
