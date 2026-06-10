@@ -125,13 +125,13 @@ export default function UpgradePage() {
           ))}
         </div>
 
-        {/* NCPG footer — required on all pages with purchase CTAs */}
+        {/* NCPG footer — canonical copy used across all surfaces */}
         <div className="text-center space-y-2 border-t border-border-gray/30 pt-8">
           <p className="text-xs text-light-gray/60">
-            BeatVegas provides sports data analysis tools for informational purposes only. Past performance does not guarantee future results.
+            BeatVegas provides statistical simulation outputs only — not betting advice.
           </p>
           <p className="text-xs text-light-gray/60">
-            If you or someone you know has a gambling problem, call 1-800-522-4700 or visit{' '}
+            Problem gambling help: 1-800-522-4700 |{' '}
             <a
               href="https://www.ncpgambling.org"
               target="_blank"
