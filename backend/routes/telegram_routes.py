@@ -87,6 +87,23 @@ class AccessChangeNotification(BaseModel):
 # ACCOUNT LINKING ENDPOINTS
 # ============================================================================
 
+@router.post("/connect")
+async def connect_telegram(
+    user = Depends(get_current_user)
+):
+    """
+    Generate a Telegram deep link for connecting the account (frontend flow).
+    Returns a deep link to open BeatVegasBot with a one-time start token.
+    """
+    db = await get_db()
+    telegram_service = TelegramBotService(db)
+    user_id = str(user["_id"])
+    token = await telegram_service.generate_link_token(user_id)
+    bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "BeatVegasBot")
+    deep_link = f"https://t.me/{bot_username}?start={token}"
+    return {"deep_link": deep_link, "token": token, "expires_in": 900}
+
+
 @router.post("/link", response_model=LinkTelegramResponse)
 async def generate_link_token(
     request: Request,
