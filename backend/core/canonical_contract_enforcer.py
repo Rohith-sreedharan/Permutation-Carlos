@@ -94,6 +94,81 @@ def determine_selection_id(simulation: Dict[str, Any]) -> str:
     return "no_selection"
 
 
+def _normalize_spread_contract(simulation: Dict[str, Any]) -> None:
+    """Fail closed when spread binding is inconsistent or missing.
+
+    The spread summary must never present an edge unless a canonical selection
+    is bound and both backend contract surfaces agree on that selection.
+    """
+    sharp_analysis = simulation.get("sharp_analysis") or {}
+    spread_analysis = sharp_analysis.get("spread") or {}
+    market_views = simulation.get("market_views") or {}
+    spread_view = market_views.get("spread") or {}
+
+    if not isinstance(spread_analysis, dict) or not isinstance(spread_view, dict):
+        return
+
+    has_edge = bool(spread_analysis.get("has_edge"))
+    sharp_team = spread_analysis.get("sharp_team")
+    sharp_selection = spread_analysis.get("sharp_selection")
+    model_pref = spread_view.get("model_preference_selection_id")
+    model_dir = spread_view.get("model_direction_selection_id")
+    edge_class = str(spread_view.get("edge_class") or "").upper()
+
+    binding_missing = has_edge and (
+        not sharp_team
+        or not sharp_selection
+        or str(sharp_selection).upper() == "NO PLAY"
+        or model_pref in {None, "NO_EDGE", "INVALID"}
+        or model_dir in {None, "NO_EDGE", "INVALID"}
+    )
+
+    aligned_with_edge = edge_class == "MARKET_ALIGNED" and has_edge
+
+    if aligned_with_edge:
+        binding_missing = True
+
+    if not binding_missing:
+        return
+
+    # Spread binding is ambiguous or missing: fail closed.
+    spread_analysis["has_edge"] = False
+    spread_analysis["sharp_selection"] = "NO PLAY"
+    spread_analysis["sharp_side"] = "NO PLAY"
+    spread_analysis["sharp_team"] = None
+    spread_analysis["sharp_line"] = None
+    spread_analysis["sharp_action"] = "NO_SHARP_PLAY"
+    spread_analysis["sharp_side_display"] = "NO PLAY"
+    spread_analysis["recommended_bet"] = "NO PLAY"
+    spread_analysis["reasoning"] = "BLOCKED: canonical spread binding missing"
+    spread_analysis["validator_status"] = {
+        "passed": False,
+        "errors": ["SPREAD_CANONICAL_BINDING_MISSING"],
+        "warnings": [],
+        "details": {
+            "model_preference_selection_id": model_pref,
+            "model_direction_selection_id": model_dir,
+            "sharp_team": sharp_team,
+            "sharp_selection": sharp_selection,
+        },
+    }
+
+    spread_view["edge_class"] = "INVALID"
+    spread_view["ui_render_mode"] = "SAFE"
+    spread_view["model_preference_selection_id"] = "NO_EDGE"
+    spread_view["model_direction_selection_id"] = "NO_EDGE"
+    spread_view["integrity_status"] = {
+        "status": "invalid",
+        "is_valid": False,
+        "errors": list(set((spread_view.get("integrity_status", {}) or {}).get("errors", []) + ["SPREAD_CANONICAL_BINDING_MISSING"])),
+    }
+
+    simulation["sharp_analysis"] = sharp_analysis
+    simulation["market_views"] = market_views
+    simulation.setdefault("integrity_warnings", [])
+    simulation["integrity_warnings"].append("SPREAD_CANONICAL_BINDING_MISSING")
+
+
 def enforce_canonical_contract(simulation: Dict[str, Any]) -> Dict[str, Any]:
     """
     🔒 CANONICAL CONTRACT ENFORCER
@@ -175,6 +250,9 @@ def enforce_canonical_contract(simulation: Dict[str, Any]) -> Dict[str, Any]:
                 "display": "No Selection",
                 "locked_to_preference": True
             }
+
+    # 2c. 🔒 ENFORCE SPREAD SIGN BINDING (fail closed on inconsistent spread state)
+    _normalize_spread_contract(simulation)
     
     # 3. Set market_settlement if missing
     if not simulation.get("market_settlement"):
