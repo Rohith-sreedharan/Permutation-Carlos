@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Header, Depends, status
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 from bson import ObjectId
 import logging
@@ -17,6 +17,7 @@ from middleware.auth import get_current_user_optional, get_user_tier
 from services.post_game_grader import post_game_grader
 from utils.mongo_helpers import sanitize_mongo_doc
 from core.canonical_contract_enforcer import enforce_canonical_contract, validate_canonical_contract
+from services.simulation_entitlement_filter import apply_simulation_entitlement_filter
 from legacy_config import (
     SIMULATION_TIERS, 
     PRECISION_LABELS, 
@@ -33,12 +34,73 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TIER_CYCLE_MAX_MAP = {
+    "free": "preview_max",
+    "preview": "preview_max",
     "intelligence_preview": "preview_max",
     "syndicate": "syndicate_max",
+    "beatvegas_syndicate": "syndicate_max",
     "telegram_syndicate": "telegram_syndicate_max",
     "platform": "platform_max",
     "beatvegas_platform": "beatvegas_platform_max",
 }
+
+
+def _compute_weekly_opened_record(user_id: str) -> Dict[str, int]:
+    """Compute settled weekly W-L-P for opened picks using canonical settlement metrics."""
+    now = datetime.now(timezone.utc)
+    week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+
+    opened_docs = list(
+        db["opened_event_log"].find(
+            {
+                "user_id": user_id,
+                "opened_at": {"$gte": week_start.isoformat(), "$lte": now.isoformat()},
+            },
+            {"_id": 0, "event_id": 1},
+        )
+    )
+    event_ids = sorted({str(doc.get("event_id")) for doc in opened_docs if doc.get("event_id")})
+    if not event_ids:
+        return {"wins": 0, "losses": 0, "pushes": 0}
+
+    settlement_docs = list(
+        db["decision_settlement_metrics"].find(
+            {"event_id": {"$in": event_ids}},
+            {"_id": 0, "event_id": 1, "result_code": 1, "timestamp": 1},
+        ).sort("timestamp", -1)
+    )
+
+    latest_by_event: Dict[str, str] = {}
+    for doc in settlement_docs:
+        event_id = str(doc.get("event_id") or "")
+        result_code = str(doc.get("result_code") or "").upper()
+        if not event_id or event_id in latest_by_event:
+            continue
+        latest_by_event[event_id] = result_code
+
+    wins = 0
+    losses = 0
+    pushes = 0
+    for event_id in event_ids:
+        result = latest_by_event.get(event_id)
+        if result == "WIN":
+            wins += 1
+        elif result == "LOSS":
+            losses += 1
+        elif result == "PUSH":
+            pushes += 1
+
+    return {"wins": wins, "losses": losses, "pushes": pushes}
+
+
+def _exhaustion_upgrade_message(user_id: str) -> str:
+    """Return required allocation exhaustion copy with optional weekly stat variant."""
+    record = _compute_weekly_opened_record(user_id)
+    wins = int(record.get("wins", 0))
+    losses = int(record.get("losses", 0))
+    if (wins + losses) > 0:
+        return f"You're {wins}-{losses} this week. Upgrade to Platform to access every game, every day."
+    return "You've used today's intelligence allocation. Upgrade to continue analyzing today's board."
 
 
 def _deduct_simulation_cycle(user_id: str, tier: str):
@@ -96,23 +158,35 @@ def _deduct_simulation_cycle(user_id: str, tier: str):
 
     # Hard gate — user already exhausted their budget
     if pct_used >= block_pct:
-        return HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
+        upgrade_message = _exhaustion_upgrade_message(user_id)
+        is_syndicate = tier in ("syndicate", "telegram_syndicate", "beatvegas_syndicate")
+        if is_syndicate:
+            # Syndicate: monthly reset copy — Platform CTA only (never Syndicate CTA)
+            gate_detail = {
                 "code": "ALLOCATION_EXHAUSTED",
-                "title": "Your Intelligence Preview analyses have been used.",
-                "message": (
-                    f"You completed {used // cost} decision analyses on the starter tier. "
-                    "Platform subscribers get 100 full analyses per month."
-                ),
+                "title": "Today's intelligence allocation used.",
+                "message": upgrade_message,
+                "cta_platform": "Upgrade to Platform — 100 analyses/month — $97/month",
+                "cta_platform_url": "https://beatvegas.app/upgrade",
+                "cta_syndicate": None,
+                "cta_syndicate_url": None,
+                "cycles_used": used,
+                "cycles_allocated": alloc,
+            }
+        else:
+            # Intelligence Preview: lifetime copy — BOTH CTAs always shown
+            gate_detail = {
+                "code": "ALLOCATION_EXHAUSTED",
+                "title": "Today's intelligence allocation used.",
+                "message": upgrade_message,
                 "cta_platform": "Subscribe to Platform — $97/month",
                 "cta_platform_url": "https://beatvegas.app/upgrade",
                 "cta_syndicate": "Join Syndicate — $39/month",
                 "cta_syndicate_url": "https://beatvegas.app/upgrade",
                 "cycles_used": used,
                 "cycles_allocated": alloc,
-            },
-        )
+            }
+        return HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=gate_detail)
 
     # Deduct
     db["user_entitlements"].update_one(
@@ -130,11 +204,17 @@ def _deduct_simulation_cycle(user_id: str, tier: str):
     new_used = used + cost
     new_pct = (new_used / alloc) * 100
 
-    # Fire upgrade prompt when crossing 80% — idempotent in GrowthAgent
+    # Fire upgrade prompt when crossing 80% — tier-aware, idempotent in GrowthAgent
+    # Preview: show BOTH Syndicate + Platform CTAs
+    # Syndicate: show ONLY Platform CTA (already subscribed)
     if new_pct >= warn_pct:
         try:
             from services.phase5_growth_agent import growth_agent
-            growth_agent.trigger_upgrade_prompt(user_id)
+            is_syndicate = tier in ("syndicate", "telegram_syndicate", "beatvegas_syndicate")
+            if is_syndicate:
+                growth_agent.trigger_syndicate_upgrade_prompt(user_id)
+            else:
+                growth_agent.trigger_upgrade_prompt(user_id)
         except Exception as _exc:
             logger.warning("[cycle_deduct] upgrade prompt failed user=%s err=%s", user_id, _exc)
 
@@ -705,8 +785,15 @@ async def get_simulation(
             simulation["integrity_warnings"] = simulation.get("integrity_warnings", []) + errors
         
         # Inject live cycle balance so frontend can update sidebar counter immediately
-        if _cycle_balance:
+        if _cycle_balance is not None:
             simulation["_cycle_balance"] = _cycle_balance
+            # Explicit fields for clients that do not consume internal payload names.
+            # cycle_balance tracks remaining cycles after this simulation request.
+            simulation["cycle_balance"] = int(_cycle_balance.get("cycles_remaining", 0))
+            simulation["cycle_max"] = int(_cycle_balance.get("cycles_allocated", 0))
+            simulation["cycles_deducted"] = 1000
+
+        simulation = apply_simulation_entitlement_filter(simulation, user_tier)
         
         return simulation
         
