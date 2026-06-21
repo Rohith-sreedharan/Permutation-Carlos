@@ -20,10 +20,53 @@ from db.mongo import db
 from db.decision_audit_logger import get_decision_audit_logger
 from db.decision_record_store import get_decision_record_store
 from services.observability_service import observability_service
-from middleware.auth import get_current_user
+from middleware.auth import get_current_user, get_current_user_optional
 import uuid
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _extract_user_id(user: Optional[dict]) -> Optional[str]:
+    if not user:
+        return None
+    raw_id = user.get("_id") or user.get("id")
+    if raw_id is None:
+        return None
+    return str(raw_id)
+
+
+def _append_opened_event_log(
+    user: Optional[dict],
+    league: str,
+    game_id: str,
+    decision_record_id: Optional[str],
+    decisions: GameDecisions,
+) -> None:
+    """Append-only audit row for opened card events (best-effort sidecar)."""
+    user_id = _extract_user_id(user)
+    if not user_id:
+        return
+
+    opened_doc = {
+        "opened_event_id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "league": league,
+        "event_id": game_id,
+        "decision_record_id": decision_record_id,
+        "opened_at": datetime.utcnow().isoformat(),
+        "market_snapshot": {
+            "spread_classification": decisions.spread.classification.value if decisions.spread and decisions.spread.classification else None,
+            "moneyline_classification": decisions.moneyline.classification.value if decisions.moneyline and decisions.moneyline.classification else None,
+            "total_classification": decisions.total.classification.value if decisions.total and decisions.total.classification else None,
+        },
+    }
+
+    try:
+        db["opened_event_log"].insert_one(opened_doc)
+    except Exception as exc:
+        logger.warning("[opened_event_log] append failed for user=%s event=%s err=%s", user_id, game_id, exc)
 
 
 @router.get("/decisions")
@@ -218,8 +261,94 @@ def get_default_total(league: str) -> float:
     return LEAGUE_DEFAULT_TOTALS.get(league.upper(), 100.0)
 
 
+def _is_actionable_classification(decision: Optional[MarketDecision]) -> bool:
+    if not decision or not decision.classification:
+        return False
+    return decision.classification in (Classification.EDGE, Classification.LEAN)
+
+
+def _market_view_contract_ready(sim_doc: dict, market_type: MarketType) -> bool:
+    """
+    Mirror the front-end detail contract requirements for actionable markets.
+    If these bindings are missing, teaser cards must not be actionable.
+    """
+    market_views = sim_doc.get("market_views") or {}
+    key = "spread" if market_type == MarketType.SPREAD else "total" if market_type == MarketType.TOTAL else None
+    if not key:
+        return True
+
+    mv = market_views.get(key) or {}
+    edge_class = str(mv.get("edge_class") or "").upper()
+    if edge_class not in {"EDGE", "LEAN"}:
+        return False
+
+    preferred_selection_id = str(mv.get("model_preference_selection_id") or "")
+    if preferred_selection_id in {"", "NO_EDGE", "INVALID"}:
+        return False
+
+    selections = mv.get("selections") or []
+    preferred = next(
+        (s for s in selections if str(s.get("selection_id") or "") == preferred_selection_id),
+        None,
+    )
+    if not preferred:
+        return False
+
+    side = str(preferred.get("side") or "").lower()
+    market_line = preferred.get("market_line_for_selection")
+    if market_type == MarketType.SPREAD:
+        return side in {"home", "away"} and market_line is not None
+    if market_type == MarketType.TOTAL:
+        return side in {"over", "under"} and market_line is not None
+    return True
+
+
+def _downgrade_to_informational(decision: Optional[MarketDecision], reason: str) -> Optional[MarketDecision]:
+    if not decision or not _is_actionable_classification(decision):
+        return decision
+
+    decision.classification = Classification.MARKET_ALIGNED
+    decision.release_status = ReleaseStatus.INFO_ONLY
+    decision.edge_points = 0.0
+    decision.selection_label = "No actionable signal"
+    decision.pick = None
+    decision.edge = None
+    if decision.risk:
+        decision.risk.blocked_reason = reason
+    if reason not in decision.reasons:
+        decision.reasons = [reason] + list(decision.reasons or [])
+    return decision
+
+
+def _build_full_game_simulation_filter(game_id: str) -> dict:
+    """Mongo filter for the latest full-game-compatible simulation document."""
+    return {
+        "$and": [
+            {"$or": [{"game_id": game_id}, {"event_id": game_id}]},
+            {
+                "$or": [
+                    {"period": {"$exists": False}},
+                    {"period": None},
+                    {"period": "FULL_GAME"},
+                ]
+            },
+        ]
+    }
+
+
+def _select_latest_full_game_simulation(game_id: str) -> Optional[dict]:
+    return db["monte_carlo_simulations"].find_one(
+        _build_full_game_simulation_filter(game_id),
+        sort=[("created_at", -1)],  # Latest FULL_GAME simulation only
+    )
+
+
 @router.get("/games/{league}/{game_id}/decisions")
-async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
+async def get_game_decisions(
+    league: str,
+    game_id: str,
+    user: Optional[dict] = Depends(get_current_user_optional),
+) -> GameDecisions:
     """
     SINGLE ENDPOINT for all market decisions.
     
@@ -297,10 +426,7 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
     }
     
     # NOW fetch simulation data (after we have market lines for BLOCKED responses)
-    sim_doc = db["monte_carlo_simulations"].find_one(
-        {"$or": [{"game_id": game_id}, {"event_id": game_id}]},
-        sort=[("created_at", -1)]  # Latest first
-    )
+    sim_doc = _select_latest_full_game_simulation(game_id)
     if not sim_doc:
         # Fail-closed: no simulation available — return BLOCKED decisions (HTTP 200, not 404)
         market_spread_line = spread_lines.get(home_id, {}).get('line', 0)
@@ -458,6 +584,20 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
         decision_version=spread_decision.debug.decision_version,
         computed_at=datetime.utcnow().isoformat()
     )
+
+    # Canonical consistency gate:
+    # if detail-market bindings are missing in simulation market_views, cards must not remain actionable.
+    if _is_actionable_classification(decisions.spread) and not _market_view_contract_ready(sim_doc, MarketType.SPREAD):
+        decisions.spread = _downgrade_to_informational(
+            decisions.spread,
+            "Canonical spread binding missing; downgraded to informational state"
+        )
+    if _is_actionable_classification(decisions.total) and not _market_view_contract_ready(sim_doc, MarketType.TOTAL):
+        decisions.total = _downgrade_to_informational(
+            decisions.total,
+            "Canonical total binding missing; downgraded to informational state"
+        )
+
     decisions = _normalize_game_decisions_for_api(decisions)
     
     # ═══════════════════════════════════════════════════════════════════
@@ -617,5 +757,14 @@ async def get_game_decisions(league: str, game_id: str) -> GameDecisions:
             },
         )
     
+    # Append opened-event telemetry as a sidecar (does not modify response payload)
+    _append_opened_event_log(
+        user=user,
+        league=league,
+        game_id=game_id,
+        decision_record_id=decisions.decision_record_id,
+        decisions=decisions,
+    )
+
     # Audit logging complete - return persisted decision bundle
     return decisions
