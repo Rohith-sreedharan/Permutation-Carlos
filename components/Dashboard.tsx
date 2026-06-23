@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchEvents, fetchEventsByDateRealtime, fetchEventsFromDB, getPredictions } from '../services/api';
+import { fetchEvents, fetchEventsByDateRealtime, fetchEventsFromDB, getPredictions, fetchOpenedPicks, type OpenedPickRow } from '../services/api';
 import { DASHBOARD_COPY, PLAN_IDS, PRODUCT_LIMITS, type PlanId } from '../uiCopy/products';
 import type { EventWithPrediction, Prediction } from '../types';
 import EventCard from './EventCard';
@@ -57,12 +57,29 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [activeSport, setActiveSport] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [layout, setLayout] = useState<Layout>('grid');
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all'); // Changed to 'all' by default
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [timeOrder, setTimeOrder] = useState<TimeOrder>('soonest');
+  const [openedPicks, setOpenedPicks] = useState<OpenedPickRow[]>([]);
+  const [weeklyOpenedRecord, setWeeklyOpenedRecord] = useState<{ wins: number; losses: number; pushes: number }>({ wins: 0, losses: 0, pushes: 0 });
+
+  const isDetailOpenBlocked = typeof cyclesRemaining === 'number' && cyclesRemaining <= 0;
+
+  const handleGameClick = (gameId: string) => {
+    if (isDetailOpenBlocked) {
+      if (onUpgradeToPlatform) {
+        onUpgradeToPlatform();
+        return;
+      }
+      window.location.href = '/upgrade?plan=platform';
+      return;
+    }
+    onGameClick?.(gameId);
+  };
 
   const loadData = async (isPolling = false) => {
     console.log('[Dashboard] loadData called, isPolling:', isPolling);
     try {
+      const requestStart = performance.now();
       if (isPolling) {
         setPolling(true);
       } else {
@@ -83,10 +100,19 @@ const Dashboard: React.FC<DashboardProps> = ({
       // Use database fetch which supports all sports and EST filtering
       // upcoming_only=false so in-progress/completed games still show on the dashboard
       console.log('[Dashboard] Fetching with:', { sportKey, targetDate, activeSport, dateFilter });
-      const eventsData = await fetchEventsFromDB(sportKey, targetDate, false, 200);
-      console.log('[Dashboard] Fetched events:', eventsData.length);
+      const [eventsData, predictionsData, openedPicksData] = await Promise.all([
+        fetchEventsFromDB(sportKey, targetDate, false, 200),
+        getPredictions(),
+        fetchOpenedPicks(8).catch(() => ({ count: 0, weekly_record: { wins: 0, losses: 0, pushes: 0 }, opened_picks: [] })),
+      ]);
 
-      const predictionsData = await getPredictions();
+      const elapsedMs = Math.round(performance.now() - requestStart);
+      console.log('[Dashboard] Fetched events:', eventsData.length);
+      console.log('[Dashboard] Data load timing (ms):', {
+        elapsedMs,
+        eventCount: eventsData.length,
+        predictionCount: predictionsData.length,
+      });
 
       const predictionsMap = new Map<string, Prediction>();
       predictionsData.forEach((p) => predictionsMap.set(p.event_id, p));
@@ -95,6 +121,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         ...event,
         prediction: predictionsMap.get(event.id),
       }));
+
+      setOpenedPicks(Array.isArray(openedPicksData?.opened_picks) ? openedPicksData.opened_picks : []);
+      setWeeklyOpenedRecord(openedPicksData?.weekly_record || { wins: 0, losses: 0, pushes: 0 });
 
       console.log('[Dashboard] Merged data:', mergedData.length);
       setEventsWithPredictions(mergedData);
@@ -239,6 +268,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     return byDate.length === 0 && dateFilter !== 'all';
   }, [eventsWithPredictions, activeSport, searchQuery, dateFilter]);
 
+  const edgeLeanCount = useMemo(() => {
+    return filteredEvents.filter((event) => {
+      const raw = String((event as any)?.classification || '').toUpperCase();
+      return raw === 'EDGE' || raw === 'LEAN';
+    }).length;
+  }, [filteredEvents]);
+
   if (error) {
     return <div className="text-center text-bold-red p-8">{error}</div>;
   }
@@ -377,6 +413,38 @@ const Dashboard: React.FC<DashboardProps> = ({
           ))}
         </div>
       </PageHeader>
+
+      <div className="bg-charcoal rounded-xl border border-neon-green/20 px-5 py-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="text-sm font-bold text-white uppercase tracking-wide">Your Opened Picks</h3>
+          <span className="text-xs text-neon-green font-semibold">
+            This Week: {weeklyOpenedRecord.wins}-{weeklyOpenedRecord.losses}
+            {weeklyOpenedRecord.pushes > 0 ? `-${weeklyOpenedRecord.pushes}` : ''}
+          </span>
+        </div>
+        {openedPicks.length === 0 ? (
+          <p className="text-xs text-light-gray/70">Open any EDGE or LEAN card to start tracking outcomes here.</p>
+        ) : (
+          <div className="space-y-2">
+            {openedPicks.map((row) => {
+              const outcome = row.settlement_outcome || 'PENDING';
+              const outcomeClass = outcome === 'WIN'
+                ? 'text-neon-green'
+                : outcome === 'LOSS'
+                  ? 'text-bold-red'
+                  : outcome === 'PUSH'
+                    ? 'text-vibrant-yellow'
+                    : 'text-light-gray';
+              return (
+                <div key={`${row.opened_event_id || row.event_id}-${row.opened_at || ''}`} className="flex items-center justify-between gap-3 text-xs bg-navy/30 rounded px-3 py-2 border border-navy/50">
+                  <span className="text-light-gray truncate">{row.event_id}</span>
+                  <span className={`font-bold ${outcomeClass}`}>{outcome}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
       
       {/* DATE & TIME SORT CONTROLS - Command Center Vibe */}
       <div className="bg-linear-to-r from-charcoal via-navy to-charcoal rounded-xl p-5 border border-electric-blue/20 shadow-xl">
@@ -510,6 +578,11 @@ const Dashboard: React.FC<DashboardProps> = ({
               No games for this date. Showing <span className="text-neon-green font-bold">All Upcoming</span>.
             </div>
           )}
+          {filteredEvents.length > 0 && edgeLeanCount === 0 && (
+            <div className="mb-4 rounded-lg border border-electric-blue/30 bg-electric-blue/10 px-4 py-3 text-sm text-electric-blue">
+              No EDGE or LEAN opportunities in this view right now. Cards shown are informational and market-aligned.
+            </div>
+          )}
           {filteredEvents.length === 0 ? (
             <div className="text-center py-20 bg-charcoal rounded-xl border border-navy">
               <div className="text-6xl mb-4">🎯</div>
@@ -523,7 +596,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <EventCard 
                     key={event.id} 
                     event={event}
-                    onClick={() => onGameClick?.(event.id)}
+                    onClick={() => handleGameClick(event.id)}
                   />
                 ))}
               </div>
@@ -533,7 +606,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <EventListItem 
                     key={event.id} 
                     event={event}
-                    onClick={() => onGameClick?.(event.id)}
+                    onClick={() => handleGameClick(event.id)}
                   />
                 ))}
               </div>

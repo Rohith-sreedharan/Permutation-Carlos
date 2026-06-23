@@ -17,6 +17,7 @@
 
 import { useMemo } from 'react';
 import type { MonteCarloSimulation } from '../types';
+import type { GameDecisions as CanonicalGameDecisions } from '../types/MarketDecision';
 import { 
   GameEdgeState, 
   Classification, 
@@ -25,6 +26,19 @@ import {
   Grade,
 } from './canonicalEdge';
 import { resolveGameEdgeState, canPublish, getFailureReasons } from './resolveGameEdgeState';
+
+function getCanonicalSpreadClassification(
+  decisions: CanonicalGameDecisions | null | undefined
+): Classification | null {
+  const raw = String(decisions?.spread?.classification || '').trim().toUpperCase();
+  if (!raw) return null;
+  if (raw === 'EDGE') return Classification.EDGE;
+  if (raw === 'LEAN') return Classification.LEAN;
+  if (raw === 'MARKET_ALIGNED') return Classification.MARKET_ALIGNED;
+  if (raw === 'NO_ACTION') return Classification.NO_ACTION;
+  if (raw === 'BLOCKED') return Classification.BLOCKED;
+  return Classification.BLOCKED;
+}
 
 export interface GameEdgeStateResult {
   // The canonical frozen state - NEVER mutate
@@ -60,6 +74,7 @@ export interface GameEdgeStateResult {
  */
 export function useGameEdgeState(
   simulation: MonteCarloSimulation | null | undefined,
+  canonicalDecisions: CanonicalGameDecisions | null | undefined,
   eventId: string,
   homeTeam: string,
   awayTeam: string
@@ -80,6 +95,14 @@ export function useGameEdgeState(
       primaryGrade: null,
       failureReasons: ['No simulation data'],
     };
+
+    const canonicalClassification = getCanonicalSpreadClassification(canonicalDecisions);
+    if (!canonicalClassification) {
+      return {
+        ...emptyResult,
+        failureReasons: ['Canonical spread classification missing from decision_records.payload'],
+      };
+    }
     
     // Handle loading state
     if (simulation === undefined) {
@@ -100,6 +123,15 @@ export function useGameEdgeState(
         ...emptyResult,
         failureReasons: ['Failed to resolve game edge state'],
       };
+    }
+
+    // Canonical classification from persisted decision payload always wins.
+    state.classification = canonicalClassification;
+    if (canonicalClassification === Classification.BLOCKED || canonicalClassification === Classification.NO_ACTION) {
+      state.release_status = ReleaseStatus.BLOCKED_BY_MISSING_DATA;
+      state.official_action = OfficialAction.NO_ACTION;
+      state.official_market = null;
+      state.official_side = null;
     }
     
     // Check if we can render this state
@@ -163,7 +195,7 @@ export function useGameEdgeState(
       primaryGrade,
       failureReasons,
     };
-  }, [simulation, eventId, homeTeam, awayTeam]);
+  }, [simulation, canonicalDecisions, eventId, homeTeam, awayTeam]);
 }
 
 // ===== DISPLAY UTILITIES =====

@@ -5,9 +5,9 @@
  * --------------------------------
  * 1. ✅ Color-coded Key Drivers (🔴 Injuries, 🔵 Tempo, 🟡 Simulation Depth)
  * 2. ✅ Misprice Status now shows context: "(Total mispriced by X pts)"
- * 3. ✅ Confidence Score includes tier scale explanation (S-Tier: 90-100, A-Tier: 85-89, etc.)
+ * 3. ✅ Confidence score copy normalized for user-facing clarity
  * 4. ✅ Volatility card shows actionable context ("Expect large scoring swings. Avoid heavy exposure.")
- * 5. ✅ Sim Count now displays correct tier alignment ("50K Elite tier analysis" vs "10K Starter tier")
+ * 5. ✅ Decision depth messaging aligned to platform naming
  * 6. ✅ Added tier upgrade messaging when viewing higher-tier simulations
  * 7. ✅ Sticky tab navigation with glowing active state
  * 8. ✅ Win Probability logic documented - should align with spread edge (backend may need adjustment)
@@ -21,7 +21,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { fetchSimulation, fetchEventsFromDB , API_BASE_URL } from '../services/api';
+import { fetchSimulation, fetchEventsFromDB, fetchGameDecisions, API_BASE_URL } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import SocialMetaTags from './SocialMetaTags';
@@ -36,6 +36,7 @@ import { getImpliedProbability } from '../utils/edgeValidation';
 import { validateSimulationData, getSpreadDisplay, getTeamWinProbability } from '../utils/dataValidation';
 import { useGameEdgeState, getClassificationText } from '../utils/useGameEdgeState';
 import { Classification } from '../utils/canonicalEdge';
+import { deriveAnalysisGate, getSpreadSummaryContract } from '../utils/spreadSummaryContract';
 // ROOT FIX: Removed unused legacy edge classification imports (classifySpreadEdge, classifyTotalEdge, etc.)
 // All edge classification now flows through canonical GameEdgeState
 import { 
@@ -44,6 +45,7 @@ import {
 } from '../utils/modelSpreadLogic';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart } from 'recharts';
 import type { Event as EventType, MonteCarloSimulation, EventWithPrediction } from '../types';
+import type { GameDecisions as CanonicalGameDecisions } from '../types/MarketDecision';
 import SimulationDebugPanel from './SimulationDebugPanel';
 import FinalUnifiedSummary from './FinalUnifiedSummary';
 import LegalDisclaimer from './LegalDisclaimer';
@@ -52,6 +54,22 @@ import { formatAwayAtHome, getDisplayTeamName } from '../utils/matchupLabel';
 
 
 const DEBUG_UI_ENABLED = Boolean((import.meta as any).env?.DEV) && (import.meta as any).env?.VITE_ENABLE_DEBUG_PANEL === 'true';
+
+const getFirstIntervalLabel = (sportKey?: string): string => {
+  const key = (sportKey || '').toLowerCase();
+  if (key.includes('baseball') || key.includes('mlb')) return 'F5 Total';
+  if (key.includes('hockey') || key.includes('nhl')) return '1P Total';
+  if (key.includes('basketball')) return '1Q Total';
+  return '1H Total';
+};
+
+const getPropsWindowCopy = (sportKey?: string): string => {
+  const key = (sportKey || '').toLowerCase();
+  if (key.includes('baseball') || key.includes('mlb')) return 'Most prop markets open 24-48 hours before first pitch';
+  if (key.includes('hockey') || key.includes('nhl')) return 'Most prop markets open 24-48 hours before puck drop';
+  if (key.includes('basketball_nba') || key.includes('basketball_ncaab')) return 'Most prop markets open 24-48 hours before tipoff';
+  return 'Most prop markets open 24-48 hours before kickoff';
+};
 
 interface GameDetailProps {
   gameId: string;
@@ -132,10 +150,19 @@ const getEdgeClassificationLabel = (classification: Classification | string | nu
   }
 
   if (classification === Classification.MARKET_ALIGNED || classification === 'MARKET_ALIGNED') {
-    return 'MARKET ALIGNED';
+    return 'Market Aligned';
   }
 
-  return String(classification);
+  const normalized = String(classification).trim();
+  if (normalized.includes('_')) {
+    return normalized
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  return normalized;
 };
 
 const formatEvRuleForDisplay = (rule: string): string => {
@@ -154,8 +181,22 @@ const formatEvRuleForDisplay = (rule: string): string => {
   return rule;
 };
 
+const toLeagueCode = (sportKey?: string): string => {
+  const key = String(sportKey || '').toLowerCase();
+  if (key.includes('basketball_nba')) return 'NBA';
+  if (key.includes('basketball_ncaab')) return 'NCAAB';
+  if (key.includes('americanfootball_nfl')) return 'NFL';
+  if (key.includes('americanfootball_ncaaf')) return 'NCAAF';
+  if (key.includes('baseball_mlb')) return 'MLB';
+  if (key.includes('icehockey_nhl')) return 'NHL';
+  return 'MLB';
+};
+
 const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   const [simulation, setSimulation] = useState<MonteCarloSimulation | null>(null);
+  const [canonicalDecisions, setCanonicalDecisions] = useState<CanonicalGameDecisions | null>(null);
+  const [simulationContextUnavailable, setSimulationContextUnavailable] = useState(false);
+  const [simulationContextReason, setSimulationContextReason] = useState<string | null>(null);
   const [firstHalfSimulation, setFirstHalfSimulation] = useState<any | null>(null);
   const [event, setEvent] = useState<EventType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,14 +228,22 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     isBlocked,
   } = useGameEdgeState(
     simulation,
+    canonicalDecisions,
     gameId,
     event?.home_team || '',
     event?.away_team || ''
   );
-  const analysisBlocked =
-    !canRenderEdgeState ||
-    gameEdgeState?.classification === Classification.BLOCKED;
-  const edgeIsBlocked = !!gameEdgeState && !hasOfficialEdge;
+  const canonicalSpreadClassification = String(canonicalDecisions?.spread?.classification || '').toUpperCase() || 'BLOCKED';
+  const canonicalTotalClassification = String(canonicalDecisions?.total?.classification || '').toUpperCase() || 'BLOCKED';
+  const hasCanonicalSpreadClassification = Boolean(canonicalDecisions?.spread?.classification);
+  const analysisGate = deriveAnalysisGate(gameEdgeState, canRenderEdgeState);
+  const spreadSummary = getSpreadSummaryContract(gameEdgeState, canRenderEdgeState);
+  const spreadView = simulation?.market_views?.spread;
+  const spreadContractInvalid = !!spreadView && (
+    String(spreadView.edge_class || '').toUpperCase() === 'INVALID'
+  );
+  const analysisBlocked = !hasCanonicalSpreadClassification || canonicalSpreadClassification === 'BLOCKED' || canonicalSpreadClassification === 'NO_ACTION';
+  const edgeIsBlocked = analysisBlocked || canonicalSpreadClassification === 'MARKET_ALIGNED';
 
   const renderSAFEMode = (marketType: string, errors: string[]) => {
     // Raw errors are logged internally only — never exposed to the user
@@ -210,9 +259,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   };
   const [propsSortBy, setPropsSortBy] = useState('ev');
   const [lineMovementData, setLineMovementData] = useState<Array<{ time: string; odds: number; fairValue: number }>>([]);
-  const [shareSuccess, setShareSuccess] = useState(false);
-  const [followSuccess, setFollowSuccess] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(false);
   
   // PHASE 18: Confidence tooltip and banners
   const [confidenceTooltip, setConfidenceTooltip] = useState<{
@@ -225,6 +271,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
   
   // User tier information for upgrade prompts
   const userTier = simulation?.metadata?.user_tier || 'free';
+  const isLimitedTier = userTier === 'free';
   const currentIterations = simulation?.iterations || simulation?.metadata?.iterations_run || 10000;
 
   useEffect(() => {
@@ -275,57 +322,80 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       setRetryAttempt(retryCount);
       setIsAutoRetrying(retryCount > 0);
       setError(null);
+      setSimulationContextUnavailable(false);
+      setSimulationContextReason(null);
       
       console.log(`🔄 [GameDetail] Fetch attempt ${retryCount + 1}/${MAX_RETRIES + 1} for game ${gameId}`);
       
-      // Fetch simulation data and ALL events from database (all sports)
-      const [simData, eventsData] = await Promise.all([
-        fetchSimulation(gameId),
-        fetchEventsFromDB(undefined, undefined, false, 500) // No sport filter, get all upcoming
-      ]);
+      // Fetch event inventory first; simulation and canonical decisions are resolved independently.
+      const eventsData = await fetchEventsFromDB(undefined, undefined, false, 500);
+
+      let simData: MonteCarloSimulation | null = null;
+      try {
+        simData = await fetchSimulation(gameId);
+      } catch (simErr: any) {
+        const simMessage = simErr?.message || 'Simulation context unavailable';
+        console.warn('[GameDetail] Simulation context unavailable:', simMessage);
+        setSimulationContextUnavailable(true);
+        setSimulationContextReason(simMessage);
+      }
 
       const requestDuration = Math.round(performance.now() - startTime);
       console.log(`✅ [GameDetail] Success on attempt ${retryCount + 1} (${requestDuration}ms)`);
       console.log(`[GameDetail] Fetched events: ${eventsData.length}, looking for gameId: ${gameId}`);
 
-      // INTEGRITY CHECK: Validate snapshot consistency
-      const integrityCheck = validateSnapshotConsistency(simData);
-      if (!integrityCheck.valid) {
-        console.error('🚨 Snapshot integrity violation detected:', integrityCheck.errors);
-        
-        // Log violation
-        IntegrityLogger.logSnapshotMismatch({
-          event_id: gameId,
-          market_type: 'ALL',
-          expected_selection_id: 'N/A',
-          received_selection_id: 'N/A',
-          snapshot_hash_values: {
-            main: simData.snapshot_hash || 'MISSING',
-            spread_mv: simData.market_views?.spread?.snapshot_hash,
-            moneyline_mv: simData.market_views?.moneyline?.snapshot_hash,
-            total_mv: simData.market_views?.total?.snapshot_hash
-          },
-          full_payload: simData
-        });
-        
-        // Auto-refetch on first violation
-        if (retryCount === 0) {
-          console.log('🔄 Auto-refetching due to integrity violation...');
-          await handleSnapshotMismatch(gameId, 'ALL', () => loadGameData(retryCount + 1));
-          return;
-        } else {
-          // On second violation, show error but allow render with warning
-          console.error('❌ Persistent integrity violations after refetch');
+      if (simData) {
+        // INTEGRITY CHECK: Validate snapshot consistency
+        const integrityCheck = validateSnapshotConsistency(simData);
+        if (!integrityCheck.valid) {
+          console.error('🚨 Snapshot integrity violation detected:', integrityCheck.errors);
+
+          // Log violation
+          IntegrityLogger.logSnapshotMismatch({
+            event_id: gameId,
+            market_type: 'ALL',
+            expected_selection_id: 'N/A',
+            received_selection_id: 'N/A',
+            snapshot_hash_values: {
+              main: simData.snapshot_hash || 'MISSING',
+              spread_mv: simData.market_views?.spread?.snapshot_hash,
+              moneyline_mv: simData.market_views?.moneyline?.snapshot_hash,
+              total_mv: simData.market_views?.total?.snapshot_hash
+            },
+            full_payload: simData
+          });
+
+          // Auto-refetch on first violation
+          if (retryCount === 0) {
+            console.log('🔄 Auto-refetching due to integrity violation...');
+            await handleSnapshotMismatch(gameId, 'ALL', () => loadGameData(retryCount + 1));
+            return;
+          } else {
+            // On second violation, show error but allow render with warning
+            console.error('❌ Persistent integrity violations after refetch');
+          }
         }
       }
 
       setSimulation(simData);
 
-      // Emit live cycle balance so SimulationPowerWidget updates without refetch
-      if ((simData as any)._cycle_balance) {
-        window.dispatchEvent(new CustomEvent('bv:cycle_update', {
-          detail: (simData as any)._cycle_balance,
-        }));
+      // Emit live cycle balance so SimulationPowerWidget updates without refetch.
+      // Supports both legacy `_cycle_balance` and explicit response fields.
+      if (simData) {
+        const rawBalance = (simData as any)._cycle_balance;
+        if (rawBalance || (simData as any).cycle_balance !== undefined) {
+          const cycleMax = Number((simData as any).cycle_max ?? rawBalance?.cycles_allocated ?? 0);
+          const cycleRemaining = Number((simData as any).cycle_balance ?? rawBalance?.cycles_remaining ?? 0);
+          const cycleUsed = Number(rawBalance?.cycles_used ?? (cycleMax > 0 ? Math.max(0, cycleMax - cycleRemaining) : 0));
+
+          window.dispatchEvent(new CustomEvent('bv:cycle_update', {
+            detail: {
+              cycles_used: cycleUsed,
+              cycles_remaining: cycleRemaining,
+              cycles_allocated: cycleMax,
+            },
+          }));
+        }
       }
 
       const gameEvent = eventsData.find((e: EventType) => e.id === gameId);
@@ -340,8 +410,13 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       };
       
       console.log('[GameDetail] Found event:', gameEvent ? '✓' : '✗');
+
+      const resolvedEvent = gameEvent || fallbackEvent;
+      const leagueCode = toLeagueCode(resolvedEvent?.sport_key);
+      const decisionsData = await fetchGameDecisions(leagueCode, gameId);
+      setCanonicalDecisions(decisionsData);
       
-      setEvent(gameEvent || fallbackEvent);
+      setEvent(resolvedEvent);
       setError(null);
       setRetryAttempt(0);
       setIsAutoRetrying(false);
@@ -371,8 +446,8 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       // Cycle exhaustion hard gate — never retry, show upgrade CTA
       if (err.code === 'ALLOCATION_EXHAUSTED') {
         setCycleGate({
-          title: err.title || 'Your Intelligence Cycles have been used.',
-          message: err.message || 'Platform subscribers get 100,000 cycles and full decision engine access.',
+          title: err.title || 'Today\'s intelligence allocation used.',
+          message: err.message || 'You\'ve used today\'s intelligence allocation. Upgrade to continue analyzing today\'s board.',
           ctaPlatform: err.ctaPlatform || 'Subscribe to Platform — $97/month',
           ctaPlatformUrl: err.ctaPlatformUrl || 'https://beatvegas.app/upgrade',
           ctaSyndicate: err.ctaSyndicate || 'Join Syndicate — $39/month',
@@ -467,79 +542,6 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
       });
     }
     setLineMovementData(data);
-  };
-
-  // Share Game Analysis (Blueprint Page 64: Creator Distribution Moat)
-  const handleShare = async () => {
-    if (!simulation || !event) return;
-
-    const classification = gameEdgeState?.classification;
-    const isBlocked = classification === Classification.BLOCKED || analysisBlocked;
-
-    // Map classification to institutional decision label — no raw model stats exposed
-    const decisionLabel = (() => {
-      if (isBlocked) return null; // blocked games do not share analysis
-      if (classification === Classification.EDGE) return 'Edge Detected';
-      if (classification === Classification.LEAN) return 'Moderate Lean';
-      if (classification === Classification.MARKET_ALIGNED || classification === 'MARKET_ALIGNED') return 'Market Aligned';
-      if (classification === Classification.NO_ACTION || classification === 'NO_ACTION') return 'No Actionable Signal';
-      return 'Analysis Complete';
-    })();
-
-    // Confidence score → band label — no raw percentage shared
-    const confidenceScore = simulation.confidence_score ?? 0.65;
-    const confidenceBand = confidenceScore >= 0.75 ? 'High' : confidenceScore >= 0.55 ? 'Medium' : 'Low';
-
-    const cycleCount = (simulation.iterations || 10000).toLocaleString();
-    const gameUrl = `beatvegas.app/game/${gameId}`;
-
-    const shareText = isBlocked
-      ? `🏆 ${matchupLabel}\n\nThis matchup did not qualify for a BeatVegas Decision Engine recommendation.\n\nbeatvegas.app\n#BeatVegas`
-      : `🏆 ${matchupLabel}\n\nBeatVegas Decision Engine — ${cycleCount} Intelligence Cycles\n\nDecision: ${decisionLabel}\nConfidence: ${confidenceBand}\n\nFull analysis: ${gameUrl}\n#BeatVegas`;
-
-    try {
-      await navigator.clipboard.writeText(shareText);
-      setShareSuccess(true);
-      setTimeout(() => setShareSuccess(false), 3000);
-    } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
-      alert('Failed to copy. Please try again.');
-    }
-  };
-
-  // Follow Forecast - Track in Decision Command Center
-  const handleFollowForecast = async () => {
-    if (!simulation || !event || isFollowing) return;
-
-    setIsFollowing(true);
-
-    try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/user/follow-forecast`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          event_id: gameId,
-          pick_id: simulation.simulation_id,
-          confidence_score: simulation.confidence_score || 0.65,
-          expected_value: 0.05  // Default EV estimate
-        })
-      });
-
-      if (response.ok) {
-        setFollowSuccess(true);
-        setTimeout(() => setFollowSuccess(false), 3000);
-      } else {
-        console.error('Failed to follow forecast');
-      }
-    } catch (err) {
-      console.error('Error following forecast:', err);
-    } finally {
-      setIsFollowing(false);
-    }
   };
 
   const getVolatilityColor = (volatility: string | number) => {
@@ -689,11 +691,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
     );
   }
 
-  if (!simulation || !event) {
+  if (!event || !canonicalDecisions) {
     return (
       <div className="min-h-screen bg-[#0a0e1a] p-6 text-center space-y-4">
-        <div className="text-white text-xl">Game data unavailable</div>
-        <div className="text-light-gray">The event payload could not be resolved. Try again.</div>
+        <div className="text-white text-xl">Canonical decision data unavailable</div>
+        <div className="text-light-gray">The decision payload could not be resolved. Try again.</div>
         <div className="flex gap-4 justify-center">
           <button
             onClick={() => loadGameData(0)}
@@ -707,6 +709,42 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           >
             ← Back to Dashboard
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!simulation && event && canonicalDecisions) {
+    return (
+      <div className="min-h-screen bg-[#0a0e1a] p-6 space-y-6">
+        <button
+          onClick={onBack}
+          className="text-gold hover:text-white mb-4 flex items-center space-x-2 transition"
+        >
+          <span>←</span>
+          <span>Back to Dashboard</span>
+        </button>
+
+        <div className="bg-charcoal rounded-xl border border-electric-blue/40 p-6">
+          <h2 className="text-2xl font-bold text-white mb-2">Canonical Decision State</h2>
+          <p className="text-sm text-light-gray mb-4">
+            Supporting simulation context is unavailable. Canonical classifications are rendered directly from decision payload.
+          </p>
+          {simulationContextUnavailable && (
+            <div className="mb-4 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Simulation context unavailable: {simulationContextReason || 'Unavailable'}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-slate-500/30 bg-slate-900/30 px-3 py-3">
+              <div className="text-xs text-light-gray mb-1">Spread classification (canonical)</div>
+              <div className="text-xl font-bold text-white">{canonicalSpreadClassification}</div>
+            </div>
+            <div className="rounded-lg border border-slate-500/30 bg-slate-900/30 px-3 py-3">
+              <div className="text-xs text-light-gray mb-1">Total classification (canonical)</div>
+              <div className="text-xl font-bold text-white">{canonicalTotalClassification}</div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -996,43 +1034,11 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           <span className="text-light-gray text-sm">
             {new Date(event.commence_time).toLocaleString()}
           </span>
-          {/* Follow Forecast Button */}
-          <button
-            onClick={handleFollowForecast}
-            disabled={isFollowing}
-            className={`${
-              followSuccess ? 'bg-neon-green' : 'bg-linear-to-r from-gold to-purple-600'
-            } text-white font-bold px-4 py-2 rounded-lg hover:shadow-xl transition-all transform hover:scale-105 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            <span>{followSuccess ? '✓' : '⭐'}</span>
-            <span>{followSuccess ? 'Following' : 'Follow'}</span>
-          </button>
-          {/* Share Button (Blueprint Page 64) */}
-          <button
-            onClick={handleShare}
-            className="bg-linear-to-r from-purple-600 to-pink-600 text-white font-bold px-4 py-2 rounded-lg hover:shadow-xl transition-all transform hover:scale-105 flex items-center space-x-2"
-          >
-            <span>📤</span>
-            <span>Share</span>
-            {shareSuccess && <span className="text-neon-green">✓</span>}
-          </button>
         </div>
       </PageHeader>
 
-      {followSuccess && (
-        <div className="mb-4 bg-gold/20 border border-gold rounded-lg p-3 text-center text-gold text-sm animate-pulse">
-          ⭐ Forecast added to your Decision Command Center!
-        </div>
-      )}
-
       </div>
       {/* END: Header gradient wrapper */}
-
-      {shareSuccess && (
-        <div className="mb-4 bg-neon-green/20 border border-neon-green rounded-lg p-3 text-center text-neon-green text-sm animate-pulse">
-          ✓ Game analysis copied to clipboard! Share on social media with #BeatVegas
-        </div>
-      )}
 
       {/* Simulation Power Badge - MOVED TO TOP */}
       <div className="mb-3 animate-fade-in">
@@ -1050,6 +1056,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           simulation && (
             <FinalUnifiedSummary
               simulation={simulation}
+              canonicalDecisions={canonicalDecisions}
               eventId={gameId}
               homeTeam={event?.home_team || ''}
               awayTeam={event?.away_team || ''}
@@ -1180,20 +1187,23 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="text-3xl">{gameEdgeState?.classification === Classification.EDGE ? '🎯' : gameEdgeState?.classification === Classification.LEAN ? '⚡' : '⚖️'}</div>
+                  <div className="text-3xl">{analysisBlocked ? '🚫' : canonicalSpreadClassification === 'EDGE' ? '🎯' : canonicalSpreadClassification === 'LEAN' ? '⚡' : '⚖️'}</div>
                   <div>
                     <h3 className={`text-2xl font-bold font-teko leading-none ${
-                      gameEdgeState?.classification === Classification.EDGE ? 'text-neon-green' :
-                      gameEdgeState?.classification === Classification.LEAN ? 'text-gold' :
+                      analysisBlocked ? 'text-red-400' :
+                      canonicalSpreadClassification === 'EDGE' ? 'text-neon-green' :
+                      canonicalSpreadClassification === 'LEAN' ? 'text-gold' :
                       'text-electric-blue'
                     }`}>
-                      {gameEdgeState?.classification === Classification.EDGE ? 'BEATVEGAS EDGE DETECTED' :
-                       gameEdgeState?.classification === Classification.LEAN ? 'MODERATE LEAN IDENTIFIED' :
-                        'MARKET ALIGNED'}
+                      {analysisBlocked ? 'ANALYSIS BLOCKED' :
+                       canonicalSpreadClassification === 'EDGE' ? 'BEATVEGAS EDGE DETECTED' :
+                       canonicalSpreadClassification === 'LEAN' ? 'MODERATE LEAN IDENTIFIED' :
+                        'Market Aligned'}
                     </h3>
                     <p className="text-xs text-light-gray mt-1">
-                      {gameEdgeState?.classification === Classification.EDGE ? 'High-Conviction Quantitative Signal' :
-                       gameEdgeState?.classification === Classification.LEAN ? 'Soft Edge - Proceed with Caution' :
+                      {analysisBlocked ? 'Canonical spread classification is BLOCKED or unavailable.' :
+                       canonicalSpreadClassification === 'EDGE' ? 'High-Conviction Quantitative Signal' :
+                       canonicalSpreadClassification === 'LEAN' ? 'Soft Edge - Proceed with Caution' :
                        'Model-Market Consensus Detected'}
                     </p>
                   </div>
@@ -1203,32 +1213,26 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                   <div className="bg-charcoal/50 p-3 rounded-lg border border-gold/20">
                     <div className="text-xs text-light-gray mb-1">Edge Classification</div>
                     <div className={`text-3xl font-black font-teko ${
-                      gameEdgeState?.classification === Classification.EDGE ? 'text-neon-green' :
-                      gameEdgeState?.classification === Classification.LEAN ? 'text-gold' :
+                      analysisBlocked ? 'text-red-400' :
+                      canonicalSpreadClassification === 'EDGE' ? 'text-neon-green' :
+                      canonicalSpreadClassification === 'LEAN' ? 'text-gold' :
                       'text-electric-blue'
                     }`}>
-                      {getEdgeClassificationLabel(gameEdgeState?.classification)}
+                      {analysisBlocked ? 'BLOCKED' : getEdgeClassificationLabel(canonicalSpreadClassification)}
                     </div>
                     <div className={`text-xs font-semibold mt-1 ${
-                      gameEdgeState?.classification === Classification.LEAN ? 'text-gold/80' : 'text-light-gray/60'
+                      analysisBlocked ? 'text-red-300' : canonicalSpreadClassification === 'LEAN' ? 'text-gold/80' : 'text-light-gray/60'
                     }`}>
-                      {gameEdgeState?.classification === Classification.LEAN ? 'Soft edge — proceed cautious' : 'Statistical signal summary'}
+                      {analysisBlocked ? 'Render blocked by canonical classification' : canonicalSpreadClassification === 'LEAN' ? 'Soft edge — proceed cautious' : 'Statistical signal summary'}
                     </div>
                   </div>
                   
                   <div className="bg-charcoal/50 p-3 rounded-lg border border-gold/20 relative group">
                     <div className="text-xs text-light-gray mb-1">Market Spread</div>
                     <div className="text-lg font-bold text-white font-teko">
-                      {(() => {
-                        const marketSpread = simulation?.sharp_analysis?.spread?.market_spread_home;
-                        
-                        if (marketSpread !== undefined) {
-                          const spreadValue = marketSpread < 0 ? marketSpread.toFixed(1) : '+' + marketSpread.toFixed(1);
-                          const team = marketSpread < 0 ? event?.home_team : event?.away_team;
-                          return `${team || 'N/A'} ${spreadValue}`;
-                        }
-                        return 'N/A';
-                      })()}
+                      {analysisBlocked
+                        ? 'Blocked / unavailable'
+                        : (spreadSummary.marketSpreadLabel || 'N/A')}
                     </div>
                     <div className="text-xs text-light-gray/60 mt-1">market line</div>
                   </div>
@@ -1237,14 +1241,9 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                     <div className="text-xs text-light-gray mb-1">Fair Spread (Model)</div>
                     <div className="text-[10px] text-gray-500 -mt-1 mb-1">Fair line estimate (pricing), not a score prediction</div>
                     <div className="text-lg font-bold text-electric-blue font-teko">
-                      {(() => {
-                        const modelSpread = simulation?.sharp_analysis?.spread?.model_spread;
-                        
-                        if (modelSpread !== undefined) {
-                          return `Model Spread: ${modelSpread.toFixed(1)}`;
-                        }
-                        return 'N/A';
-                      })()}
+                      {analysisBlocked
+                        ? 'Blocked / unavailable'
+                        : (spreadSummary.fairSpreadLabel || 'N/A')}
                     </div>
                     <div className="text-xs text-light-gray/60 mt-1">with team label</div>
                     {/* Model Interpretation Tooltip */}
@@ -1269,37 +1268,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                       Model Preference (This Market)
                     </div>
                     <div className="text-lg font-bold text-white font-teko">
-                      {(() => {
-                        const probabilities = simulation?.sharp_analysis?.probabilities;
-                        const spreadData = simulation?.sharp_analysis?.spread;
-                        const p_cover_home = probabilities?.p_cover_home || 0.5;
-                        const p_cover_away = probabilities?.p_cover_away || 0.5;
-                        const market_spread = spreadData?.market_spread_home || 0;
-                        
-                        // CANONICAL RULE: Model Preference = Side with highest probability
-                        if (p_cover_home > p_cover_away) {
-                          return `${getDisplayTeamName(event.home_team)} ${market_spread >= 0 ? '+' : ''}${market_spread.toFixed(1)}`;
-                        } else if (p_cover_away > p_cover_home) {
-                          return `${getDisplayTeamName(event.away_team)} ${(-market_spread) >= 0 ? '+' : ''}${(-market_spread).toFixed(1)}`;
-                        } else {
-                          return 'No Detectable Edge';
-                        }
-                      })()}
+                      {analysisBlocked
+                        ? 'Blocked / unavailable'
+                        : (spreadSummary.modelPreferenceLabel || 'No Detectable Edge')}
                     </div>
                     <div className="text-xs text-purple-200 mt-1">
-                      {(() => {
-                        const probabilities = simulation?.sharp_analysis?.probabilities;
-                        const p_cover_home = probabilities?.p_cover_home || 0.5;
-                        const p_cover_away = probabilities?.p_cover_away || 0.5;
-                        
-                        if (p_cover_home > p_cover_away) {
-                          return `Edge Conviction: ${(p_cover_home * 100).toFixed(1)}%`;
-                        } else if (p_cover_away > p_cover_home) {
-                          return `Edge Conviction: ${(p_cover_away * 100).toFixed(1)}%`;
-                        } else {
-                          return 'No Detectable Edge';
-                        }
-                      })()}
+                      {analysisBlocked
+                        ? 'Spread data unavailable'
+                        : (spreadSummary.edgeConvictionLabel || 'No Detectable Edge')}
                     </div>
                     {/* Model Preference Tooltip */}
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-80 p-4 bg-purple-900/95 border border-purple-400/50 rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-300 ease-out pointer-events-none z-10">
@@ -1795,7 +1771,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 ) : edgeClass === 'MARKET_ALIGNED' ? (
                   <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
-                    <div className="text-base text-gray-300">MARKET ALIGNED — NO PLAY</div>
+                    <div className="text-base text-gray-300">Market Aligned - No Play</div>
                     <div className="text-xs text-gray-500 mt-2">
                       Model and market consensus detected. No directional preference.
                     </div>
@@ -1906,7 +1882,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 ) : edgeClass === 'MARKET_ALIGNED' ? (
                   <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
-                    <div className="text-base text-gray-300">MARKET ALIGNED — NO PLAY</div>
+                    <div className="text-base text-gray-300">Market Aligned - No Play</div>
                     <div className="text-xs text-gray-500 mt-2">
                       Model and market consensus detected. No directional preference.
                     </div>
@@ -2018,7 +1994,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 ) : edgeClass === 'MARKET_ALIGNED' ? (
                   <div className="mt-4 p-4 bg-gray-800/50 border border-gray-600 rounded-lg">
                     <div className="text-xs text-gray-400 uppercase mb-1">Market Status</div>
-                    <div className="text-base text-gray-300">MARKET ALIGNED — NO PLAY</div>
+                    <div className="text-base text-gray-300">Market Aligned - No Play</div>
                     <div className="text-xs text-gray-500 mt-2">
                       Model and market consensus detected. No directional preference.
                     </div>
@@ -2152,18 +2128,16 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         }`}>
           <h3 className="text-light-gray text-xs uppercase mb-2 flex items-center gap-2">
             Confidence
-            <span className="text-xs cursor-help" title="Model Conviction measures engine stability from 0-100. Low conviction = volatile matchup. High conviction = stable, predictable outcome. Starter tier conviction capped by 10K cycles. Elite tier unlocks 100K cycle stability.">ℹ️</span>
+            <span className="text-xs cursor-help" title="Model Conviction measures engine stability from 0-100. Low conviction = volatile matchup. High conviction = stable, predictable outcome.">ℹ️</span>
           </h3>
           <div className="flex items-baseline gap-2">
             {(() => {
               // NORMALIZE: Raw cluster alignment (e.g., 3800, 5700) -> 0-100 scale
               const rawScore = simulation.confidence_score || 0.65;
               const normalizedScore = rawScore > 10 ? Math.min(100, Math.round((rawScore / 6000) * 100)) : Math.round(rawScore * 100);
-              const tier = normalizedScore >= 90 ? 'S-Tier' :
-                           normalizedScore >= 85 ? 'A-Tier' :
-                           normalizedScore >= 70 ? 'B-Tier' :
-                           normalizedScore >= 55 ? 'C-Tier' :
-                           normalizedScore >= 30 ? 'D-Tier' : 'F-Tier';
+              const tier = normalizedScore >= 90 ? 'High' :
+                           normalizedScore >= 70 ? 'Medium' :
+                           normalizedScore >= 55 ? 'Watch' : 'Low';
               
               // Don't show green "high confidence" text for D/F tiers
               const isLowConfidence = normalizedScore < 55;
@@ -2217,7 +2191,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                    'High outcome variance detected'}
                 </div>
                 <div className="text-xs text-white/30 mt-2">
-                  Derived from engine cycle alignment strength (Tier scale: S=90-100, A=85-89, B=70-84, C=55-69, D=30-54, F=0-29)
+                  Derived from engine cycle alignment strength.
                 </div>
               </>
             );
@@ -2227,7 +2201,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           {confidenceTooltip && (() => {
             const rawScore = simulation.confidence_score || 0.65;
             const normalizedScore = rawScore > 10 ? Math.min(100, Math.round((rawScore / 6000) * 100)) : Math.round(rawScore * 100);
-            const isLowConfidence = normalizedScore < 55; // D-Tier or F-Tier
+            const isLowConfidence = normalizedScore < 55;
             
             // Don't show green success banner for low confidence (D/F tiers)
             if (isLowConfidence && confidenceTooltip.banner_type === 'success') {
@@ -2319,6 +2293,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
         <>
           <FinalUnifiedSummary
             simulation={simulation}
+            canonicalDecisions={canonicalDecisions}
             eventId={gameId}
             homeTeam={event.home_team}
             awayTeam={event.away_team}
@@ -2349,17 +2324,10 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               <div className="text-2xl">🧪</div>
               <div>
                 <div className="text-white font-bold">
-                  Decision Depth: {(simulation.iterations / 1000).toFixed(0)}K ({simulation.iterations >= 100000 ? 'Elite' : simulation.iterations >= 50000 ? 'Pro' : simulation.iterations >= 25000 ? 'Core' : 'Starter'} Tier)
+                  Decision Depth: {(simulation.iterations / 1000).toFixed(0)}K Platform Analysis
                 </div>
                 <div className="text-xs text-light-gray mt-1">
-                  {simulation.iterations < 100000 ? (
-                    <>
-                      {simulation.iterations >= 50000 ? 'Elite' : simulation.iterations >= 25000 ? 'Pro' : 'Core'} runs {simulation.iterations >= 50000 ? '100,000' : simulation.iterations >= 25000 ? '50,000' : '25,000'} Intelligence Cycles for {simulation.iterations >= 50000 ? 'maximum precision' : 'higher-resolution edges'}.
-                      {simulation.metadata?.user_tier !== 'elite' && ' Tighter confidence bands available.'}
-                    </>
-                  ) : (
-                    'Maximum Decision Depth - institutional-grade analysis'
-                  )}
+                  BeatVegas Platform runs up to 100,000 Intelligence Cycles for maximum precision.
                 </div>
               </div>
             </div>
@@ -2384,7 +2352,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               { key: 'distribution', icon: '📊', label: 'Distribution' },
               { key: 'injuries', icon: '🏥', label: 'Injuries' },
               { key: 'props', icon: '🎯', label: 'Props' },
-              { key: 'firsthalf', icon: sportLabels.headerEmoji, label: '1H Total' },
+              { key: 'firsthalf', icon: sportLabels.headerEmoji, label: getFirstIntervalLabel(event?.sport_key) },
               { key: 'movement', icon: '📈', label: 'Movement' },
               { key: 'pulse', icon: '💬', label: 'Pulse' }
             ];
@@ -2406,6 +2374,12 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
           ))}
         </div>
       </div>
+
+      {isLimitedTier && (
+        <div className="mb-4 rounded-lg border border-gold/30 bg-gold/10 p-3 text-sm text-gold">
+          Current tier access: Distribution and Injuries are unlocked. Movement, Props, and interval totals remain BeatVegas Platform features.
+        </div>
+      )}
 
       {/* Tab Content */}
       <div className="bg-charcoal rounded-xl p-6 border border-navy">
@@ -2684,6 +2658,14 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
 
         {/* Panel 3: Top Props */}
         {activeTab === 'props' && (
+          isLimitedTier ? (
+            <div className="space-y-4">
+              <h3 className="text-2xl font-bold text-white font-teko">🎯 Prop Analysis</h3>
+              <div className="rounded-lg border border-gold/30 bg-gold/10 p-4 text-gold text-sm">
+                Prop analysis is available on BeatVegas Platform.
+              </div>
+            </div>
+          ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-2xl font-bold text-white font-teko">
@@ -2869,7 +2851,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
                 </p>
                 <div className="mt-4 pt-4 border-t border-navy/50">
                   <p className="text-xs text-light-gray/60 uppercase font-bold mb-1">📅 Expected Release Window</p>
-                  <p className="text-electric-blue text-sm">Most prop markets open 24–48 hours before tipoff</p>
+                  <p className="text-electric-blue text-sm">{getPropsWindowCopy(event?.sport_key)}</p>
                   <p className="text-light-gray/70 text-xs mt-2">Prime-time games often release lines earlier</p>
                 </div>
                 <div className="mt-4 bg-gold/10 border border-gold/30 rounded-lg p-3 max-w-md mx-auto">
@@ -2880,10 +2862,19 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               </div>
             )}
           </div>
+          )
         )}
 
         {/* Panel 4: Line Movement */}
         {activeTab === 'movement' && (
+          isLimitedTier ? (
+            <div className="space-y-4">
+              <h3 className="text-2xl font-bold text-white font-teko">📈 Line Movement</h3>
+              <div className="rounded-lg border border-gold/30 bg-gold/10 p-4 text-gold text-sm">
+                Line movement analysis is available on BeatVegas Platform.
+              </div>
+            </div>
+          ) : (
           <div className="space-y-6">
             <h3 className="text-2xl font-bold text-white font-teko mb-4">
               📈 Live Line Movement (Market Agent)
@@ -2908,10 +2899,19 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               </p>
             </div>
           </div>
+          )
         )}
 
         {/* Panel 4: First Half Total (PHASE 15) */}
         {activeTab === 'firsthalf' && (
+          isLimitedTier ? (
+            <div className="space-y-4">
+              <h3 className="text-2xl font-bold text-white font-teko">{getFirstIntervalLabel(event?.sport_key)}</h3>
+              <div className="rounded-lg border border-gold/30 bg-gold/10 p-4 text-gold text-sm">
+                Interval-total analysis is available on BeatVegas Platform.
+              </div>
+            </div>
+          ) : (
           <div className="space-y-4">
             <UpgradePrompt variant="feature_engine" />
             <FirstHalfAnalysis
@@ -2921,6 +2921,7 @@ const GameDetail: React.FC<GameDetailProps> = ({ gameId, onBack }) => {
               sportKey={event?.sport_key}
             />
           </div>
+          )
         )}
 
         {/* Panel 5: Community Pulse */}

@@ -119,14 +119,21 @@ def _is_blocked_status(release_status: ReleaseStatus) -> bool:
     }
 
 
-def _normalized_classification(decision: MarketDecision) -> Classification:
-    if _is_blocked_status(decision.release_status):
-        return Classification.BLOCKED
-    if decision.classification == Classification.EDGE:
-        return Classification.EDGE
-    if decision.classification == Classification.LEAN:
-        return Classification.LEAN
-    return Classification.MARKET_ALIGNED
+def _enforce_canonical_classification(decision: MarketDecision) -> MarketDecision:
+    """
+    Preserve canonical classification exactly as persisted in decision_records.payload.
+    Fail closed only when canonical classification is missing.
+    """
+    if decision.classification is None:
+        decision.classification = Classification.BLOCKED
+        decision.release_status = ReleaseStatus.BLOCKED_MISSING_CONTEXT
+        missing_reason = "Canonical classification missing from decision_records.payload"
+        reasons = list(decision.reasons or [])
+        if missing_reason not in reasons:
+            decision.reasons = [missing_reason] + reasons
+        if decision.risk:
+            decision.risk.blocked_reason = missing_reason
+    return decision
 
 
 def _format_spread_line(line: Optional[float]) -> str:
@@ -164,7 +171,7 @@ def _normalize_decision_for_api(decision: Optional[MarketDecision]) -> Optional[
     if decision is None:
         return None
 
-    decision.classification = _normalized_classification(decision)
+    decision = _enforce_canonical_classification(decision)
     decision.market_type_display = _market_type_display(decision.market_type)
     decision.selection_label = _selection_label(decision)
     decision.edge_points = decision.edge.edge_points if decision.edge else None
@@ -259,65 +266,6 @@ LEAGUE_DEFAULT_TOTALS = {
 def get_default_total(league: str) -> float:
     """Return a sensible default total for the given league."""
     return LEAGUE_DEFAULT_TOTALS.get(league.upper(), 100.0)
-
-
-def _is_actionable_classification(decision: Optional[MarketDecision]) -> bool:
-    if not decision or not decision.classification:
-        return False
-    return decision.classification in (Classification.EDGE, Classification.LEAN)
-
-
-def _market_view_contract_ready(sim_doc: dict, market_type: MarketType) -> bool:
-    """
-    Mirror the front-end detail contract requirements for actionable markets.
-    If these bindings are missing, teaser cards must not be actionable.
-    """
-    market_views = sim_doc.get("market_views") or {}
-    key = "spread" if market_type == MarketType.SPREAD else "total" if market_type == MarketType.TOTAL else None
-    if not key:
-        return True
-
-    mv = market_views.get(key) or {}
-    edge_class = str(mv.get("edge_class") or "").upper()
-    if edge_class not in {"EDGE", "LEAN"}:
-        return False
-
-    preferred_selection_id = str(mv.get("model_preference_selection_id") or "")
-    if preferred_selection_id in {"", "NO_EDGE", "INVALID"}:
-        return False
-
-    selections = mv.get("selections") or []
-    preferred = next(
-        (s for s in selections if str(s.get("selection_id") or "") == preferred_selection_id),
-        None,
-    )
-    if not preferred:
-        return False
-
-    side = str(preferred.get("side") or "").lower()
-    market_line = preferred.get("market_line_for_selection")
-    if market_type == MarketType.SPREAD:
-        return side in {"home", "away"} and market_line is not None
-    if market_type == MarketType.TOTAL:
-        return side in {"over", "under"} and market_line is not None
-    return True
-
-
-def _downgrade_to_informational(decision: Optional[MarketDecision], reason: str) -> Optional[MarketDecision]:
-    if not decision or not _is_actionable_classification(decision):
-        return decision
-
-    decision.classification = Classification.MARKET_ALIGNED
-    decision.release_status = ReleaseStatus.INFO_ONLY
-    decision.edge_points = 0.0
-    decision.selection_label = "No actionable signal"
-    decision.pick = None
-    decision.edge = None
-    if decision.risk:
-        decision.risk.blocked_reason = reason
-    if reason not in decision.reasons:
-        decision.reasons = [reason] + list(decision.reasons or [])
-    return decision
 
 
 def _build_full_game_simulation_filter(game_id: str) -> dict:
@@ -584,19 +532,6 @@ async def get_game_decisions(
         decision_version=spread_decision.debug.decision_version,
         computed_at=datetime.utcnow().isoformat()
     )
-
-    # Canonical consistency gate:
-    # if detail-market bindings are missing in simulation market_views, cards must not remain actionable.
-    if _is_actionable_classification(decisions.spread) and not _market_view_contract_ready(sim_doc, MarketType.SPREAD):
-        decisions.spread = _downgrade_to_informational(
-            decisions.spread,
-            "Canonical spread binding missing; downgraded to informational state"
-        )
-    if _is_actionable_classification(decisions.total) and not _market_view_contract_ready(sim_doc, MarketType.TOTAL):
-        decisions.total = _downgrade_to_informational(
-            decisions.total,
-            "Canonical total binding missing; downgraded to informational state"
-        )
 
     decisions = _normalize_game_decisions_for_api(decisions)
     

@@ -14,6 +14,7 @@
 
 import React from 'react';
 import type { MonteCarloSimulation } from '../types';
+import type { GameDecisions as CanonicalGameDecisions } from '../types/MarketDecision';
 import { 
   useGameEdgeState,
   getClassificationText,
@@ -31,6 +32,7 @@ import {
 
 interface FinalUnifiedSummaryProps {
   simulation: MonteCarloSimulation | null;
+  canonicalDecisions?: CanonicalGameDecisions | null;
   eventId: string;
   homeTeam: string;
   awayTeam: string;
@@ -40,6 +42,7 @@ const PLATFORM_DISCLAIMER = "BeatVegas provides statistical simulation outputs o
 
 export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
   simulation,
+  canonicalDecisions,
   eventId,
   homeTeam,
   awayTeam,
@@ -56,7 +59,7 @@ export const FinalUnifiedSummary: React.FC<FinalUnifiedSummaryProps> = ({
     primaryAction,
     primaryGrade,
     failureReasons,
-  } = useGameEdgeState(simulation, eventId, homeTeam, awayTeam);
+  } = useGameEdgeState(simulation, canonicalDecisions, eventId, homeTeam, awayTeam);
   
   // Fail-closed: If we can't render, show blocked state
   if (!state || !canRender) {
