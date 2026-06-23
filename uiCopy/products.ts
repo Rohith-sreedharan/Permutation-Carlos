@@ -416,7 +416,7 @@ export const PARLAY_ARCHITECT_COPY = {
   pageTitle: 'Parlay Architect',
   subheadline: 'Multi-leg decision optimization. Up to 6 legs.',
   legSelectLabel: 'Select legs (2–6)',
-  legGuidance: 'Each optimization run consumes tokens and cycles based on leg count.',
+  legGuidance: 'Each optimization run consumes cycles based on leg count.',
   runPreview: {
     sufficient: {
       confirmLabel: 'Run Optimization',

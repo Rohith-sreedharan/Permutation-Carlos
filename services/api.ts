@@ -85,6 +85,30 @@ export const removeToken = (): void => {
 };
 
 // --- Generic API Request ---
+// --- CANONICAL LOGOUT (Phase 13 auth consolidation) ---
+/**
+ * ONE CANONICAL LOGOUT PATH
+ * All logout implementations must delegate to this function.
+ * Clears both localStorage + sessionStorage for iOS Safari resilience.
+ * Redirects to /auth to prevent stale session restore.
+ */
+export const canonicalLogout = async (): Promise<void> => {
+    try {
+        // 1. Clear token from both stores
+        removeToken();
+        // 2. Redirect to auth page (prevents stale session restore on refresh)
+        // Use setTimeout to ensure token is cleared before navigation
+        setTimeout(() => {
+            window.location.href = '/auth';
+        }, 100);
+    } catch (err) {
+        console.error('[AUTH] Logout failed:', err);
+        // Force redirect even on error
+        window.location.href = '/auth';
+    }
+};
+
+// --- Generic API Request ---
 export const apiRequest = async <T = any>(
     endpoint: string,
     options: RequestInit = {}

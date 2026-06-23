@@ -357,7 +357,7 @@ def process_data_deletion(request_id: str):
         "decision_settlement_metrics",
         "truth_dataset",
         "clv_capture_log",
-        "calibration_records",
+        "calibration_audit_log",
         "drift_detection_log",
         "ai_picks",
     ]:

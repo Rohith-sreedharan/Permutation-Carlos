@@ -18,7 +18,7 @@ interface SimulationPowerWidgetProps {
 const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgradeClick }) => {
   const [platformAccess, setPlatformAccess] = useState(false);
   const [telegramAccess, setTelegramAccess] = useState(false);
-  const [engineCyclesLimit, setEngineCyclesLimit] = useState(0);
+  const [engineCyclesRemaining, setEngineCyclesRemaining] = useState(0);
   const [tierMaxCycles, setTierMaxCycles] = useState(DEFAULT_PREVIEW_MAX);
   const [loading, setLoading] = useState(true);
 
@@ -28,16 +28,17 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
         const response = await getSubscriptionStatus();
         setPlatformAccess(Boolean(response.platform_access));
         setTelegramAccess(Boolean(response.telegram_access));
-        setEngineCyclesLimit(Number(response.engine_cycles_limit ?? 0));
+        const remaining = Number(response.engine_cycles_remaining ?? response.engine_cycles_limit ?? 0);
+        setEngineCyclesRemaining(Math.max(0, remaining));
         // Derive correct max from tier or plan_id
         const tier = response.tier || response.plan_id || '';
-        const max = TIER_CYCLE_LIMITS[tier] ?? (response.platform_access ? 100_000 : DEFAULT_PREVIEW_MAX);
+        const max = Number(response.engine_cycles_limit ?? TIER_CYCLE_LIMITS[tier] ?? (response.platform_access ? 100_000 : DEFAULT_PREVIEW_MAX));
         setTierMaxCycles(max);
       } catch (error) {
         console.error('Failed to fetch entitlement state:', error);
         setPlatformAccess(false);
         setTelegramAccess(false);
-        setEngineCyclesLimit(0);
+        setEngineCyclesRemaining(0);
         setTierMaxCycles(DEFAULT_PREVIEW_MAX);
       } finally {
         setLoading(false);
@@ -50,8 +51,8 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
     // after each simulation fetch — no API refetch needed
     const handleCycleUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail && typeof detail.cycles_used === 'number') {
-        setEngineCyclesLimit(detail.cycles_used);
+      if (detail && typeof detail.cycles_remaining === 'number') {
+        setEngineCyclesRemaining(Math.max(0, Number(detail.cycles_remaining)));
         if (typeof detail.cycles_allocated === 'number' && detail.cycles_allocated > 0) {
           setTierMaxCycles(detail.cycles_allocated);
         }
@@ -63,13 +64,13 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
 
   if (loading) return null;
 
-  const activeCycles = Math.max(0, engineCyclesLimit);
-  const progressPercent = Math.min(100, (activeCycles / tierMaxCycles) * 100);
-  const isMaxCapacity = activeCycles >= tierMaxCycles;
-  const capacityLabel = isMaxCapacity ? 'Max Capacity' : 'Decision Depth: Preview Mode — Upgrade for full access';
+  const activeCycles = Math.max(0, engineCyclesRemaining);
+  const progressPercent = Math.min(100, (activeCycles / Math.max(1, tierMaxCycles)) * 100);
+  const isDepleted = activeCycles <= 0;
+  const capacityLabel = isDepleted ? 'Cycle Limit Reached' : 'Decision Depth: Preview Mode — Upgrade for full access';
 
   const getUpgradeMessage = () => {
-    if (platformAccess && isMaxCapacity) return "You're running BeatVegas at full Decision Depth.";
+    if (platformAccess && isDepleted) return 'Current cycle balance is exhausted for this billing period.';
     if (platformAccess) return 'Platform access is active. Upgrade plan limits to unlock more Intelligence Cycles.';
     if (telegramAccess) return 'Telegram access is active. Platform unlocks Decision Engine cycles and Parlay Architect.';
     return 'Activate Platform access to unlock Decision Engine cycles.';
@@ -81,10 +82,10 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
         <div>
           <div className="text-xs text-lightGold/70 mb-1">{COPY.decisionDepth}</div>
           <div className={`text-lg font-bold ${platformAccess ? 'text-gold' : telegramAccess ? 'text-electric-blue' : 'text-gray-400'}`}>
-            {isMaxCapacity ? `${capacityLabel} · ${activeCycles.toLocaleString()} Intelligence Cycles/period` : capacityLabel}
+            {isDepleted ? capacityLabel : `${capacityLabel} · ${activeCycles.toLocaleString()} Intelligence Cycles remaining`}
           </div>
         </div>
-        {!isMaxCapacity && onUpgradeClick && (
+        {!platformAccess && onUpgradeClick && (
           <button
             onClick={onUpgradeClick}
             className="px-3 py-1.5 bg-linear-to-r from-gold to-lightGold text-darkNavy text-xs font-bold rounded hover:shadow-lg hover:shadow-gold/30 transition-all"
@@ -110,17 +111,35 @@ const SimulationPowerWidget: React.FC<SimulationPowerWidgetProps> = ({ onUpgrade
 
       {/* Upgrade Message */}
       <div className="text-xs text-lightGold/70 leading-relaxed">
-        {isMaxCapacity ? (
-          <span className="text-gold">✓ {getUpgradeMessage()}</span>
+        {isDepleted ? (
+          <>
+            <span className="text-gold">✓ {getUpgradeMessage()}</span>
+            {!platformAccess && (
+              <div className="mt-3 space-y-2">
+                <p className="text-lightGold/90">Your Intelligence Preview analyses are complete.</p>
+                <a
+                  href="/upgrade?plan=syndicate"
+                  className="block text-center border border-yellow-400 text-yellow-400 font-bold py-2 rounded hover:bg-yellow-400/10 transition-colors"
+                >
+                  Join Syndicate - $39/month
+                </a>
+                <a
+                  href="/upgrade?plan=platform"
+                  className="block text-center bg-yellow-400 text-[#0a0e1a] font-bold py-2 rounded hover:bg-yellow-300 transition-colors"
+                >
+                  Subscribe to Platform - $97/month
+                </a>
+              </div>
+            )}
+          </>
         ) : (
           <>
             {(() => {
               const costPerAnalysis = 1000;
-              const remaining = tierMaxCycles - activeCycles;
-              const analysesRemaining = Math.max(0, Math.floor(remaining / costPerAnalysis));
+              const analysesRemaining = Math.max(0, Math.floor(activeCycles / costPerAnalysis));
               return (
                 <>
-                  You're using {activeCycles.toLocaleString()} / {tierMaxCycles.toLocaleString()} possible Intelligence Cycles.
+                  You have {activeCycles.toLocaleString()} / {tierMaxCycles.toLocaleString()} Intelligence Cycles remaining.
                   {' '}({analysesRemaining} {analysesRemaining === 1 ? 'analysis' : 'analyses'} remaining)
                 </>
               );

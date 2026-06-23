@@ -14,6 +14,51 @@ from middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/community", tags=["community"])
 
+INTERNAL_EMAIL_BLOCKLIST = {
+    "beatvegasapp@gmail.com",
+}
+INTERNAL_PREFIX_BLOCKLIST = (
+    "phase9_",
+    "p11_",
+    "ev_",
+    "audit_",
+)
+INTERNAL_NAME_BLOCKLIST = {
+    "probe",
+}
+INTERNAL_STATUS_BLOCKLIST = {
+    "deleted",
+    "test",
+    "internal",
+}
+
+
+def _norm(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
+def _is_internal_identity(doc: Dict[str, Any]) -> bool:
+    email = _norm(doc.get("email"))
+    username = _norm(doc.get("username"))
+    user_id = _norm(doc.get("user_id"))
+    name = _norm(doc.get("name") or doc.get("display_name"))
+    status = _norm(doc.get("status") or doc.get("account_status") or doc.get("user_status"))
+
+    identifiers = [email, username, user_id, name]
+
+    if email in INTERNAL_EMAIL_BLOCKLIST:
+        return True
+    if status in INTERNAL_STATUS_BLOCKLIST:
+        return True
+    if any(value in INTERNAL_NAME_BLOCKLIST for value in identifiers if value):
+        return True
+    if any(value.startswith(INTERNAL_PREFIX_BLOCKLIST) for value in identifiers if value):
+        return True
+
+    return False
+
 
 # === Request/Response Models ===
 
@@ -180,7 +225,8 @@ async def get_leaderboard(
     Get leaderboard sorted by metric
     Metrics: xp, win_rate, profit, streak
     """
-    profiles = user_identity_service.get_leaderboard(limit=limit, metric=metric)
+    profiles = user_identity_service.get_leaderboard(limit=max(limit * 5, 100), metric=metric)
+    profiles = [profile for profile in profiles if not _is_internal_identity(profile)][:limit]
     return {"metric": metric, "count": len(profiles), "leaderboard": profiles}
 
 
@@ -290,12 +336,17 @@ async def get_channel_messages(
         .limit(limit)
     )
     
-    # Convert ObjectId to string
+    filtered_messages = []
+
+    # Convert ObjectId to string and hide internal/test accounts from public community feed
     for msg in messages:
         if "_id" in msg:
             msg["_id"] = str(msg["_id"])
+        if _is_internal_identity(msg):
+            continue
+        filtered_messages.append(msg)
     
-    return {"channel": channel, "count": len(messages), "messages": list(reversed(messages))}
+    return {"channel": channel, "count": len(filtered_messages), "messages": list(reversed(filtered_messages))}
 
 
 @router.post("/messages")

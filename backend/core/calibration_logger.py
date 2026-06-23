@@ -51,7 +51,8 @@ class CalibrationLogger:
         Includes pick_state and complete reason codes for NO_PLAY/LEAN/PICK classification
         """
         try:
-            db.pick_audit.insert_one({
+            db.calibration_audit_log.insert_one({
+                "record_type": "pick_audit",
                 "game_id": game_id,
                 "sport": sport,
                 "market_type": market_type,
@@ -132,8 +133,9 @@ class CalibrationLogger:
                 else:
                     damp_factor_applied = np.clip(0.90, 1.0, 1.0 - (bias / 20.0))
             
-            # Log to database
-            db.calibration_daily.insert_one({
+            # Log to canonical collection
+            db.calibration_audit_log.insert_one({
+                "record_type": "daily_calibration",
                 "sport": sport,
                 "date": date.isoformat(),
                 "games_count": len(games),
@@ -227,7 +229,8 @@ class CalibrationLogger:
         
         try:
             # Get last 7 days of calibration data
-            calibrations = list(db.calibration_daily.find({
+            calibrations = list(db.calibration_audit_log.find({
+                "record_type": "daily_calibration",
                 "sport": sport,
                 "date": {
                     "$gte": start_date.isoformat(),

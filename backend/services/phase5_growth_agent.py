@@ -102,7 +102,7 @@ _TEMPLATES: dict = {
         "subject":     "Welcome to BeatVegas",
         "body": (
             "Welcome to BeatVegas — the agentic simulation intelligence platform. "
-            "BeatVegas does not facilitate bet placement. All outputs are informational only. "
+            "BeatVegas does not facilitate execution of picks. All outputs are informational only. "
             "Institutional-grade analytics, delivered by autonomous agents. "
             "Complete your onboarding to unlock your intelligence dashboard."
         ),
@@ -863,6 +863,24 @@ class GrowthAgent:
         return self.send_message(
             user_id=user_id,
             template_id="syndicate_cycle_reset",
+            trace_id=trace_id,
+        )
+
+    def trigger_syndicate_upgrade_prompt(
+        self,
+        user_id: str,
+        trace_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Section 4 — 80% warning for Syndicate subscribers.
+        Shows ONLY Platform CTA (user is already subscribed to Syndicate).
+        Idempotent: suppressed if already sent in this billing period (30 days).
+        """
+        if self._already_sent_in_period(user_id, "syndicate_upgrade_prompt", since_hours=720):
+            return {"sent": False, "reason": "already_sent"}
+        return self.send_message(
+            user_id=user_id,
+            template_id="syndicate_upgrade_prompt",
             trace_id=trace_id,
         )
 

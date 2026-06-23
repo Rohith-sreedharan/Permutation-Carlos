@@ -1,3 +1,4 @@
+import { canonicalLogout } from '../services/api';
 import React, { useEffect, useState, Component } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
@@ -114,6 +115,62 @@ interface MainLayoutProps {
   onAuthError: () => void;
 }
 
+const normalizePathname = (pathname: string): string => {
+  if (!pathname) return '/';
+  const normalized = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  return normalized || '/';
+};
+
+const resolvePageFromLocation = (pathname: string, hash: string): Page => {
+  const normalizedPath = normalizePathname(pathname);
+  const normalizedHash = hash.toLowerCase();
+
+  if (normalizedHash === '#parlay') return 'architect';
+  if (normalizedHash === '#trust-loop') return 'trust-loop';
+  if (normalizedHash === '#leaderboard') return 'leaderboard';
+
+  const PATH_TO_PAGE: Record<string, Page> = {
+    '/': 'dashboard',
+    '/dashboard': 'dashboard',
+    '/command-center': 'dashboard',
+    '/community': 'community',
+    '/trust-loop': 'trust-loop',
+    '/parlay': 'architect',
+    '/architect': 'architect',
+    '/leaderboard': 'leaderboard',
+    '/war-room': 'war-room',
+    '/war-room-leaderboard': 'war-room-leaderboard',
+    '/affiliates': 'affiliates',
+    '/settings': 'settings',
+    '/telegram': 'telegram',
+    '/billing': 'billing',
+    '/earnings': 'earnings',
+    '/profile': 'profile',
+    '/wallet': 'wallet',
+    '/admin': 'admin',
+  };
+
+  return PATH_TO_PAGE[normalizedPath] || 'dashboard';
+};
+
+const PAGE_TO_PATH: Partial<Record<Page, string>> = {
+  dashboard: '/dashboard',
+  community: '/community',
+  'trust-loop': '/trust-loop',
+  architect: '/parlay',
+  leaderboard: '/leaderboard',
+  'war-room': '/war-room',
+  'war-room-leaderboard': '/war-room-leaderboard',
+  affiliates: '/affiliates',
+  settings: '/settings',
+  telegram: '/telegram',
+  billing: '/billing',
+  earnings: '/earnings',
+  profile: '/profile',
+  wallet: '/wallet',
+  admin: '/admin',
+};
+
 const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -121,6 +178,22 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
   const [isAdmin] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [trialCancelled, setTrialCancelled] = useState(false);
+
+  useEffect(() => {
+    const syncPageFromLocation = () => {
+      const pageFromPath = resolvePageFromLocation(window.location.pathname, window.location.hash);
+      setCurrentPage(pageFromPath);
+    };
+
+    syncPageFromLocation();
+    window.addEventListener('popstate', syncPageFromLocation);
+    window.addEventListener('hashchange', syncPageFromLocation);
+
+    return () => {
+      window.removeEventListener('popstate', syncPageFromLocation);
+      window.removeEventListener('hashchange', syncPageFromLocation);
+    };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -131,8 +204,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    window.location.reload();
+    canonicalLogout();
   };
 
   const clearSelectedGame = () => {
@@ -270,7 +342,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
       <div className="md:hidden sticky top-0 z-50 flex items-center justify-between p-3 bg-charcoal/95 backdrop-blur border-b border-white/10 shrink-0 w-full">
         <div className="flex items-center space-x-2">
           <img src="/logo.png" alt="Logo" className="h-8 w-auto object-contain" />
-          <h1 className="text-xl font-bold text-white font-teko tracking-wider">BEATVEGAS</h1>
         </div>
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
@@ -311,8 +382,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ onAuthError }) => {
           <Sidebar
             currentPage={currentPage}
             setCurrentPage={(page) => {
-               setCurrentPage(page);
-               setIsSidebarOpen(false);
+              setCurrentPage(page);
+              setIsSidebarOpen(false);
+
+              const targetPath = PAGE_TO_PATH[page];
+              if (!targetPath) return;
+
+              const currentPath = normalizePathname(window.location.pathname);
+              if (currentPath !== targetPath) {
+                window.history.pushState({}, '', targetPath);
+              }
             }}
             onLogout={handleLogout}
             userRole={userRole}

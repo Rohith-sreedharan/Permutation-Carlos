@@ -357,7 +357,9 @@ def extract_market_lines(event: dict) -> dict:
     
     return {
         "current_spread": spread_line if spread_line is not None else 0.0,
+        "has_spread_market": spread_line is not None,
         "total_line": total_line if total_line is not None else default_totals.get(sport_key, 220.0),
+        "has_total_market": total_line is not None,
         "bookmaker_source": bookmaker_name or "Consensus",
         "odds_timestamp": odds_timestamp,
         "public_betting_pct": 0.50,  # Default 50/50, would need separate API for real data

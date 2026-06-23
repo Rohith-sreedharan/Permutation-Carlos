@@ -1,0 +1,30 @@
+/root/Permutation-Carlos/_section_13_14.py:27: SyntaxWarning: invalid escape sequence '\|'
+  ['grep', '-r', 'update_one\|replace_one\|find_one_and_update', '/root/Permutation-Carlos/backend/', '--include=*.py',
+=== PHASE 15 LAUNCH CHECKLIST ===
+Captured: 2026-06-12T00:58:32.991966+00:00
+Host: root@67.207.93.88
+
+[C1] datetime.now() in project source: ZERO MATCHES ✓
+[C2] DecisionRecord immutability — files with update/replace on decision_records: ['/root/Permutation-Carlos/backend/db/decision_record_store.py', '/root/Permutation-Carlos/backend/db/decision_audit_logger.py', '/root/Permutation-Carlos/backend/scripts/invalidate_prediction_record.py', '/root/Permutation-Carlos/backend/tests/test_decision_record_store.py', '/root/Permutation-Carlos/backend/tests/test_decision_record_concurrency.py']
+[C3] beatvegas service status: active
+[C4] feature_flags count: 0
+       (empty — no kill switches configured, fail-closed by default)
+[C5] sentinel_event_log documents: 46493
+[C6] Decision record fetch (rollback proxy): 0.060s ✓
+[C7] Service journal (last 5 lines): Jun 12 00:57:51 ubuntu-s-2vcpu-2gb-nyc1 beatvegas[170575]: INFO:     172.70.111.25:0 - "GET /api/odds/list?date=2026-06-11&upcoming_only=false&limit=200 HTTP/1.1" 200 OK
+Jun 12 00:57:52 ubuntu-s-2vcpu
+[C8] /api/health: {"status":"healthy","database":"connected","geoip":"active"}
+[C9] /api/v1/subscription/status (no token): 
+[C10] Local request (no geo-block): 0 ✓
+[C11] Templates with NCPG footer: 0 / 30
+[C12] Prohibited language in templates: 1 violations ['onboarding_step_1:bet ']
+[C13] billing_state_change_log total: 22
+[C14] affiliate_commission_log: 74
+[C15] Simulation cron: ✓
+[C16] Evidence pack cron: ✓
+[C17] Telegram collections: ['telegram_integrations']
+[C18] affiliate_attributions documents: 10
+[C19] Users with preview_cycles_used_lifetime field: 1
+[C20] Stripe price IDs — syndicate: ✓, platform: ✓
+
+=== PHASE 15 CHECKLIST COMPLETE ===

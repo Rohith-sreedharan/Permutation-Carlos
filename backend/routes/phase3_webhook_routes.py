@@ -8,7 +8,7 @@ the Stripe event_id written to webhook_event_log before processing).
 Events handled:
   invoice.created               → acknowledge + log (no entitlement change; pre-payment)
   invoice.payment_succeeded     → activate entitlement + billing_state_change_log
-  invoice.payment_failed        → revoke entitlement immediately + log SUBSCRIPTION_REVOKED + email
+  invoice.payment_failed        → send failure email + log (no immediate revoke)
   customer.subscription.updated → update tier + log
   customer.subscription.deleted → revoke entitlement + invalidate session + log
   charge.dispute.created        → suspend entitlement + log CHARGEBACK_INITIATED + alert sentinel
@@ -164,29 +164,6 @@ def _handle_payment_succeeded(event: Dict[str, Any]) -> None:
         metadata={"amount_paid_usd": amount_paid, "stripe_invoice_id": invoice.get("id")},
     )
 
-    # Section 2F: Syndicate monthly cycle reset on successful renewal payment
-    if tier in ("syndicate", "telegram_syndicate"):
-        db["user_entitlements"].update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "tokens_used_current_period": 0,
-                "cycles_reset_at": _now_iso(),
-            }},
-        )
-        billing_ledger.log_state_change(
-            user_id=user_id,
-            event_type="CYCLES_RESET",
-            trace_id=trace_id,
-            new_tier=tier,
-            stripe_subscription_id=stripe_sub_id,
-            metadata={"reason": "MONTHLY_RENEWAL"},
-        )
-        try:
-            from services.phase5_growth_agent import growth_agent
-            growth_agent.trigger_syndicate_cycle_reset(user_id=user_id)
-        except Exception as _exc:
-            logger.warning("[Webhook] syndicate_cycle_reset template failed user=%s err=%s", user_id, _exc)
-
     # Send subscription receipt email
     try:
         from services.transactional_email_service import email_service
@@ -201,7 +178,7 @@ def _handle_payment_succeeded(event: Dict[str, Any]) -> None:
 
 
 def _handle_payment_failed(event: Dict[str, Any]) -> None:
-    """invoice.payment_failed → revoke entitlement immediately + log + email."""
+    """invoice.payment_failed → send failure email + log (no immediate revoke)."""
     invoice = event["data"]["object"]
     customer_id = invoice.get("customer")
     amount = invoice.get("amount_due", 0) / 100
@@ -212,52 +189,18 @@ def _handle_payment_failed(event: Dict[str, Any]) -> None:
     if not user_id:
         return
 
-    # Resolve old tier for audit log
-    old_ent = db["user_entitlements"].find_one({"user_id": user_id}, {"tier": 1})
-    old_tier = old_ent.get("tier") if old_ent else None
-
-    # 1. Revoke entitlement immediately — platform access lost on payment failure
-    db["user_entitlements"].update_one(
-        {"user_id": user_id},
-        {"$set": {
-            "active": False,
-            "platform_access": False,
-            "revoked_at": _now_iso(),
-            "revoke_reason": "PAYMENT_FAILED",
-        }},
-    )
-
-    # 2. Remove access flags from billing_state
-    db["billing_state"].update_one(
-        {"user_id": user_id},
-        {"$set": {
-            "platform_access": False,
-            "telegram_access": False,
-            "status": "past_due",
-        }},
-    )
-
-    # 3. Log lifecycle event — SUBSCRIPTION_REVOKED so entitlement audit is complete
     billing_ledger.log_state_change(
         user_id=user_id,
-        event_type="SUBSCRIPTION_REVOKED",
+        event_type="PAYMENT_FAILED",
         trace_id=trace_id,
-        old_tier=old_tier,
-        new_tier=None,
         metadata={
             "amount_due_usd": amount,
             "stripe_invoice_id": invoice.get("id"),
             "next_attempt": next_attempt,
-            "revoke_reason": "PAYMENT_FAILED",
         },
     )
 
-    logger.warning(
-        "[Webhook] ENTITLEMENT REVOKED on payment failure user=%s invoice=%s",
-        user_id, invoice.get("id"),
-    )
-
-    # 4. Send payment failure email
+    # Send payment failure email (entitlement not immediately revoked)
     try:
         from services.transactional_email_service import email_service
         email_service.send_payment_failed(
@@ -271,7 +214,7 @@ def _handle_payment_failed(event: Dict[str, Any]) -> None:
 
 
 def _handle_subscription_updated(event: Dict[str, Any]) -> None:
-    """customer.subscription.updated → update tier + log + Syndicate cancel_at_period_end retention."""
+    """customer.subscription.updated → update tier + log."""
     sub = event["data"]["object"]
     customer_id = sub.get("customer")
     stripe_sub_id = sub.get("id")
@@ -311,32 +254,6 @@ def _handle_subscription_updated(event: Dict[str, Any]) -> None:
         stripe_subscription_id=stripe_sub_id,
     )
 
-    # Addendum 1: Syndicate cancellation retention — fires when customer cancels
-    # (cancel_at_period_end=True) but before the subscription actually expires.
-    cancel_at_period_end = sub.get("cancel_at_period_end", False)
-    current_period_end_ts = sub.get("current_period_end")
-    if cancel_at_period_end and old_tier in ("syndicate", "telegram_syndicate"):
-        period_end_display = "your billing period end"
-        if current_period_end_ts:
-            try:
-                from datetime import datetime, timezone as _tz
-                period_end_display = datetime.fromtimestamp(
-                    current_period_end_ts, tz=_tz.utc
-                ).strftime("%B %d, %Y")
-            except Exception:
-                pass
-        try:
-            from services.phase5_growth_agent import growth_agent
-            growth_agent.trigger_syndicate_cancellation_retention(
-                user_id=user_id,
-                period_end_display=period_end_display,
-            )
-        except Exception as _exc:
-            logger.warning(
-                "[Webhook] syndicate retention template failed user=%s err=%s",
-                user_id, _exc,
-            )
-
 
 def _handle_subscription_deleted(event: Dict[str, Any]) -> None:
     """customer.subscription.deleted → revoke entitlement + invalidate sessions + log."""
@@ -349,62 +266,10 @@ def _handle_subscription_deleted(event: Dict[str, Any]) -> None:
     if not user_id:
         return
 
-    old_ent = db["user_entitlements"].find_one({"user_id": user_id})
+    old_ent = db["user_entitlements"].find_one({"user_id": user_id}, {"tier": 1})
     old_tier = old_ent.get("tier") if old_ent else None
 
-    # Addendum 1 + 2: Syndicate cancellation → downgrade to intelligence_preview
-    # rather than a full revoke. Telegram access is revoked; Preview lifetime cycles
-    # are preserved so the 10,000-cycle lifetime cap remains intact.
-    if old_tier in ("syndicate", "telegram_syndicate"):
-        preview_lifetime_used = int((old_ent or {}).get("preview_cycles_used_lifetime", 0))
-        preview_remaining = max(0, 10000 - preview_lifetime_used)
-
-        db["user_entitlements"].update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "tier": "intelligence_preview",
-                "active": True,
-                "telegram_access": False,
-                "telegram_chat_id": None,
-                "telegram_connected": False,
-                "tokens_used_current_period": 0,
-                "tokens_allocated_current_period": preview_remaining,
-                "revoke_reason": None,
-                "updated_at": _now_iso(),
-            }},
-        )
-
-        billing_ledger.log_state_change(
-            user_id=user_id,
-            event_type="SYNDICATE_CANCELLED_DOWNGRADED",
-            trace_id=trace_id,
-            old_tier=old_tier,
-            new_tier="intelligence_preview",
-            stripe_subscription_id=stripe_sub_id,
-            metadata={
-                "preview_lifetime_used": preview_lifetime_used,
-                "preview_remaining": preview_remaining,
-            },
-        )
-
-        db["sentinel_event_log"].insert_one({
-            "event_type": "SYNDICATE_CANCELLED_DOWNGRADED",
-            "user_id": user_id,
-            "old_tier": old_tier,
-            "new_tier": "intelligence_preview",
-            "preview_remaining": preview_remaining,
-            "trace_id": trace_id,
-            "timestamp": _now_iso(),
-        })
-
-        # Invalidate all active sessions — user must re-auth to see updated tier
-        db["user_sessions"].update_many(
-            {"user_id": user_id, "revoked": {"$ne": True}},
-            {"$set": {"revoked": True, "revoked_at": _now_iso(), "revoke_reason": "SYNDICATE_CANCELLED"}},
-        )
-        return
-
-    # Non-Syndicate: full revoke
+    # Revoke entitlement immediately
     db["user_entitlements"].update_one(
         {"user_id": user_id},
         {"$set": {

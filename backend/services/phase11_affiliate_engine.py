@@ -50,6 +50,14 @@ class AffiliateEngine:
         signature = self._hmac(payload_raw)
         return base64.urlsafe_b64encode(f"{payload_raw}|{signature}".encode("utf-8")).decode("utf-8")
 
+    def generate_signed_cookie(self, affiliate_id: str, click_id: str, clicked_at_utc: str) -> str:
+        """Backward-compatible canonical cookie signing API."""
+        return self.build_signed_cookie(
+            affiliate_id=affiliate_id,
+            click_id=click_id,
+            clicked_at_utc=clicked_at_utc,
+        )
+
     def parse_signed_cookie(self, cookie_value: str) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
         try:
             decoded = base64.urlsafe_b64decode(cookie_value.encode("utf-8")).decode("utf-8")

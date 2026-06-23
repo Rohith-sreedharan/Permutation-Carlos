@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { API_BASE_URL } from '../services/api';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 const CheckCircle = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -91,6 +90,22 @@ interface HistoryEntry {
   graded_at: string;
 }
 
+const TRUST_LOOP_FETCH_TIMEOUT_MS = 12000;
+
+const fetchJsonWithTimeout = async (url: string, timeoutMs = TRUST_LOOP_FETCH_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const TrustLoop: React.FC = () => {
   const [metrics, setMetrics] = useState<TrustMetrics | null>(null);
   const [trend, setTrend] = useState<TrendData[]>([]);
@@ -109,26 +124,29 @@ const TrustLoop: React.FC = () => {
     try {
       setLoading(true);
 
-      // Fetch Phase 17 metrics (7-day accuracy, 30-day ROI, Brier Score, by_sport, yesterday)
-      const metricsResponse = await fetch(`${API_BASE_URL}/api/trust/metrics`);
-      if (metricsResponse.ok) {
-        const metricsData = await metricsResponse.json();
-        setMetrics(metricsData);
+      const [metricsResult, trendResult, historyResult] = await Promise.allSettled([
+        fetchJsonWithTimeout(`${API_BASE_URL}/api/trust/metrics`),
+        fetchJsonWithTimeout(`${API_BASE_URL}/api/trust/trend?days=7`),
+        fetchJsonWithTimeout(`${API_BASE_URL}/api/trust/history?days=7&limit=20`),
+      ]);
+
+      if (metricsResult.status === 'fulfilled') {
+        setMetrics(metricsResult.value);
+      } else {
+        console.error('Failed to load trust metrics:', metricsResult.reason);
       }
 
-      // Fetch 7-day accuracy trend for sparkline
-      const trendResponse = await fetch(`${API_BASE_URL}/api/trust/trend?days=7`);
-      if (trendResponse.ok) {
-        const trendData = await trendResponse.json();
-        setTrend(trendData);
+      if (trendResult.status === 'fulfilled') {
+        setTrend(Array.isArray(trendResult.value) ? trendResult.value : []);
+      } else {
+        console.error('Failed to load trust trend:', trendResult.reason);
       }
 
-      // Fetch recent graded predictions (last 20)
-      const historyResponse = await fetch(`${API_BASE_URL}/api/trust/history?days=7&limit=20`);
-      if (historyResponse.ok) {
-        const historyData = await historyResponse.json();
-        // API returns {count: X, predictions: [...]}
+      if (historyResult.status === 'fulfilled') {
+        const historyData = historyResult.value;
         setHistory(Array.isArray(historyData) ? historyData : historyData.predictions || []);
+      } else {
+        console.error('Failed to load trust history:', historyResult.reason);
       }
     } catch (error) {
       console.error('Failed to load Phase 17 trust data:', error);
@@ -144,6 +162,10 @@ const TrustLoop: React.FC = () => {
   const record7Day = metrics?.overall?.['7day_record'] || '0-0';
   const units7Day = metrics?.overall?.['7day_units'] || 0;
   const yesterdayMessage = metrics?.yesterday?.message || 'No games graded yet';
+  const activeSports = Object.entries(metrics?.by_sport || {})
+    .filter(([, stats]) => Number(stats?.total_predictions || 0) > 0)
+    .map(([sport]) => sport);
+  const totalSports = activeSports.length;
 
   const getAccuracyColor = (accuracy: number) => {
     if (accuracy >= 0.60) return 'text-green-400';
@@ -229,8 +251,10 @@ const TrustLoop: React.FC = () => {
 
         <div className="bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
           <div className="text-gray-400 text-sm mb-1">Total Sports</div>
-          <div className="text-3xl font-bold text-blue-400">{Object.keys(metrics?.by_sport || {}).length}</div>
-          <div className="text-xs text-gray-500 mt-1">NBA, NFL, MLB, NHL, NCAAB, NCAAF</div>
+          <div className="text-3xl font-bold text-blue-400">{totalSports}</div>
+          <div className="text-xs text-gray-500 mt-1">
+            {totalSports === 0 ? 'No graded sport samples yet' : activeSports.join(', ')}
+          </div>
         </div>
       </div>
 

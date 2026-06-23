@@ -30,6 +30,7 @@ from pydantic import BaseModel, EmailStr
 from config.agent_config import AGENT_CONFIG
 from db.mongo import db
 from services.phase11_affiliate_engine import affiliate_engine as _aff_engine
+from services.time_service import get_now_utc
 from services.phase13_affiliate_trial import (
     cancel_trial,
     check_deduplication,
@@ -53,7 +54,7 @@ def _cfg() -> Dict[str, Any]:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return get_now_utc().isoformat()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,55 +149,6 @@ def _sanitise_all_params(params: Dict[str, str]) -> Dict[str, str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/trial/ref/{affiliate_id} — Section 7B: record attribution at CLICK TIME
-# Attribution window: 30 days. Trial offer window: 24 hours (bv_ref cookie).
-# ─────────────────────────────────────────────────────────────────────────────
-
-@router.get("/ref/{affiliate_id}")
-async def record_affiliate_click_attribution(
-    affiliate_id: str,
-    request: Request,
-):
-    """
-    Section 7B — Record attribution at click time (not signup time).
-    Called by the frontend when a user visits /ref/{affiliateId}.
-    Writes affiliate_attributions with clicked_at_utc, 30-day window.
-    """
-    import uuid as _uuid
-    now = datetime.now(timezone.utc)
-    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
-    click_id = str(_uuid.uuid4())
-    trace_id = str(_uuid.uuid4())
-    attribution_id = str(_uuid.uuid4())
-
-    db["affiliate_attributions"].update_one(
-        {
-            "affiliate_id": affiliate_id,
-            "ip_address": client_ip,
-            "status": "PENDING_SIGNUP",
-        },
-        {"$setOnInsert": {
-            "attribution_id": attribution_id,
-            "affiliate_id": affiliate_id,
-            "click_id": click_id,
-            "user_id": "PENDING",
-            "locked_at_utc": now.isoformat(),
-            "immutable_guard": "LOCKED",
-            "trace_id": trace_id,
-            "tenant_id": "beatvegas",
-            "tier": None,
-            "clicked_at_utc": now.isoformat(),
-            "attribution_expires_at": (now + timedelta(days=30)).isoformat(),
-            "ip_address": client_ip,
-            "status": "PENDING_SIGNUP",
-            "created_at": now.isoformat(),
-        }},
-        upsert=True,
-    )
-    return {"status": "ok", "clicked_at_utc": now.isoformat()}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # GET /api/trial/affiliate/{affiliate_id} — page load data
 # Part 3, 3.4, 3.5
 # ─────────────────────────────────────────────────────────────────────────────
@@ -242,7 +194,7 @@ async def get_affiliate_trial_page_data(
     # Offer expiry: compute from clicked_at_utc in bv_ref cookie when present;
     # fall back to offer_expiry_seconds from now so the page always has a valid timer.
     offer_expiry_seconds = _cfg().get("affiliate_trial_offer_expiry_seconds", 86400)
-    now_dt = datetime.now(timezone.utc)
+    now_dt = get_now_utc()
 
     offer_expires_at_utc: Optional[str] = None
     if bv_ref:
@@ -403,7 +355,7 @@ async def start_affiliate_trial(
     # ── 4a. Device fingerprint deduplication ──────────────────────────────
     # Same device creating a second trial within 30 days → TRIAL_ALREADY_USED
     if body.device_fingerprint:
-        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        thirty_days_ago = (get_now_utc() - timedelta(days=30)).isoformat()
         existing_device = db["promo_tokens"].find_one({
             "device_fingerprint": body.device_fingerprint,
             "redeemed": True,
@@ -422,7 +374,7 @@ async def start_affiliate_trial(
 
     # ── 4b. IP velocity check ─────────────────────────────────────────────
     # 3+ trial signups from the same IP within 24 hours → flag affiliate
-    twenty_four_hours_ago = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    twenty_four_hours_ago = (get_now_utc() - timedelta(hours=24)).isoformat()
     recent_from_ip = db["promo_tokens"].count_documents({
         "client_ip": client_ip,
         "created_at": {"$gt": twenty_four_hours_ago},
@@ -443,11 +395,11 @@ async def start_affiliate_trial(
                 "count_24h": recent_from_ip,
                 "user_id": user_id,
                 "trace_id": trace_id,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": get_now_utc().isoformat(),
             })
             db["affiliate_accounts"].update_one(
                 {"affiliate_id": affiliate_id},
-                {"$set": {"fraud_hold": True, "fraud_hold_reason": "IP_VELOCITY", "fraud_hold_at": datetime.now(timezone.utc).isoformat()}},
+                {"$set": {"fraud_hold": True, "fraud_hold_reason": "IP_VELOCITY", "fraud_hold_at": get_now_utc().isoformat()}},
             )
         except Exception as _flag_exc:
             logger.error("[Trial] Fraud flag write failed: %s", _flag_exc)
@@ -508,7 +460,7 @@ async def start_affiliate_trial(
     token_id = str(uuid4())
     token_expiry_min = _cfg().get("promo_token_expiry_minutes", 60)
     from datetime import timedelta
-    token_expires_at = (datetime.now(timezone.utc) + timedelta(minutes=token_expiry_min)).isoformat()
+    token_expires_at = (get_now_utc() + timedelta(minutes=token_expiry_min)).isoformat()
     trial_hours = _cfg().get("trial_duration_affiliate_hours", 72)
 
     db["promo_tokens"].insert_one({
@@ -655,7 +607,7 @@ def _check_rapid_conversion_velocity(affiliate_id: str, trace_id: str) -> None:
     cfg = _cfg()
     threshold = cfg.get("affiliate_rapid_conversion_threshold", 5)
     window_days = cfg.get("affiliate_rapid_conversion_window_days", 7)
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
+    cutoff = (get_now_utc() - timedelta(days=window_days)).isoformat()
 
     # Count conversions in window (use affiliate_trial_subscriptions as proxy)
     count = db["affiliate_trial_subscriptions"].count_documents({

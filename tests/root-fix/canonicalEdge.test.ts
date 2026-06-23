@@ -326,6 +326,24 @@ describe('Pre-Render Assertion Suite', () => {
     expect(result.assertions.some(a => a.assertion_id === 'SPREAD_ISOLATION')).toBe(true);
     expect(result.assertions.some(a => a.assertion_id === 'TOTAL_ISOLATION')).toBe(true);
   });
+
+  it('does not fail SPREAD_TYPED when official market is TOTAL', () => {
+    const totalOfficialState = createMockGameEdgeState({
+      official_market: OfficialMarket.TOTAL,
+      official_action: OfficialAction.OVER,
+      official_side: 'OVER',
+      spread_context: createMockSpreadContext({
+        team: null,
+        market_line: null,
+      }),
+    });
+
+    const result = runPreRenderAssertions(totalOfficialState);
+    const spreadTyped = result.assertions.find(a => a.assertion_id === 'SPREAD_TYPED');
+
+    expect(spreadTyped).toBeDefined();
+    expect(spreadTyped?.passed).toBe(true);
+  });
 });
 
 // ===== RENDER FLAGS DERIVATION TESTS =====
@@ -540,6 +558,177 @@ describe('GameEdgeState Resolver', () => {
     const reasons = getFailureReasons(null);
     expect(reasons.length).toBeGreaterThan(0);
     expect(reasons[0]).toContain('No state');
+  });
+
+  it('parses lowercase market sides and preserves 0-100 confidence scale', () => {
+    const simulation: any = {
+      confidence_score: 51,
+      volatility_score: 'Medium',
+      market_views: {
+        spread: {
+          edge_class: 'NO_ACTION',
+          edge_points: 0,
+          model_preference_selection_id: 'spread-home',
+          integrity_status: { status: 'ok', is_valid: true, errors: [] },
+          selections: [
+            {
+              selection_id: 'spread-home',
+              side: 'home',
+              market_probability: 0.52,
+              model_probability: 0.54,
+              market_line_for_selection: -1.5,
+              model_fair_line_for_selection: -2.0,
+            },
+            {
+              selection_id: 'spread-away',
+              side: 'away',
+              market_probability: 0.48,
+              model_probability: 0.46,
+              market_line_for_selection: 1.5,
+              model_fair_line_for_selection: 2.0,
+            },
+          ],
+        },
+        total: {
+          edge_class: 'NO_ACTION',
+          edge_points: 0,
+          model_preference_selection_id: 'NO_EDGE',
+          integrity_status: { status: 'ok', is_valid: true, errors: [] },
+          selections: [
+            {
+              selection_id: 'total-over',
+              side: 'over',
+              market_probability: 0.5,
+              model_probability: 0.5,
+              market_line_for_selection: 8,
+              model_fair_line_for_selection: 8,
+            },
+            {
+              selection_id: 'total-under',
+              side: 'under',
+              market_probability: 0.5,
+              model_probability: 0.5,
+              market_line_for_selection: 8,
+              model_fair_line_for_selection: 8,
+            },
+          ],
+        },
+      },
+    };
+
+    const result = resolveGameEdgeState(simulation, 'evt-1', 'Home Team', 'Away Team');
+    expect(result).not.toBeNull();
+    expect(result?.spread_context.side).toBe('HOME');
+    expect(result?.spread_context.team).toBe('Home Team');
+    expect(result?.spread_context.confidence_score).toBe(51);
+    expect(result?.validator_status).toBe(ValidatorStatus.PASS);
+  });
+
+  it('recovers spread team/line when preferred selection id does not match', () => {
+    const simulation: any = {
+      confidence_score: 58,
+      volatility_score: 'Medium',
+      market_views: {
+        spread: {
+          edge_class: 'EDGE',
+          edge_points: 2.6,
+          grade: 'B',
+          model_preference_selection_id: 'spread-home-v2',
+          integrity_status: { status: 'ok', is_valid: true, errors: [] },
+          selections: [
+            {
+              selection_id: 'spread-home',
+              side: 'HOME',
+              market_probability: 0.49,
+              model_probability: 0.56,
+              market_line_for_selection: -1.5,
+              model_fair_line_for_selection: -3.0,
+            },
+            {
+              selection_id: 'spread-away',
+              side: 'AWAY',
+              market_probability: 0.51,
+              model_probability: 0.44,
+              market_line_for_selection: 1.5,
+              model_fair_line_for_selection: 3.0,
+            },
+          ],
+        },
+        total: {
+          edge_class: 'NO_ACTION',
+          edge_points: 0,
+          model_preference_selection_id: 'NO_EDGE',
+          integrity_status: { status: 'ok', is_valid: true, errors: [] },
+          selections: [
+            {
+              selection_id: 'total-over',
+              side: 'OVER',
+              market_probability: 0.5,
+              model_probability: 0.5,
+              market_line_for_selection: 8,
+              model_fair_line_for_selection: 8,
+            },
+            {
+              selection_id: 'total-under',
+              side: 'UNDER',
+              market_probability: 0.5,
+              model_probability: 0.5,
+              market_line_for_selection: 8,
+              model_fair_line_for_selection: 8,
+            },
+          ],
+        },
+      },
+    };
+
+    const result = resolveGameEdgeState(simulation, 'evt-2', 'New York Yankees', 'Detroit Tigers');
+
+    expect(result).not.toBeNull();
+    expect(result?.spread_context.team).toBe('New York Yankees');
+    expect(result?.spread_context.side).toBe('HOME');
+    expect(result?.spread_context.market_line).toBe(-1.5);
+    expect(result?.assertion_result.assertions.find(a => a.assertion_id === 'SPREAD_TYPED')?.passed).toBe(true);
+  });
+
+  it('does not classify spread edge when market line is missing', () => {
+    const simulation: any = {
+      confidence_score: 64,
+      volatility_score: 'Medium',
+      market_views: {
+        spread: {
+          edge_class: 'EDGE',
+          edge_points: 3.2,
+          grade: 'A',
+          model_preference_selection_id: 'spread-home',
+          integrity_status: { status: 'ok', is_valid: true, errors: [] },
+          selections: [
+            {
+              selection_id: 'spread-home',
+              side: 'HOME',
+              market_probability: 0.46,
+              model_probability: 0.58,
+              market_line_for_selection: null,
+              model_fair_line_for_selection: -3.5,
+            },
+            {
+              selection_id: 'spread-away',
+              side: 'AWAY',
+              market_probability: 0.54,
+              model_probability: 0.42,
+              market_line_for_selection: null,
+              model_fair_line_for_selection: 3.5,
+            },
+          ],
+        },
+      },
+    };
+
+    const result = resolveGameEdgeState(simulation, 'evt-3', 'New York Yankees', 'Detroit Tigers');
+
+    expect(result).not.toBeNull();
+    expect(result?.classification).not.toBe(Classification.EDGE);
+    expect(result?.official_market).toBeNull();
+    expect(result?.assertion_result.assertions.find(a => a.assertion_id === 'SPREAD_TYPED')?.passed).toBe(true);
   });
 });
 

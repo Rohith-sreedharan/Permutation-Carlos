@@ -2,7 +2,7 @@
 Phase 7B — AOS Trust Monitoring Sentinel
 
 Three monitors:
-  1. check_write_attempt()    — blocks and logs manual writes to truth_dataset_v1
+    1. check_write_attempt()    — blocks and logs manual writes to canonical truth tables
   2. check_sample_gate()      — fires if a metric is served below threshold
   3. check_page_availability() — monitors /performance page availability
 
@@ -69,12 +69,19 @@ def check_write_attempt(
 ) -> Dict[str, Any]:
     """
     Called whenever a direct write to a truth source table is attempted.
-    Any write to truth_dataset_v1 is unconditionally blocked and logged as CRITICAL.
+    Any write to canonical truth-source collections is unconditionally blocked
+    and logged as CRITICAL.
 
     Returns:
         {"blocked": True/False, "event": <sentinel event dict>|None, "reason": str}
     """
-    PROTECTED_COLLECTIONS = {"truth_dataset_v1", "grading_records", "calibration_records"}
+    PROTECTED_COLLECTIONS = {
+        "truth_dataset",
+        "grading",
+        "calibration_versions",
+        "calibration_segments",
+        "calibration_audit_log",
+    }
 
     if collection_name in PROTECTED_COLLECTIONS:
         event = _fire(

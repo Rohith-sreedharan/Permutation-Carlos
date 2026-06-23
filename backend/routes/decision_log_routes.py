@@ -5,12 +5,115 @@ Tracks forecasts users follow and calculates alignment scores
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from bson import ObjectId
+from middleware.auth import get_current_user
+from fastapi import Depends, Query
 
 from db.mongo import db
 
 router = APIRouter(prefix="/api/user", tags=["decision-log"])
+
+
+def _normalize_outcome(result_code: Optional[str]) -> Optional[str]:
+    if not result_code:
+        return None
+    rc = str(result_code).upper()
+    if rc in {"WIN", "LOSS", "PUSH"}:
+        return rc
+    return None
+
+
+@router.get("/opened-picks")
+async def get_opened_picks(
+    limit: int = Query(20, ge=1, le=100),
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Read-only projection of a user's opened picks with canonical settlement outcomes."""
+    raw_user_id = user.get("_id") or user.get("id")
+    if raw_user_id is None:
+        raise HTTPException(status_code=401, detail="User not resolved")
+    user_id = str(raw_user_id)
+
+    opened_docs = list(
+        db["opened_event_log"].find(
+            {"user_id": user_id},
+            {
+                "_id": 0,
+                "opened_event_id": 1,
+                "event_id": 1,
+                "league": 1,
+                "opened_at": 1,
+                "decision_record_id": 1,
+                "market_snapshot": 1,
+            },
+        ).sort("opened_at", -1).limit(limit)
+    )
+
+    if not opened_docs:
+        return {
+            "count": 0,
+            "weekly_record": {"wins": 0, "losses": 0, "pushes": 0},
+            "opened_picks": [],
+        }
+
+    event_ids = sorted({str(doc.get("event_id")) for doc in opened_docs if doc.get("event_id")})
+    settlement_docs = list(
+        db["decision_settlement_metrics"].find(
+            {"event_id": {"$in": event_ids}},
+            {"_id": 0, "event_id": 1, "result_code": 1, "timestamp": 1},
+        ).sort("timestamp", -1)
+    )
+
+    latest_outcome_by_event: Dict[str, Optional[str]] = {}
+    for settlement in settlement_docs:
+        event_id = str(settlement.get("event_id") or "")
+        if not event_id or event_id in latest_outcome_by_event:
+            continue
+        latest_outcome_by_event[event_id] = _normalize_outcome(settlement.get("result_code"))
+
+    now = datetime.now(timezone.utc)
+    week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+
+    wins = 0
+    losses = 0
+    pushes = 0
+    projected_rows = []
+
+    for opened in opened_docs:
+        event_id = str(opened.get("event_id") or "")
+        outcome = latest_outcome_by_event.get(event_id)
+        opened_at_raw = opened.get("opened_at")
+        opened_at_dt = None
+        if isinstance(opened_at_raw, str):
+            try:
+                opened_at_dt = datetime.fromisoformat(opened_at_raw.replace("Z", "+00:00"))
+            except Exception:
+                opened_at_dt = None
+
+        if opened_at_dt and opened_at_dt.tzinfo is None:
+            opened_at_dt = opened_at_dt.replace(tzinfo=timezone.utc)
+
+        if opened_at_dt and opened_at_dt >= week_start:
+            if outcome == "WIN":
+                wins += 1
+            elif outcome == "LOSS":
+                losses += 1
+            elif outcome == "PUSH":
+                pushes += 1
+
+        projected_rows.append(
+            {
+                **opened,
+                "settlement_outcome": outcome,
+            }
+        )
+
+    return {
+        "count": len(projected_rows),
+        "weekly_record": {"wins": wins, "losses": losses, "pushes": pushes},
+        "opened_picks": projected_rows,
+    }
 
 
 def _get_user_id_from_auth(authorization: Optional[str]) -> str:

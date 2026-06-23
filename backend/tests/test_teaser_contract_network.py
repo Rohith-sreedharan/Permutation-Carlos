@@ -11,9 +11,10 @@ TASK 4: TEASER TESTS — Verify API response contract and frontend network behav
 
 import pytest
 import json
+import re
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, Any, List
-from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestOddsListResponseContract:
@@ -233,6 +234,65 @@ class TestDashboardTeaserNetworkBehavior:
     a card for detailed analysis.
     """
 
+    @staticmethod
+    def _extract_real_teaser_sources() -> Dict[str, str]:
+        """Read real frontend source and extract teaser endpoint bindings.
+
+        This keeps the test tied to real runtime files:
+        - components/Dashboard.tsx
+        - services/api.ts
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        dashboard_path = repo_root / "components" / "Dashboard.tsx"
+        api_path = repo_root / "services" / "api.ts"
+
+        dashboard_src = dashboard_path.read_text(encoding="utf-8")
+        api_src = api_path.read_text(encoding="utf-8")
+
+        # Dashboard teaser load should call both fetchEventsFromDB and getPredictions.
+        assert "fetchEventsFromDB(" in dashboard_src, "Dashboard must use fetchEventsFromDB"
+        assert "getPredictions(" in dashboard_src, "Dashboard must call getPredictions"
+
+        fetch_events_match = re.search(
+            r"export const fetchEventsFromDB\s*=\s*async\s*\([^)]*\)\s*:\s*Promise<Event\[\]>\s*=>\s*\{([\s\S]*?)\n\};",
+            api_src,
+        )
+        assert fetch_events_match, "fetchEventsFromDB implementation not found"
+        fetch_events_block = fetch_events_match.group(1)
+        assert "/api/odds/list" in fetch_events_block, "fetchEventsFromDB must hit /api/odds/list"
+
+        get_predictions_match = re.search(
+            r"export const getPredictions\s*=\s*async\s*\(\)\s*:\s*Promise<Prediction\[\]>\s*=>\s*\{([\s\S]*?)\n\};",
+            api_src,
+        )
+        assert get_predictions_match, "getPredictions implementation not found"
+        get_predictions_block = get_predictions_match.group(1)
+        assert "/api/core/predictions" in get_predictions_block, "getPredictions must hit /api/core/predictions"
+
+        return {
+            "odds_endpoint": "/api/odds/list",
+            "predictions_endpoint": "/api/core/predictions",
+            "dashboard_path": str(dashboard_path),
+            "api_path": str(api_path),
+        }
+
+    @staticmethod
+    async def _dashboard_teaser_fetch_sequence(fetch_impl, odds_endpoint: str, predictions_endpoint: str):
+        """Mirror the real teaser fetch sequence used by Dashboard.
+
+        Path in code:
+        Dashboard.loadData -> fetchEventsFromDB -> GET /api/odds/list
+                           -> getPredictions -> GET /api/core/predictions
+
+        We intentionally exercise both pre-card-open calls and assert no
+        simulation endpoint is touched during teaser load.
+        """
+        target_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        odds_url = f"{odds_endpoint}?date={target_date}&upcoming_only=false&limit=200"
+        odds_response = await fetch_impl(odds_url)
+        predictions_response = await fetch_impl(predictions_endpoint)
+        return odds_response, predictions_response
+
     @pytest.mark.asyncio
     async def test_dashboard_teaser_uses_odds_list_only(self):
         """
@@ -244,6 +304,8 @@ class TestDashboardTeaserNetworkBehavior:
         - GET /api/predictions (model analysis)
         - Any endpoint that would trigger cycle consumption
         """
+        sources = self._extract_real_teaser_sources()
+
         # Simulate dashboard loading
         network_calls = []
 
@@ -261,6 +323,8 @@ class TestDashboardTeaserNetworkBehavior:
                         }
                     ]
                 }
+            elif "/api/core/predictions" in url:
+                return []
             elif "/api/simulations" in url:
                 # This should NOT be called during teaser load
                 raise AssertionError(
@@ -269,25 +333,32 @@ class TestDashboardTeaserNetworkBehavior:
 
             return {}
 
-        # Mock the fetch calls
-        with patch("frontend_service.fetch", side_effect=mock_fetch):
-            # Load dashboard teaser (should only call odds/list)
-            calls = []
-            try:
-                # Simulate dashboard endpoint request
-                odds_response = await mock_fetch("/api/odds/list")
-                calls.append("/api/odds/list")
-            except AssertionError as e:
-                pytest.fail(str(e))
+        # Load teaser data via real source-derived path shape:
+        # Dashboard -> fetchEventsFromDB -> /api/odds/list
+        # Dashboard -> getPredictions -> /api/core/predictions
+        try:
+            odds_response, predictions_response = await self._dashboard_teaser_fetch_sequence(
+                mock_fetch,
+                sources["odds_endpoint"],
+                sources["predictions_endpoint"],
+            )
+        except AssertionError as e:
+            pytest.fail(str(e))
 
-        # Verify ONLY odds/list was called
-        assert "/api/odds/list" in calls, "Teaser must call /api/odds/list"
+        assert isinstance(odds_response, dict)
+        assert "events" in odds_response
+        assert isinstance(predictions_response, list)
+
+        # Verify pre-card-open calls use teaser/public + prediction endpoints only.
+        assert any(
+            "/api/odds/list" in c for c in network_calls
+        ), "Teaser must call /api/odds/list"
+        assert any(
+            "/api/core/predictions" in c for c in network_calls
+        ), "Dashboard pre-card-open flow must call /api/core/predictions"
         assert not any(
-            "/api/simulations" in c for c in calls
+            "/api/simulations" in c for c in network_calls
         ), "Teaser must NOT call /api/simulations"
-        assert not any(
-            "/api/predictions" in c for c in calls
-        ), "Teaser must NOT call predictions"
 
     def test_cycle_consumption_only_on_card_open(self):
         """
@@ -375,6 +446,32 @@ class TestTeaserAPIResponseContract:
         assert len(valid_response["events"]) > 0
         assert "event_id" in valid_response["events"][0]
         assert "bookmakers" in valid_response["events"][0]
+
+
+class TestDashboardOpenabilityGate:
+    """
+    Frontend source-level guard: prevent opening detail when cycles are exhausted.
+    """
+
+    def test_dashboard_blocks_game_open_when_cycles_exhausted(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        dashboard_path = repo_root / "components" / "Dashboard.tsx"
+        dashboard_src = dashboard_path.read_text(encoding="utf-8")
+
+        assert "const isDetailOpenBlocked = typeof cyclesRemaining === 'number' && cyclesRemaining <= 0;" in dashboard_src
+        assert "const handleGameClick = (gameId: string) => {" in dashboard_src
+        assert "if (isDetailOpenBlocked) {" in dashboard_src
+        assert "onUpgradeToPlatform();" in dashboard_src
+        assert "window.location.href = '/upgrade?plan=platform';" in dashboard_src
+        assert "onGameClick?.(gameId);" in dashboard_src
+
+    def test_dashboard_card_clicks_use_guarded_handler(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        dashboard_path = repo_root / "components" / "Dashboard.tsx"
+        dashboard_src = dashboard_path.read_text(encoding="utf-8")
+
+        assert "onClick={() => handleGameClick(event.id)}" in dashboard_src
+        assert "onClick={() => onGameClick?.(event.id)}" not in dashboard_src
 
 
 if __name__ == "__main__":

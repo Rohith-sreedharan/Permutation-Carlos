@@ -10,7 +10,7 @@ Collections:
 - decision_settlement_metrics
 - truth_dataset
 - clv_capture_log
-- calibration_records
+- calibration_audit_log
 - drift_detection_log
 """
 
@@ -51,7 +51,7 @@ class ObservabilityService:
             settlement_collection = settlement_collection or db.get_collection("decision_settlement_metrics")
             truth_dataset_collection = truth_dataset_collection or db.get_collection("truth_dataset")
             clv_collection = clv_collection or db.get_collection("clv_capture_log")
-            calibration_collection = calibration_collection or db.get_collection("calibration_records")
+            calibration_collection = calibration_collection or db.get_collection("calibration_audit_log")
             drift_collection = drift_collection or db.get_collection("drift_detection_log")
 
         self.lifecycle_collection = lifecycle_collection
@@ -293,7 +293,7 @@ class ObservabilityService:
         snapshot_hash: Optional[str],
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Append calibration records for each calibration generation run."""
+        """Append calibration audit rows for each calibration generation run."""
         now_iso = self._now_iso()
         calibration_record_id = str(uuid.uuid4())
         normalized_trace_id = self._derive_trace_id(trace_id, prefix="trace_cal")

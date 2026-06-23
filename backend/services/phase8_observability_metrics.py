@@ -81,7 +81,7 @@ def prometheus_metrics_text() -> str:
         "agent.response.v1": ("response_action_log", "agent_id", "timestamp_utc"),
         "agent.recovery.v1": ("recovery_action_log", "agent_id", "created_at_utc"),
         "agent.grading.v1": ("decision_settlement_metrics", "graded_by", "graded_at"),
-        "agent.calibration.v1": ("calibration_records", "agent_id", "created_at"),
+        "agent.calibration.v1": ("calibration_audit_log", "agent_id", "created_at"),
         "agent.distribution.v1": ("distribution_audit_log", "agent_id", "sent_at_utc"),
         "agent.growth.v1": ("outbound_communication_log", "agent_id", "sent_at_utc"),
     }

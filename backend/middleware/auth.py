@@ -131,7 +131,21 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, A
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token missing subject claim",
             )
-        return _resolve_user_from_id(user_id)
+        try:
+            user = _resolve_user_from_id(user_id)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+            user = {
+                "_id": user_id,
+                "id": user_id,
+                "email": payload.get("email", ""),
+                "tier": payload.get("tier", "free"),
+            }
+        token_tier = payload.get("tier")
+        if isinstance(token_tier, str) and token_tier.strip():
+            user["token_tier"] = token_tier.strip().lower()
+        return user
 
     # ── Legacy user:<id> path (transition period only) ───────────────────────
     if token.startswith("user:"):
@@ -173,6 +187,10 @@ def get_user_tier(user: Dict[str, Any]) -> str:
     Returns:
         Tier string (founder, sharps_room, elite, pro, explorer, free)
     """
+    token_tier = user.get("token_tier")
+    if isinstance(token_tier, str) and token_tier.strip():
+        return token_tier.strip().lower()
+
     subscription = db.subscriptions.find_one(
         {"user_id": user.get("email")},
         sort=[("created_at", -1)],

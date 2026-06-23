@@ -106,7 +106,9 @@ class PublishingService:
             is_official=is_official
         )
         
-        self.published_collection.insert_one(published.model_dump())
+        published_doc = published.model_dump()
+        published_doc.setdefault("service_authority", "agent.predictions.v1")
+        self.published_collection.insert_one(published_doc)
 
         trace_id = prediction.get("trace_id") or f"trace_publish_{prediction_id}"
         snapshot_hash = prediction.get("snapshot_hash") or prediction.get("market_snapshot_id_used")

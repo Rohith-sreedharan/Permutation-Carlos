@@ -26,6 +26,55 @@ class CreateCheckoutRequest(BaseModel):
     user_id: Optional[str] = None
 
 
+class CheckoutRequest(BaseModel):
+    """Request to create Stripe checkout for Syndicate or Platform plan"""
+    plan: Literal["syndicate", "platform"]
+    user_id: Optional[str] = None
+
+
+PLAN_PRICE_IDS = {
+    "syndicate": lambda: os.getenv("STRIPE_PRICE_ID_SYNDICATE", ""),
+    "platform": lambda: os.getenv("STRIPE_PRICE_ID_PLATFORM", ""),
+}
+
+
+@router.post("/checkout")
+async def checkout(body: CheckoutRequest):
+    """
+    Create a Stripe Checkout session for Syndicate ($39/mo) or Platform ($97/mo).
+    Returns checkout_url — frontend redirects user there.
+    Works without authentication (new user signup flow).
+    """
+    price_id = PLAN_PRICE_IDS[body.plan]()
+    if not price_id:
+        raise HTTPException(
+            status_code=500,
+            detail=f"STRIPE_PRICE_ID_{body.plan.upper()} not configured on server"
+        )
+
+    frontend_url = os.getenv("FRONTEND_URL", "https://beatvegas.app")
+    success_url = f"{frontend_url}/upgrade?success=1&plan={body.plan}"
+    cancel_url = f"{frontend_url}/upgrade?canceled=1"
+
+    try:
+        params = dict(
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode="subscription",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            allow_promotion_codes=True,
+        )
+        if body.user_id:
+            params["metadata"] = {"user_id": body.user_id}
+        session = stripe.checkout.Session.create(**params)
+        return {"checkout_url": session.url, "session_id": session.id}
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=f"Stripe error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Checkout error: {str(e)}")
+
+
 class CreateMicroChargeRequest(BaseModel):
     """Request to create one-time micro-transaction"""
     product_id: str  # e.g., 'parlay_3_leg', 'parlay_6_leg'

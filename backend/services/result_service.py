@@ -432,28 +432,51 @@ class ResultService:
             ]
         """
         since = now_utc() - timedelta(days=days)
-        
-        predictions = list(self.db['monte_carlo_simulations'].find({  # type: ignore
+
+        gradings = list(self.db['grading'].find({  # type: ignore
+            'bet_status': 'SETTLED',
             'graded_at': {'$gte': since},
-            'status': {'$in': ['WIN', 'LOSS', 'PUSH']}
+            'result_code': {'$in': ['WIN', 'LOSS', 'PUSH']}
         }).sort('graded_at', -1).limit(limit))
         
         results = []
-        for pred in predictions:
-            event = self.db['events'].find_one({'event_id': pred.get('event_id')})  # type: ignore
+        for grade in gradings:
+            event = self.db['events'].find_one({'event_id': grade.get('event_id')})  # type: ignore
             if not event:
                 continue
+
+            prediction = self.db['predictions'].find_one(
+                {'prediction_id': grade.get('prediction_id')},
+                {
+                    '_id': 0,
+                    'prediction_type': 1,
+                    'predicted_winner': 1,
+                    'lean': 1,
+                    'projected_total': 1,
+                    'over_probability': 1,
+                },
+            ) or {}
+
+            confidence = prediction.get('predicted_win_probability')
+            if confidence is None:
+                confidence = prediction.get('confidence', 0)
+
+            graded_at = grade.get('graded_at')
+            if graded_at and hasattr(graded_at, 'isoformat'):
+                graded_at_value = graded_at.isoformat()
+            else:
+                graded_at_value = graded_at
             
             results.append({
-                'event_id': pred.get('event_id'),
+                'event_id': grade.get('event_id'),
                 'game': f"{event.get('away_team')} vs {event.get('home_team')}",
-                'sport': pred.get('sport', 'NBA'),
-                'prediction': self._format_prediction(pred),
-                'result': pred.get('status'),
-                'actual_score': f"{pred.get('actual_away_score', 0)}-{pred.get('actual_home_score', 0)}",
-                'units_won': pred.get('units_won', 0),
-                'confidence': pred.get('confidence', 0),
-                'graded_at': pred.get('graded_at').isoformat() if pred.get('graded_at') else None
+                'sport': str(event.get('sport_key', 'UNKNOWN')).split('_')[-1].upper(),
+                'prediction': self._format_prediction(prediction),
+                'result': grade.get('result_code'),
+                'actual_score': f"{event.get('scores', {}).get('away', 0)}-{event.get('scores', {}).get('home', 0)}",
+                'units_won': grade.get('unit_return', 0),
+                'confidence': confidence,
+                'graded_at': graded_at_value
             })
         
         return results

@@ -83,11 +83,11 @@ const CLASSIFICATION_COLORS = {
  * Classification human-readable labels
  */
 const CLASSIFICATION_LABELS: Record<Classification, string> = {
-  EDGE: 'EDGE',
-  LEAN: 'LEAN',
-  MARKET_ALIGNED: 'MARKET ALIGNED',
-  BLOCKED: 'BLOCKED',
-  NO_ACTION: 'No Actionable Signal',
+  EDGE: 'Edge',
+  LEAN: 'Lean',
+  MARKET_ALIGNED: 'Market Aligned',
+  BLOCKED: 'Blocked',
+  NO_ACTION: 'No Signal',
 };
 
 /**

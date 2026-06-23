@@ -52,6 +52,8 @@ const Leaderboard: React.FC = () => {
     );
   }
 
+  const isPrelaunchEmptyState = users.length === 0 || users.every((user) => Number(user.score || 0) <= 0);
+
   const getRankColor = (rank: number) => {
     if (rank === 1) return 'text-vibrant-yellow';
     if (rank === 2) return 'text-gray-300';
@@ -62,6 +64,13 @@ const Leaderboard: React.FC = () => {
   return (
     <div>
       <h1 className="text-4xl font-bold text-white font-teko mb-6">Top Predictors</h1>
+      {isPrelaunchEmptyState && (
+        <div className="mb-4 rounded-lg border border-navy bg-navy/30 p-4 text-sm text-light-gray">
+          <p className="font-semibold text-white mb-1">Track record builds in real time.</p>
+          <p>Every prediction is graded automatically after the final whistle.</p>
+          <p>Check back after tonight&apos;s games to see scores update.</p>
+        </div>
+      )}
       <div className="bg-charcoal rounded-lg shadow-lg overflow-hidden">
         <table className="min-w-full divide-y divide-navy">
           <thead className="bg-navy/50">

@@ -14,8 +14,9 @@ PLATFORM_INTELLIGENCE_TIERS = {
 }
 
 # Fields that expose Platform-tier intelligence in raw simulation payloads.
+# NOTE: market_views is NOT redacted - it contains essential canonical market data
+# required for published cards (EDGE/LEAN) to fulfill publication-to-detail contract.
 NON_PLATFORM_REDACTED_TOP_LEVEL_FIELDS = {
-    "market_views",
     "sharp_analysis",
     "distribution_curve",
     "total_distribution",
@@ -47,7 +48,6 @@ def apply_simulation_entitlement_filter(simulation: Dict[str, Any], user_tier: s
     for key in NON_PLATFORM_REDACTED_TOP_LEVEL_FIELDS:
         filtered.pop(key, None)
 
-    # Keep basic market context but remove 1H intelligence-specific line hints.
     market_context = filtered.get("market_context")
     if isinstance(market_context, dict):
         market_context.pop("bookmaker_1h_line", None)

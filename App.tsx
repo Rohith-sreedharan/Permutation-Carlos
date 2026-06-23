@@ -10,20 +10,21 @@ import OpsDashboard from './components/OpsDashboard';
 import BecomeAffiliatePage from './components/BecomeAffiliatePage';
 import AffiliateApplicantsPanel from './components/AffiliateApplicantsPanel';
 import UpgradePage from './components/UpgradePage';
+import AffiliateLanding from './components/AffiliateLanding';
 import { getOnboardingStatus, getToken, removeToken } from './services/api';
-// Phase 13 — Affiliate trial landing page
-import AffiliateTrial from './components/AffiliateTrial';
 
 // ── Phase 13: Deep link — /ref/:affiliateId ────────────────────────────────
-// Phase 13 replaces Phase 12's waitlist redirect.
-// Now renders the full 3-day affiliate trial landing page.
-// Also sets bv_ref cookie for attribution tracking in case user closes page.
+// /ref/:affiliateId now redirects to /affiliate-landing?ref={affiliateId}.
+// Also sets bv_ref cookie (24h trial offer + 30-day attribution).
+// Section 7B: fires attribution DB write at CLICK TIME via backend API.
 function extractAffiliateFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/ref\/([A-Za-z0-9_-]+)$/);
   if (!match) return null;
   const affiliateId = match[1];
-  const maxAge = 30 * 24 * 60 * 60;
-  document.cookie = `bv_ref=${encodeURIComponent(affiliateId)}; max-age=${maxAge}; path=/; SameSite=Lax`;
+  // 24-hour cookie for trial offer interception
+  document.cookie = `bv_ref=${encodeURIComponent(affiliateId)}; max-age=86400; path=/; SameSite=Lax`;
+  // Section 7B: record attribution at click time — 30-day window
+  fetch(`/api/trial/ref/${encodeURIComponent(affiliateId)}`, { method: 'GET' }).catch(() => {});
   return affiliateId;
 }
 
@@ -39,6 +40,7 @@ const PUBLIC_ROUTES: Record<string, React.FC> = {
   '/ops/affiliate-applicants': AffiliateApplicantsPanel,
   '/upgrade': UpgradePage,        // Section 6 — pricing page
   '/pricing': UpgradePage,        // alias
+  '/affiliate-landing': AffiliateLanding, // Section 7C — dual-tier affiliate landing
 };
 
 export default function App() {
@@ -103,10 +105,11 @@ export default function App() {
   // Public routes — no auth gate, rendered immediately
   const pathname = window.location.pathname;
 
-  // Phase 13: /ref/:affiliateId renders affiliate trial landing page
+  // Phase 14.5 A-02: /ref/:affiliateId redirects to /affiliate-landing?ref={id}
   const affiliateId = extractAffiliateFromPath(pathname);
   if (affiliateId) {
-    return <AffiliateTrial affiliateId={affiliateId} />;
+    window.location.replace(`/affiliate-landing?ref=${encodeURIComponent(affiliateId)}`);
+    return null;
   }
 
   const PublicPage = PUBLIC_ROUTES[pathname];

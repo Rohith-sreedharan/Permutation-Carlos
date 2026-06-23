@@ -45,7 +45,7 @@ def create_access_token(user_id: str, email: str, tier: str) -> str:
 class UserRegistration(BaseModel):
     email: EmailStr
     password: str
-    username: Optional[str] = None
+    username: Optional[str]
 
 
 class PasskeyLoginRequest(BaseModel):
@@ -54,9 +54,6 @@ class PasskeyLoginRequest(BaseModel):
 
 
 router = APIRouter(prefix="/api", tags=["auth"])
-
-# v1-prefixed router — mirrors /api/* at /api/v1/* for versioned clients
-router_v1 = APIRouter(prefix="/api/v1", tags=["auth"])
 
 
 def hash_password(password: str) -> str:
@@ -77,7 +74,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 @router.post("/auth/register")
-@router_v1.post("/auth/register")
 def register_user(payload: UserRegistration):
     users = db["users"]
     existing = users.find_one({"email": payload.email})
@@ -93,34 +89,14 @@ def register_user(payload: UserRegistration):
         "iteration_limit": 10000,  # FREE tier gets 10,000 iterations
         "simulations_today": 0,  # Track daily simulation count
         "last_simulation_date": None,  # Track last simulation date
-        "onboarding_complete": False,  # Phase 5A: gates dashboard access
-        "credits_used": 0,  # Phase 5B: tracks credit usage for upgrade prompt
         "created_at": now,
     }
 
     res = users.insert_one(user_doc)
-    user_id = str(res.inserted_id)
-
-    # Phase 5B AC-1: Trigger Growth Agent onboarding sequence within 60 seconds
-    try:
-        from services.phase5_growth_agent import growth_agent
-        growth_agent.trigger_onboarding_sequence(user_id=user_id)
-        # Intelligence Preview conversion sequence — T+0 welcome
-        growth_agent.trigger_preview_welcome(user_id=user_id)
-    except Exception as _ga_exc:
-        # Non-fatal — registration succeeds even if growth agent call fails
-        import logging
-        logging.getLogger(__name__).error(
-            f"[auth_routes] Growth Agent onboarding trigger failed for user_id={user_id}: {_ga_exc}"
-        )
-
-    # Issue access token so the frontend can auto-login immediately after registration
-    access_token = create_access_token(user_id=user_id, email=payload.email, tier="free")
-    return {"status": "ok", "user_id": user_id, "email": payload.email, "access_token": access_token, "token_type": "bearer"}
+    return {"status": "ok", "user_id": str(res.inserted_id), "email": payload.email}
 
 
 @router.post("/token")
-@router_v1.post("/token")
 def token(form_data: OAuth2PasswordRequestForm = Depends()):
     users = db["users"]
     user = users.find_one({"email": form_data.username})
@@ -135,19 +111,6 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
     # Verify password using bcrypt
     if not verify_password(form_data.password, stored_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    if user.get("self_excluded"):
-        trace_id = user.get("self_exclusion_trace_id")
-        db["sentinel_event_log"].insert_one({
-            "event_type": "SELF_EXCLUSION_BYPASS",
-            "severity": "CRITICAL",
-            "user_id": str(user.get("_id")),
-            "trace_id": trace_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "agent_id": "agent.sentinel.v1",
-            "reason": "Excluded user attempted login",
-        })
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SELF_EXCLUDED")
 
     # Check if 2FA is enabled
     if user.get("two_factor_enabled"):
@@ -167,7 +130,6 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.post("/verify-2fa")
-@router_v1.post("/verify-2fa")
 def verify_2fa_login(temp_token: str, code: str):
     """Verify 2FA code and complete login"""
     # Extract user ID from temp token

@@ -77,14 +77,38 @@ function buildSpreadContext(
   };
   
   if (!spreadView) return emptyContext;
+
+  const selections = Array.isArray(spreadView.selections) ? spreadView.selections : [];
+
+  const normalizeSide = (side: unknown): 'HOME' | 'AWAY' | null => {
+    const normalized = String(side || '').trim().toUpperCase();
+    if (normalized === 'HOME') return 'HOME';
+    if (normalized === 'AWAY') return 'AWAY';
+    return null;
+  };
+
+  const resolvePreferredSelection = () => {
+    const preferredId = String(spreadView.model_preference_selection_id || '').trim();
+    if (preferredId && preferredId !== 'NO_EDGE' && preferredId !== 'INVALID') {
+      const direct = selections.find((s: any) => String(s?.selection_id || '').trim() === preferredId);
+      if (direct) return direct;
+    }
+
+    const ranked = selections
+      .filter((s: any) => typeof s?.model_probability === 'number')
+      .sort((a: any, b: any) => Number(b.model_probability || 0) - Number(a.model_probability || 0));
+
+    return ranked[0] || selections[0] || null;
+  };
   
   // Extract selections
-  const homeSelection = spreadView.selections?.find(s => s.side === 'HOME');
-  const awaySelection = spreadView.selections?.find(s => s.side === 'AWAY');
-  const preferredId = spreadView.model_preference_selection_id;
-  const preferredSel = preferredId && preferredId !== 'NO_EDGE' && preferredId !== 'INVALID'
-    ? spreadView.selections?.find(s => s.selection_id === preferredId)
-    : null;
+  const homeSelection = selections.find(
+    s => String(s.side || '').toLowerCase() === 'home'
+  );
+  const awaySelection = selections.find(
+    s => String(s.side || '').toLowerCase() === 'away'
+  );
+  const preferredSel = resolvePreferredSelection();
   
   // Sanitize probabilities
   const homeProb = sanitizeProbability(
@@ -102,9 +126,29 @@ function buildSpreadContext(
   let team: string | null = null;
   let side: 'HOME' | 'AWAY' | null = null;
   if (preferredSel) {
-    side = preferredSel.side as 'HOME' | 'AWAY';
-    team = side === 'HOME' ? homeTeam : awayTeam;
+    side = normalizeSide(preferredSel.side);
+    if (side) {
+      team = side === 'HOME' ? homeTeam : awayTeam;
+    }
   }
+
+  // Recover side/team using known spread selections when preferred selection is malformed.
+  if (!side && preferredSel) {
+    if (homeSelection && preferredSel.selection_id === homeSelection.selection_id) {
+      side = 'HOME';
+      team = homeTeam;
+    } else if (awaySelection && preferredSel.selection_id === awaySelection.selection_id) {
+      side = 'AWAY';
+      team = awayTeam;
+    }
+  }
+
+  const marketLine = preferredSel?.market_line_for_selection ??
+    (side === 'HOME' ? homeSelection?.market_line_for_selection : side === 'AWAY' ? awaySelection?.market_line_for_selection : null) ??
+    null;
+  const modelLine = preferredSel?.model_fair_line_for_selection ??
+    (side === 'HOME' ? homeSelection?.model_fair_line_for_selection : side === 'AWAY' ? awaySelection?.model_fair_line_for_selection : null) ??
+    null;
   
   // Calculate edge gap
   const edgeGap = Math.abs(spreadView.edge_points || 0);
@@ -128,8 +172,8 @@ function buildSpreadContext(
     team,
     team_id: null, // TODO: Populate from backend team_id
     side,
-    market_line: preferredSel?.market_line_for_selection ?? null,
-    model_line: preferredSel?.model_fair_line_for_selection ?? null,
+    market_line: marketLine,
+    model_line: modelLine,
     edge_gap: edgeGap,
     cover_probability_home: homeProb.valid ? homeProb.value! : 50,
     cover_probability_away: awayProb.valid ? awayProb.value! : 50,
@@ -180,8 +224,12 @@ function buildTotalContext(
   if (!totalView) return emptyContext;
   
   // Extract selections
-  const overSelection = totalView.selections?.find(s => s.side === 'OVER');
-  const underSelection = totalView.selections?.find(s => s.side === 'UNDER');
+  const overSelection = totalView.selections?.find(
+    s => String(s.side || '').toLowerCase() === 'over'
+  );
+  const underSelection = totalView.selections?.find(
+    s => String(s.side || '').toLowerCase() === 'under'
+  );
   const preferredId = totalView.model_preference_selection_id;
   const preferredSel = preferredId && preferredId !== 'NO_EDGE' && preferredId !== 'INVALID'
     ? totalView.selections?.find(s => s.selection_id === preferredId)
@@ -202,7 +250,8 @@ function buildTotalContext(
   // Determine side
   let side: 'OVER' | 'UNDER' | null = null;
   if (preferredSel) {
-    side = preferredSel.side as 'OVER' | 'UNDER';
+    const preferredSide = String(preferredSel.side || '').toLowerCase();
+    side = preferredSide === 'over' ? 'OVER' : preferredSide === 'under' ? 'UNDER' : null;
   }
   
   // Calculate edge gap
@@ -301,19 +350,26 @@ function deriveClassification(
   spreadView: MarketView | null | undefined,
   totalView: MarketView | null | undefined
 ): Classification {
+  const spreadTyped = !!(spreadCtx.team && spreadCtx.side && spreadCtx.market_line !== null);
+  const totalTyped = !!(totalCtx.side && totalCtx.market_total !== null);
+
   // Check if any market has a valid edge
-  const spreadHasEdge = spreadCtx.blocking_result.all_passed && 
+  const spreadHasEdge = spreadTyped &&
+    spreadCtx.blocking_result.all_passed && 
     spreadView?.edge_class === 'EDGE' &&
     isGradePublishable(spreadCtx.grade);
     
-  const totalHasEdge = totalCtx.blocking_result.all_passed && 
+  const totalHasEdge = totalTyped &&
+    totalCtx.blocking_result.all_passed && 
     totalView?.edge_class === 'EDGE' &&
     isGradePublishable(totalCtx.grade);
   
-  const spreadHasLean = spreadView?.edge_class === 'LEAN' &&
+  const spreadHasLean = spreadTyped &&
+    spreadView?.edge_class === 'LEAN' &&
     spreadCtx.confidence_score >= 25;
     
-  const totalHasLean = totalView?.edge_class === 'LEAN' &&
+  const totalHasLean = totalTyped &&
+    totalView?.edge_class === 'LEAN' &&
     totalCtx.confidence_score >= 25;
   
   // Priority: EDGE > LEAN > MARKET_ALIGNED > NO_ACTION
@@ -393,7 +449,7 @@ function deriveOfficialPlay(
   }
   
   // Prefer spread edge over total
-  if (spreadCtx.blocking_result.all_passed && spreadCtx.team && spreadCtx.side) {
+  if (spreadCtx.blocking_result.all_passed && spreadCtx.team && spreadCtx.side && spreadCtx.market_line !== null) {
     const isUnderdog = spreadCtx.market_line !== null && spreadCtx.market_line > 0;
     return {
       market: OfficialMarket.SPREAD,
@@ -434,10 +490,19 @@ export function resolveGameEdgeState(
                        marketViews?.total?.snapshot_hash || 
                        `sim-${Date.now()}`;
   
-  // Extract raw values for sanitization
-  const rawConfidence = (simulation.confidence_score || 0.5) * 100;
+  // Extract raw values for sanitization.
+  // confidence_score is already 0-100 in production payloads, but older payloads may be 0-1.
+  const confidenceRaw = Number(simulation.confidence_score ?? 50);
+  const rawConfidence = confidenceRaw <= 1 ? confidenceRaw * 100 : confidenceRaw;
   const rawVolatilityRaw = simulation.volatility_score || simulation.volatility_index || 100;
-  const rawVolatility = Number(rawVolatilityRaw);
+  let rawVolatility = Number(rawVolatilityRaw);
+  if (!Number.isFinite(rawVolatility)) {
+    const volLabel = String(rawVolatilityRaw || '').toLowerCase();
+    if (volLabel.includes('low')) rawVolatility = 100;
+    else if (volLabel.includes('med') || volLabel.includes('moderate')) rawVolatility = 200;
+    else if (volLabel.includes('high')) rawVolatility = 350;
+    else rawVolatility = 200;
+  }
   
   // Build market-isolated contexts
   const spreadCtx = buildSpreadContext(
@@ -491,13 +556,29 @@ export function resolveGameEdgeState(
   ];
   
   // Determine validator status
-  const validatorStatus = marketViews?.spread?.integrity_status === 'PASS' ||
-                          marketViews?.total?.integrity_status === 'PASS'
+  const spreadIntegrity = marketViews?.spread?.integrity_status as any;
+  const totalIntegrity = marketViews?.total?.integrity_status as any;
+  const spreadIntegrityStatus = typeof spreadIntegrity === 'string'
+    ? spreadIntegrity.toLowerCase()
+    : String(spreadIntegrity?.status || '').toLowerCase();
+  const totalIntegrityStatus = typeof totalIntegrity === 'string'
+    ? totalIntegrity.toLowerCase()
+    : String(totalIntegrity?.status || '').toLowerCase();
+  const spreadIsValid = typeof spreadIntegrity === 'object' ? Boolean(spreadIntegrity?.is_valid) : false;
+  const totalIsValid = typeof totalIntegrity === 'object' ? Boolean(totalIntegrity?.is_valid) : false;
+
+  const validatorStatus = (
+    spreadIntegrityStatus === 'pass' || spreadIntegrityStatus === 'ok' ||
+    totalIntegrityStatus === 'pass' || totalIntegrityStatus === 'ok' ||
+    spreadIsValid || totalIsValid
+  )
     ? ValidatorStatus.PASS
-    : marketViews?.spread?.integrity_status === 'FAIL' ||
-      marketViews?.total?.integrity_status === 'FAIL'
-    ? ValidatorStatus.FAIL
-    : ValidatorStatus.DEGRADED;
+    : (
+      spreadIntegrityStatus === 'fail' || spreadIntegrityStatus === 'invalid' ||
+      totalIntegrityStatus === 'fail' || totalIntegrityStatus === 'invalid'
+    )
+      ? ValidatorStatus.FAIL
+      : ValidatorStatus.DEGRADED;
   
   // Build partial state for render flag derivation
   const partialState: Partial<GameEdgeState> = {

@@ -31,20 +31,17 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Module-level db reference (patchable in tests)
-try:
-    _db = _get_db()
-except Exception:
-    db = None  # type: ignore[assignment]
-
-
 def _get_db():
-    """Return module-level db, falling back to live import if None."""
+    """Return module-level db, importing once if not already set."""
     import services.phase4_grading_engine as _self
-    if _self.db is not None:
-        return _self.db
-    _db = _get_db()
-    return _db
+    if getattr(_self, "db", None) is None:
+        from db.mongo import db as _live_db
+        _self.db = _live_db
+    return _self.db
+
+
+# Module-level db reference (patchable in tests)
+db = None  # type: ignore[assignment]
 
 # ── Constants ────────────────────────────────────────────────────────────────
 GRADING_AGENT_ID          = "agent.grading.v1"       # used in all log entries
@@ -387,7 +384,7 @@ def grade_all_pending_phase4() -> Dict[str, int]:
 
     counts = {"graded": 0, "pending": 0, "failed": 0}
 
-    cursor = db["phase4_decision_records"].find(
+    cursor = _db["phase4_decision_records"].find(
         {
             "graded": {"$ne": True},
             "phase4_decision_class": {"$in": ["EDGE", "LEAN"]},
@@ -430,7 +427,7 @@ def reconcile_ungraded() -> List[str]:
         datetime.now(timezone.utc) - timedelta(hours=RECONCILE_AFTER_HOURS)
     ).isoformat()
 
-    cursor = db["phase4_decision_records"].find(
+    cursor = _db["phase4_decision_records"].find(
         {
             "graded": {"$ne": True},
             "phase4_decision_class": {"$in": ["EDGE", "LEAN"]},
@@ -584,7 +581,7 @@ def capture_clv_for_upcoming() -> Dict[str, int]:
 
     counts = {"captured": 0, "failed": 0, "skipped": 0}
 
-    cursor = db["phase4_decision_records"].find(
+    cursor = _db["phase4_decision_records"].find(
         {
             "clv_captured": {"$ne": True},
             "phase4_decision_class": {"$in": ["EDGE", "LEAN"]},

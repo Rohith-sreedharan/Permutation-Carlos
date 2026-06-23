@@ -213,7 +213,7 @@ def dashboard_overview(_operator=Depends(require_operator)):
         {"agent_id": "agent.response.v1", "collection": "response_action_log", "field": "agent_id"},
         {"agent_id": "agent.recovery.v1", "collection": "recovery_action_log", "field": "agent_id"},
         {"agent_id": "agent.grading.v1", "collection": "decision_settlement_metrics", "field": "graded_by"},
-        {"agent_id": "agent.calibration.v1", "collection": "calibration_records", "field": "agent_id"},
+        {"agent_id": "agent.calibration.v1", "collection": "calibration_audit_log", "field": "agent_id"},
         {"agent_id": "agent.distribution.v1", "collection": "distribution_audit_log", "field": "agent_id"},
         {"agent_id": "agent.growth.v1", "collection": "outbound_communication_log", "field": "agent_id"},
     ]

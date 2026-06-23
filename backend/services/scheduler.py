@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import requests
 import os
 import sys
+import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.timezone import now_utc
 from db.mongo import db, upsert_events
@@ -16,6 +17,62 @@ from services.logger import log_stage
 
 
 scheduler = BackgroundScheduler()
+logger = logging.getLogger(__name__)
+
+
+def get_football_polling_policy() -> dict:
+    """Read off-season polling policy from agent_config when available."""
+    default_policy = {
+        "poll_offseason_football": False,
+        "nfl_active_months": [8, 9, 10, 11, 12, 1, 2],
+        "ncaaf_active_months": [8, 9, 10, 11, 12, 1],
+    }
+    try:
+        cfg = db.agent_config.find_one({"signal_type": "FOOTBALL_OFFSEASON_POLLING"}) or {}
+        policy = cfg.get("value") if isinstance(cfg.get("value"), dict) else {}
+        return {
+            "poll_offseason_football": bool(policy.get("poll_offseason_football", default_policy["poll_offseason_football"])),
+            "nfl_active_months": policy.get("nfl_active_months", default_policy["nfl_active_months"]),
+            "ncaaf_active_months": policy.get("ncaaf_active_months", default_policy["ncaaf_active_months"]),
+        }
+    except Exception as exc:
+        logger.warning("Failed to read football polling policy from agent_config: %s", exc)
+        return default_policy
+
+
+def is_active_season(sport: str, now: datetime | None = None) -> bool:
+    """Return whether a sport should be actively polled based on month windows.
+
+    This is intentionally conservative for football off-season log suppression.
+    Policy is sourced from agent_config.FOOTBALL_OFFSEASON_POLLING.
+    """
+    current = now or now_utc()
+    month = current.month
+    policy = get_football_polling_policy()
+
+    # NFL regular + postseason + preseason by configured active months.
+    if sport == "americanfootball_nfl":
+        return month in set(policy.get("nfl_active_months", []))
+
+    # NCAAF regular + bowls/playoff by configured active months.
+    if sport == "americanfootball_ncaaf":
+        return month in set(policy.get("ncaaf_active_months", []))
+
+    # Other sports remain always enabled here.
+    return True
+
+
+def should_skip_poll_for_offseason(sport: str) -> bool:
+    """Return True when football polls should be skipped in off-season."""
+    policy = get_football_polling_policy()
+    if policy.get("poll_offseason_football"):
+        return False
+
+    # Backward-compatible env override; agent_config remains source of truth.
+    force_football_polling = os.getenv("POLL_OFFSEASON_FOOTBALL", "false").lower() in ("1", "true", "yes")
+    if force_football_polling:
+        return False
+    return not is_active_season(sport)
 
 
 def poll_odds_api(sport: str = "basketball_nba", markets: str = "h2h,spreads,totals"):
@@ -25,6 +82,11 @@ def poll_odds_api(sport: str = "basketball_nba", markets: str = "h2h,spreads,tot
     SLO: < 20s pre-match, < 10s in-play
     """
     try:
+        if should_skip_poll_for_offseason(sport):
+            logger.debug("%s off-season - skipping poll", sport)
+            print(f"ℹ️  {sport} off-season - skipping poll")
+            return
+
         api_key = os.getenv("ODDS_API_KEY")
         base_url = os.getenv("ODDS_BASE_URL", "https://api.the-odds-api.com/v4")
         
@@ -343,6 +405,11 @@ def poll_all_sports():
         
         for sport in sports:
             try:
+                if should_skip_poll_for_offseason(sport):
+                    logger.debug("%s off-season - skipping poll", sport)
+                    print(f"  ℹ️  {sport}: off-season - skipped")
+                    continue
+
                 # Fetch from multiple regions for comprehensive coverage
                 regions = ["us", "us2", "uk", "eu"]
                 all_events = []

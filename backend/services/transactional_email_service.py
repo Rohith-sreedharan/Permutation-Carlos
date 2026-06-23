@@ -27,6 +27,7 @@ from db.mongo import db
 from config.agent_config import AGENT_CONFIG
 
 logger = logging.getLogger(__name__)
+EMAIL_LOGO_URL = os.getenv("EMAIL_LOGO_URL", "https://beatvegas.app/logo-email.png")
 
 
 def _now_iso() -> str:
@@ -35,6 +36,26 @@ def _now_iso() -> str:
 
 def _cfg() -> Dict[str, Any]:
     return AGENT_CONFIG.get("billing", {})
+
+
+def _email_logo_html() -> str:
+    return (
+        '<div style="margin-bottom:16px">'
+        f'<img src="{EMAIL_LOGO_URL}" alt="BeatVegas" width="140" '
+        'style="display:block;border:0;outline:none;text-decoration:none;height:auto"/>'
+        '</div>'
+    )
+
+
+def _email_footer_html() -> str:
+    return (
+        '<p style="font-size:11px;color:#888888;text-align:center;'
+        'margin-top:24px;border-top:1px solid #eeeeee;padding-top:12px;">'
+        'If you or someone you know has a gambling problem, help is available.<br>'
+        'Call <strong>1-800-522-4700</strong> or visit '
+        '<a href="https://ncpgambling.org">ncpgambling.org</a>'
+        '</p>'
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +204,7 @@ def send_subscription_receipt(
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto">
+{_email_logo_html()}
 <h2>Payment Received</h2>
 <p>Thank you for subscribing to <strong>BeatVegas {tier_name}</strong>.</p>
 <table style="border-collapse:collapse;width:100%">
@@ -193,6 +215,7 @@ def send_subscription_receipt(
 </table>
 <p>Need help? <a href="mailto:support@beatvegas.app">support@beatvegas.app</a></p>
 <p style="color:#888;font-size:12px">BeatVegas is a sports analytics platform, not a sportsbook. No wagering services are offered.</p>
+{_email_footer_html()}
 </body></html>"""
     return _send_email(to_email=to_email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -225,12 +248,14 @@ def send_payment_failed(
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto">
+{_email_logo_html()}
 <h2 style="color:#d32f2f">Payment Failed</h2>
 <p>We were unable to process your payment of <strong>${amount_usd:.2f}</strong>.</p>
 <p><strong>Retry date:</strong> {retry_date}</p>
 <p>Your access has <strong>not been revoked</strong> — we'll retry automatically.</p>
 <p><a href="https://beatvegas.app/settings/billing" style="background:#1565c0;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px">Update Payment Method</a></p>
 <p style="color:#888;font-size:12px">Invoice: {stripe_invoice_id or 'N/A'}</p>
+{_email_footer_html()}
 </body></html>"""
     return _send_email(to_email=to_email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -272,11 +297,13 @@ def send_password_reset(*, user_id: str, user_email: str) -> bool:
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto">
+{_email_logo_html()}
 <h2>Password Reset</h2>
 <p>You requested a password reset for your BeatVegas account.</p>
 <p><a href="{reset_url}" style="background:#1565c0;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px">Reset Password</a></p>
 <p style="color:#d32f2f"><strong>This link expires in 15 minutes and can only be used once.</strong></p>
 <p>If you did not request this, ignore this email safely.</p>
+{_email_footer_html()}
 </body></html>"""
     return _send_email(to_email=user_email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -330,10 +357,12 @@ def send_renewal_reminder(
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto">
+{_email_logo_html()}
 <h2>Subscription Renewal Reminder</h2>
 <p>Your BeatVegas subscription renews on <strong>{renewal_date}</strong> for <strong>${amount_usd:.2f}</strong>.</p>
 <p>No action needed to continue. To cancel:</p>
 <p><a href="{cancel_url}" style="color:#1565c0">Cancel subscription</a></p>
+{_email_footer_html()}
 </body></html>"""
     return _send_email(to_email=to_email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -364,6 +393,7 @@ def send_cancellation_confirmation(
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto">
+{_email_logo_html()}
 <h2>Subscription Cancelled</h2>
 <p>Your BeatVegas <strong>{tier_label}</strong> subscription has been cancelled.</p>
 <table style="border-collapse:collapse;width:100%">
@@ -372,6 +402,7 @@ def send_cancellation_confirmation(
 </table>
 <p><a href="https://beatvegas.app/upgrade" style="background:#1565c0;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px">Resubscribe</a></p>
 <p>Thank you for using BeatVegas.</p>
+{_email_footer_html()}
 </body></html>"""
     return _send_email(to_email=to_email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -436,6 +467,7 @@ def send_affiliate_trial_receipt(
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;background:#0c141f;color:#f2f3ec;padding:24px">
+{_email_logo_html()}
 <h2 style="color:#bc993c;margin-bottom:4px">Your 3-Day Trial Has Started</h2>
 <p style="color:#afb6bb;font-size:13px">BeatVegas Platform access is now active</p>
 
@@ -473,6 +505,7 @@ def send_affiliate_trial_receipt(
   You received this because you started a BeatVegas trial.
   <a href="{cancel_url}" style="color:rgba(242,243,236,0.3)">Unsubscribe</a>
 </p>
+{_email_footer_html()}
 </body></html>"""
 
     success = _send_email(
@@ -534,6 +567,7 @@ def send_affiliate_trial_ending(
     )
     html_body = f"""
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;background:#0c141f;color:#f2f3ec;padding:24px">
+{_email_logo_html()}
 <h2 style="color:#de691b;margin-bottom:4px">Your Trial Ends Tomorrow</h2>
 <p style="color:#afb6bb;font-size:13px">Action required if you want to cancel</p>
 
@@ -569,6 +603,7 @@ def send_affiliate_trial_ending(
 <p style="font-size:11px;color:rgba(242,243,236,0.3)">
   <a href="{cancel_url}" style="color:rgba(242,243,236,0.3)">Unsubscribe</a>
 </p>
+{_email_footer_html()}
 </body></html>"""
 
     success = _send_email(

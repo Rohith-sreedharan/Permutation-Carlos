@@ -30,6 +30,6 @@ PHASE10_AUDIT_COLLECTIONS = [
     "outbound_communication_log",
     "billing_state_change_log",
     "phase4_scheduler_log",
-    "calibration_records",
-    "clv_records",
+    "calibration_audit_log",
+    "clv_capture_log",
 ]

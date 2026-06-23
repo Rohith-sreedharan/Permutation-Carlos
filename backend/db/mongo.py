@@ -26,9 +26,9 @@ MONGO_MAX_POOL_SIZE = int(os.getenv("MONGO_MAX_POOL_SIZE", "50"))
 # Connection health is verified in the async startup handler via run_in_executor.
 client = MongoClient(
     MONGO_URI,
-    serverSelectionTimeoutMS=5000,
-    connectTimeoutMS=5000,
-    socketTimeoutMS=10000,
+    serverSelectionTimeoutMS=15000,
+    connectTimeoutMS=15000,
+    socketTimeoutMS=30000,
     maxPoolSize=MONGO_MAX_POOL_SIZE,
 )
 db = client[DB_NAME]
@@ -53,7 +53,9 @@ def ensure_indexes() -> None:
     """
     try:
         # Original indexes
-        db["events"].create_index("event_id", unique=True)
+        # Legacy environments can have different `event_id_1` index options
+        # (sparse vs non-sparse). Re-creating here causes startup conflicts.
+        # Keep startup non-blocking by leaving existing index as-is.
         db["normalized_data"].create_index([("timestamp", -1)])
         db["predictions"].create_index([("event_id", 1)])
         db["logs_core_ai"].create_index([("module", 1), ("timestamp", -1)])
@@ -216,6 +218,11 @@ def ensure_indexes() -> None:
         db["decision_settlement_metrics"].create_index([("trace_id", 1), ("timestamp", -1)])
         db["decision_settlement_metrics"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
 
+        # Opened event telemetry (append-only) for user outcome projection
+        db["opened_event_log"].create_index([("opened_event_id", 1)], unique=True)
+        db["opened_event_log"].create_index([("user_id", 1), ("opened_at", -1)])
+        db["opened_event_log"].create_index([("event_id", 1), ("opened_at", -1)])
+
         db["truth_dataset"].create_index([("truth_row_id", 1)], unique=True)
         db["truth_dataset"].create_index([("event_id", 1), ("timestamp", -1)])
         db["truth_dataset"].create_index([("prediction_id", 1), ("timestamp", -1)])
@@ -228,10 +235,11 @@ def ensure_indexes() -> None:
         db["clv_capture_log"].create_index([("trace_id", 1), ("timestamp", -1)])
         db["clv_capture_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
 
-        db["calibration_records"].create_index([("calibration_record_id", 1)], unique=True)
-        db["calibration_records"].create_index([("calibration_version", 1), ("timestamp", -1)])
-        db["calibration_records"].create_index([("trace_id", 1), ("timestamp", -1)])
-        db["calibration_records"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
+        db["calibration_audit_log"].create_index([("calibration_record_id", 1)], unique=True)
+        db["calibration_audit_log"].create_index([("calibration_version", 1), ("timestamp", -1)])
+        db["calibration_audit_log"].create_index([("agent_id", 1), ("created_at", -1)])
+        db["calibration_audit_log"].create_index([("trace_id", 1), ("timestamp", -1)])
+        db["calibration_audit_log"].create_index([("snapshot_hash", 1), ("timestamp", -1)])
 
         db["drift_detection_log"].create_index([("drift_id", 1)], unique=True)
         db["drift_detection_log"].create_index([("drift_detected", 1), ("timestamp", -1)])
@@ -335,34 +343,87 @@ def fetch_all(collection: str, filter: Optional[Dict[str, Any]] = None, limit: i
     return list(db[collection].find(filter or {}).limit(limit))
 
 
-def upsert_events(collection: str, events: List[Dict[str, Any]]):
-    """Upsert a list of event dicts into `collection` using event_id as unique key.
+def _event_market_metrics(event_doc: Dict[str, Any]) -> Tuple[int, int, int, int, int, int]:
+    """Score canonical market completeness for snapshot selection."""
+    bookmakers = event_doc.get("bookmakers") or []
+    has_spreads = 0
+    has_totals = 0
+    market_count = 0
+    outcome_count = 0
 
-    Each event dict is expected to contain an `event_id` key.
+    for bookmaker in bookmakers:
+        markets = bookmaker.get("markets") or []
+        market_count += len(markets)
+        for market in markets:
+            key = market.get("key")
+            if key == "spreads":
+                has_spreads = 1
+            if key == "totals":
+                has_totals = 1
+            outcome_count += len(market.get("outcomes") or [])
+
+    return (
+        has_spreads,
+        has_totals,
+        market_count,
+        outcome_count,
+        len(bookmakers),
+        len(event_doc.get("odds") or []),
+    )
+
+
+def _choose_richer_event_snapshot(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+    """Pick the richer event snapshot and backfill missing fields from the other."""
+    left_score = _event_market_metrics(left)
+    right_score = _event_market_metrics(right)
+
+    primary = left if left_score >= right_score else right
+    secondary = right if primary is left else left
+
+    merged = primary.copy()
+    for key, value in secondary.items():
+        if key not in merged or merged.get(key) in (None, [], {}, ""):
+            merged[key] = value
+
+    return merged
+
+
+def upsert_events(collection: str, events: List[Dict[str, Any]]):
+    """Upsert events using event_id while protecting richer market snapshots.
+
+    The same event_id can appear multiple times in a polling batch (multi-region/API
+    responses). We collapse duplicates first and keep the richer canonical snapshot
+    so sparse payloads cannot overwrite complete spreads/totals data.
     """
     if not events:
         return 0
 
-    ops = []
+    deduped: Dict[str, Dict[str, Any]] = {}
     for ev in events:
-        ev = ev.copy()
-        ev.setdefault("created_at", now_utc().isoformat())
-        event_id = ev.get("event_id") or ev.get("id")
+        ev_copy = ev.copy()
+        ev_copy.setdefault("created_at", now_utc().isoformat())
+        event_id = ev_copy.get("event_id") or ev_copy.get("id")
         if not event_id:
-            # skip malformed
             continue
-        ev["event_id"] = event_id
-        # Remove raw Mongo _id if present
-        ev.pop("_id", None)
-        ops.append(
-            UpdateOne({"event_id": ev["event_id"]}, {"$set": ev}, upsert=True)
-        )
 
-    if not ops:
+        ev_copy["event_id"] = event_id
+        ev_copy.pop("_id", None)
+
+        existing = deduped.get(event_id)
+        if existing is None:
+            deduped[event_id] = ev_copy
+        else:
+            deduped[event_id] = _choose_richer_event_snapshot(existing, ev_copy)
+
+    if not deduped:
         return 0
 
+    ops = [
+        UpdateOne({"event_id": event_id}, {"$set": event_doc}, upsert=True)
+        for event_id, event_doc in deduped.items()
+    ]
+
     result = db[collection].bulk_write(ops, ordered=False)
-    # return total upserted/modified count (approx)
     return (result.upserted_count or 0) + (result.modified_count or 0)
 
 

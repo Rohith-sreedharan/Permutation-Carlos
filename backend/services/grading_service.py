@@ -119,12 +119,34 @@ class GradingService:
             ticket_terms=published.get("ticket_terms", {})
         )
         
-        # Get closing line for CLV
-        close_snapshot = self._get_closing_line_snapshot(
-            event_id=published["event_id"],
-            market_key=prediction["market_key"],
-            selection=prediction["selection"]
-        )
+        # Get closing line for CLV (legacy-safe)
+        prediction_market_key = prediction.get("market_key")
+        if not prediction_market_key:
+            legacy_market_type = str(prediction.get("market_type", "")).upper()
+            if legacy_market_type == "SPREAD":
+                prediction_market_key = "SPREAD"
+            elif legacy_market_type == "TOTAL":
+                prediction_market_key = "TOTAL"
+            elif legacy_market_type == "MONEYLINE":
+                prediction_market_key = "MONEYLINE"
+
+        prediction_selection = prediction.get("selection")
+        if not prediction_selection:
+            sharp_side = str(prediction.get("sharp_side", "")).upper()
+            if "OVER" in sharp_side:
+                prediction_selection = "OVER"
+            elif "UNDER" in sharp_side:
+                prediction_selection = "UNDER"
+            else:
+                prediction_selection = "HOME"
+
+        close_snapshot = None
+        if prediction_market_key:
+            close_snapshot = self._get_closing_line_snapshot(
+                event_id=published["event_id"],
+                market_key=prediction_market_key,
+                selection=prediction_selection,
+            )
         
         clv = None
         close_snapshot_id = None
@@ -182,14 +204,17 @@ class GradingService:
         )
         
         # Insert or update
+        grading_doc = grading.model_dump()
+        grading_doc.setdefault("service_authority", "agent.grading.v1")
+
         if existing and force_regrade:
             self.grading_collection.update_one(
                 {"graded_id": existing["graded_id"]},
-                {"$set": grading.model_dump()}
+                {"$set": grading_doc}
             )
             graded_id = existing["graded_id"]
         else:
-            self.grading_collection.insert_one(grading.model_dump())
+            self.grading_collection.insert_one(grading_doc)
 
         # Append-only observability records for settlement
         trace_id = (
@@ -365,7 +390,9 @@ class GradingService:
             graded_at=datetime.now(timezone.utc)
         )
         
-        self.grading_collection.insert_one(grading.model_dump())
+        grading_doc = grading.model_dump()
+        grading_doc.setdefault("service_authority", "agent.grading.v1")
+        self.grading_collection.insert_one(grading_doc)
 
         trace_id = published.get("trace_id") or prediction.get("trace_id") or f"trace_grade_{publish_id}"
         snapshot_hash = (
@@ -418,8 +445,36 @@ class GradingService:
         """
         Determine if prediction was WIN/LOSS/PUSH
         """
-        market_key = prediction["market_key"]
-        selection = prediction["selection"]
+        market_key = prediction.get("market_key")
+        if not market_key:
+            legacy_market_type = str(prediction.get("market_type", "")).upper()
+            if legacy_market_type == "SPREAD":
+                market_key = "SPREAD"
+            elif legacy_market_type == "TOTAL":
+                market_key = "TOTAL"
+            elif legacy_market_type == "MONEYLINE":
+                market_key = "MONEYLINE"
+            else:
+                market_key = "UNKNOWN"
+
+        selection = prediction.get("selection")
+        if not selection:
+            sharp_side = str(prediction.get("sharp_side", ""))
+            sharp_upper = sharp_side.upper()
+            if "OVER" in sharp_upper:
+                selection = "OVER"
+            elif "UNDER" in sharp_upper:
+                selection = "UNDER"
+            else:
+                home_team = str(prediction.get("home_team", "")).lower()
+                away_team = str(prediction.get("away_team", "")).lower()
+                sharp_lower = sharp_side.lower()
+                if home_team and home_team in sharp_lower:
+                    selection = "HOME"
+                elif away_team and away_team in sharp_lower:
+                    selection = "AWAY"
+                else:
+                    selection = "HOME"
         
         # Extract scores
         home_score = event_result.get("home_score")
@@ -432,17 +487,19 @@ class GradingService:
         
         # Get line from ticket terms
         line = ticket_terms.get("line", prediction.get("model_line"))
+        if line is None:
+            line = prediction.get("vegas_line_value")
         
         if line is None:
             logger.warning(f"No line available for {prediction['prediction_id']}")
             return None
         
         # Grade based on market type
-        if "SPREAD" in market_key:
+        if "SPREAD" in str(market_key).upper():
             return self._grade_spread(selection, line, margin)
-        elif "TOTAL" in market_key:
+        elif "TOTAL" in str(market_key).upper():
             return self._grade_total(selection, line, total_score)
-        elif "MONEYLINE" in market_key:
+        elif "MONEYLINE" in str(market_key).upper():
             return self._grade_moneyline(selection, margin)
         
         return None
@@ -558,13 +615,17 @@ class GradingService:
         event = db.events.find_one({"event_id": event_id})
         if not event:
             return None
+
+        start_time = event.get("start_time_utc") or event.get("commence_time")
+        if not start_time:
+            return None
         
         snapshot = self.odds_snapshots_collection.find_one(
             {
                 "event_id": event_id,
                 "market_key": market_key,
                 "selection": selection,
-                "timestamp_utc": {"$lte": event["start_time_utc"]}
+                "timestamp_utc": {"$lte": start_time}
             },
             sort=[("timestamp_utc", -1)]
         )
@@ -611,7 +672,12 @@ class GradingService:
             return None
         
         # Get predicted probability
-        p_win = prediction.get("p_win") or prediction.get("p_cover") or prediction.get("p_over")
+        p_win = (
+            prediction.get("p_win")
+            or prediction.get("p_cover")
+            or prediction.get("p_over")
+            or prediction.get("predicted_win_probability")
+        )
         
         if p_win is None:
             return None
@@ -637,7 +703,12 @@ class GradingService:
         if result_code == ResultCode.VOID or result_code == ResultCode.PUSH:
             return None
         
-        p_win = prediction.get("p_win") or prediction.get("p_cover") or prediction.get("p_over")
+        p_win = (
+            prediction.get("p_win")
+            or prediction.get("p_cover")
+            or prediction.get("p_over")
+            or prediction.get("predicted_win_probability")
+        )
         
         if p_win is None:
             return None

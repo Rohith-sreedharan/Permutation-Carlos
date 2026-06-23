@@ -41,7 +41,7 @@ class DeterministicReplayCache:
             mongo_uri: MongoDB connection string (defaults to localhost)
         """
         if mongo_uri is None:
-            mongo_uri = "mongodb://localhost:27017/"
+            mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 
         # In-memory fallback is ONLY permitted when BEATVEGAS_ENV=test.
         # In production, if MongoDB is unavailable all operations fail closed
@@ -52,7 +52,7 @@ class DeterministicReplayCache:
         self._memory_cache: Dict[str, Any] = {}
 
         self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
-        self.db = self.client["beatvegas"]
+        self.db = self.client[os.getenv("DATABASE_NAME", "beatvegas")]
         self.collection = self.db["deterministic_replay_cache"]
 
         self._ensure_indexes()

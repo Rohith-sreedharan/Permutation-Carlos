@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 // Section 6 — /upgrade pricing page (3-column comparison table)
 // Also accessible at /pricing
@@ -7,7 +7,7 @@ const TIERS = [
     name: 'Intelligence Preview',
     price: 'Free',
     priceNote: 'No card required',
-    cta: null,
+    plan: null as null | 'syndicate' | 'platform',
     ctaLabel: 'Current Plan',
     ctaClass: 'border border-border-gray text-light-gray cursor-default',
     highlight: false,
@@ -24,7 +24,7 @@ const TIERS = [
     name: 'Syndicate',
     price: '$39',
     priceNote: 'per month',
-    cta: 'https://beatvegas.app/upgrade',
+    plan: 'syndicate' as const,
     ctaLabel: 'Join Syndicate',
     ctaClass: 'border border-yellow-400 text-yellow-400 hover:bg-yellow-400/10',
     highlight: false,
@@ -40,7 +40,7 @@ const TIERS = [
     name: 'Platform',
     price: '$97',
     priceNote: 'per month',
-    cta: 'https://beatvegas.app/upgrade',
+    plan: 'platform' as const,
     ctaLabel: 'Upgrade to Platform',
     ctaClass: 'bg-yellow-400 text-[#0a0e1a] hover:bg-yellow-300',
     highlight: true,
@@ -55,7 +55,35 @@ const TIERS = [
   },
 ];
 
+async function startCheckout(plan: 'syndicate' | 'platform'): Promise<void> {
+  const res = await fetch('/api/payment/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).detail || 'Checkout failed');
+  }
+  const data: { checkout_url: string } = await res.json();
+  window.location.href = data.checkout_url;
+}
+
 export default function UpgradePage() {
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleUpgrade = async (plan: 'syndicate' | 'platform') => {
+    setError(null);
+    setLoading(plan);
+    try {
+      await startCheckout(plan);
+    } catch (e: any) {
+      setError(e.message || 'Something went wrong. Please try again.');
+      setLoading(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0f1e] flex flex-col items-center justify-start py-16 px-4">
       <div className="w-full max-w-5xl">
@@ -104,15 +132,14 @@ export default function UpgradePage() {
                 ))}
               </ul>
               <div className="mt-8">
-                {tier.cta ? (
-                  <a
-                    href={tier.cta}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`block w-full text-center font-bold py-3 rounded-lg transition-colors ${tier.ctaClass}`}
+                {tier.plan ? (
+                  <button
+                    onClick={() => handleUpgrade(tier.plan!)}
+                    disabled={loading === tier.plan}
+                    className={`block w-full text-center font-bold py-3 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-wait ${tier.ctaClass}`}
                   >
-                    {tier.ctaLabel}
-                  </a>
+                    {loading === tier.plan ? 'Redirecting…' : tier.ctaLabel}
+                  </button>
                 ) : (
                   <span
                     className={`block w-full text-center font-bold py-3 rounded-lg ${tier.ctaClass}`}
@@ -124,6 +151,10 @@ export default function UpgradePage() {
             </div>
           ))}
         </div>
+
+        {error && (
+          <p className="text-center text-sm text-red-400 mb-4">{error}</p>
+        )}
 
         {/* NCPG footer — canonical copy used across all surfaces */}
         <div className="text-center space-y-2 border-t border-border-gray/30 pt-8">

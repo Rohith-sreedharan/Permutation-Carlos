@@ -58,12 +58,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, onLogout
     <>
       <aside className="w-64 bg-charcoal p-4 flex-col space-y-2 sticky top-0 h-screen flex overflow-y-auto">
         <div className="text-center py-4 flex flex-col items-center">
-        <img 
-          src="/logo.png" 
-          alt="BeatVegas Logo" 
-          className="h-16 w-auto mb-2 object-contain"
+        <img
+          src="/logo.png"
+          alt="BeatVegas Logo"
+          className="h-16 w-auto mb-1 object-contain"
         />
-        <h1 className="text-4xl font-bold text-white font-teko tracking-wider">BEATVEGAS</h1>
         <p className="text-xs text-light-gray">SPORTS INTELLIGENCE</p>
       </div>
       

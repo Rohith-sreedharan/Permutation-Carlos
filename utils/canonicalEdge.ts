@@ -543,8 +543,9 @@ export function runPreRenderAssertions(state: GameEdgeState): PreRenderAssertion
     message: 'Total context isolation enforced'
   });
   
-  // 7. Spread contains team + signed line
-  const spreadTyped = (
+  // 7. Spread contains team + signed line when spread is the official actionable market.
+  const requiresSpreadBinding = state.official_market === OfficialMarket.SPREAD;
+  const spreadTyped = !requiresSpreadBinding || (
     state.spread_context.team !== null && state.spread_context.market_line !== null
   ) || state.classification === Classification.BLOCKED || state.classification === Classification.NO_ACTION;
   assertions.push({

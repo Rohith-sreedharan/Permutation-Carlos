@@ -386,9 +386,12 @@ class CalibrationEngine:
         start_date = datetime.now(timezone.utc) - timedelta(days=window_days)
         
         try:
-            # Query latest calibration entry for this sport
-            cursor = db.calibration_daily.find(
-                {"sport": sport_key}
+            # Query latest canonical daily calibration entry for this sport
+            cursor = db.calibration_audit_log.find(
+                {
+                    "record_type": "daily_calibration",
+                    "sport": sport_key,
+                }
             ).sort("date", -1).limit(1)
             
             metrics_list = list(cursor)

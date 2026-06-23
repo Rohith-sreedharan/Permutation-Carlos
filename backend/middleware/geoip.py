@@ -43,11 +43,6 @@ _BLOCKED_SUBDIVISIONS = {"PR", "VI", "GU", "MP", "AS", "UM"}
 # (none — the directive says "no bypass path of any kind")
 _BYPASS_PATHS: set[str] = set()
 
-# GeoIP confidence threshold — below this % we allow but log as GEO_LOW_CONFIDENCE
-# rather than blocking. MaxMind returns confidence 0-100 (or None if unavailable).
-# Only GeoLite2-City exposes per-IP confidence; Country DB omits it (treated as None).
-_GEOIP_CONFIDENCE_THRESHOLD: int = int(os.getenv("GEOIP_CONFIDENCE_THRESHOLD", "50"))
-
 
 def _get_client_ip(request: Request) -> str:
     """Extract real client IP, honouring common reverse-proxy headers.
@@ -104,43 +99,6 @@ def _log_geo_violation(
         logger.error("sentinel_event_log write failed: %s", exc)
 
 
-def _log_geo_low_confidence(
-    ip: str,
-    country: Optional[str],
-    confidence: int,
-    path: str,
-    trace_id: str,
-) -> None:
-    """
-    Write a GEO_LOW_CONFIDENCE entry to sentinel_event_log.
-    Called when MaxMind returns a non-US classification below the confidence
-    threshold — request is ALLOWED but recorded for audit.
-    Legitimate US subscribers on corporate VPNs or mobile carrier IPs that
-    MaxMind misclassifies must never receive a 403.
-    """
-    try:
-        from db.mongo import db
-
-        db["sentinel_event_log"].insert_one(
-            {
-                "event_type": "GEO_LOW_CONFIDENCE",
-                "severity": "INFO",
-                "ip": ip,
-                "classified_country": country,
-                "confidence_score": confidence,
-                "confidence_threshold": _GEOIP_CONFIDENCE_THRESHOLD,
-                "action": "ALLOWED",
-                "path": path,
-                "trace_id": trace_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "agent_id": "agent.geoip.v1",
-                "note": "MaxMind confidence below threshold — allowed to prevent false-positive blocks on VPN/carrier IPs",
-            }
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.error("sentinel_event_log GEO_LOW_CONFIDENCE write failed: %s", exc)
-
-
 class GeoIPMiddleware(BaseHTTPMiddleware):
     """FastAPI/Starlette middleware that enforces US-only access via MaxMind GeoLite2."""
 
@@ -188,16 +146,6 @@ class GeoIPMiddleware(BaseHTTPMiddleware):
         if not self.enabled:
             return await call_next(request)
 
-        # Phase 8 observability: allow internal metrics scraping regardless of source IP.
-        # This endpoint is read-only and required for Prometheus/Grafana health monitoring.
-        if str(request.url.path) == "/api/phase8/metrics":
-            return await call_next(request)
-
-        # Health/liveness endpoints must be reachable from any IP (load-balancers,
-        # uptime monitors, deployment verification) regardless of geographic origin.
-        if str(request.url.path) in ("/health", "/api/health"):
-            return await call_next(request)
-
         ip = _get_client_ip(request)
 
         # Always allow localhost (dev / health checks from same host)
@@ -227,6 +175,7 @@ class GeoIPMiddleware(BaseHTTPMiddleware):
                     "trace_id": trace_id,
                 },
             )
+
         response = await call_next(request)
         return response
 
@@ -269,31 +218,6 @@ class GeoIPMiddleware(BaseHTTPMiddleware):
 
                 record = self._country_reader.country(ip)
                 country_iso = record.country.iso_code  # e.g. "US"
-
-                # Confidence check (GeoLite2-City only; Country DB returns None)
-                confidence = getattr(record.country, "confidence", None)
-                if (
-                    country_iso != "US"
-                    and confidence is not None
-                    and confidence < _GEOIP_CONFIDENCE_THRESHOLD
-                ):
-                    # Low confidence non-US result — allow but log for audit.
-                    # Never block on low-confidence: legitimate US subscribers on
-                    # corporate VPNs or mobile carrier IPs that MaxMind misclassifies
-                    # must not receive a 403.
-                    trace_id = str(uuid.uuid4())
-                    logger.info(
-                        "[GeoIP] GEO_LOW_CONFIDENCE ip=%s country=%s confidence=%s threshold=%s — allowing, trace_id=%s",
-                        ip, country_iso, confidence, _GEOIP_CONFIDENCE_THRESHOLD, trace_id,
-                    )
-                    _log_geo_low_confidence(
-                        ip=ip,
-                        country=country_iso,
-                        confidence=confidence,
-                        path="(checked in _check_ip)",
-                        trace_id=trace_id,
-                    )
-                    return None, country_iso, None
 
                 if country_iso != "US":
                     return "NON_US_COUNTRY", country_iso, None

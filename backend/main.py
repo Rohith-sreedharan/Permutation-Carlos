@@ -111,6 +111,7 @@ from routes.odds_routes import router as odds_router
 from routes.core_routes import router as core_router
 from routes.account_routes import router as account_router
 from routes.ab_test_routes import router as ab_test_router
+from routes.canonical_affiliate_routes import router as canonical_affiliate_router
 from routes.affiliate_routes import router as affiliate_router
 from routes.community_routes import router as community_router
 from routes.simulation_routes import router as simulation_router
@@ -173,7 +174,9 @@ app.include_router(odds_router)
 app.include_router(core_router)
 app.include_router(account_router)
 app.include_router(ab_test_router)
-app.include_router(affiliate_router)
+app.include_router(canonical_affiliate_router)
+# Old affiliate router disabled to avoid duplicate mounts; canonical router used instead
+# app.include_router(affiliate_router)
 app.include_router(community_router)
 app.include_router(community_enhanced_router)  # NEW: Enhanced community features
 app.include_router(war_room_router)  # NEW: War Room v1.0 - Intelligence workspace
@@ -389,6 +392,19 @@ async def startup_event():
         print(f"⚠️  MongoDB ping failed: {e}")
         print("   App will continue — database-dependent routes will return 503")
 
+    # ── Workstream 3C: Install legacy collection write blocker
+    # Permanent defense against accidental legacy writes
+    try:
+        from services.legacy_collection_blocker import wrap_database_for_legacy_blocking
+        
+        # Import db from a local scope to wrap it
+        import db.mongo as db_module
+        db_module.db = wrap_database_for_legacy_blocking(db)
+        print("✓ Workstream 3C: Legacy collection write blocker ACTIVE")
+    except Exception as e:
+        print(f"⚠️  Legacy write blocker initialization failed: {e}")
+        print("   WARNING: Legacy collections are not protected from writes!")
+
     try:
         await loop.run_in_executor(None, ensure_indexes)
         print("✓ Database indexes initialized")
@@ -450,12 +466,8 @@ async def startup_event():
         print("   Manual calibration triggers still available")
 
     # ── Phase 4: Run DB migrations ────────────────────────────────────────────
-    try:
-        from db.migrations.phase4_001_truth_dataset_v1_view import create_view
-        create_view(db=db)
-        print("✓ Phase 4C: truth_dataset_v1 view created")
-    except Exception as e:
-        print(f"⚠️ Phase 4C migration warning: {e}")
+    # Workstream 3C lineage hardening: skip legacy trust-view creation.
+    print("✓ Phase 4C: legacy trust-view migration skipped (canonical lineage active)")
 
     try:
         from db.migrations.phase4_002_calibration_immutability import run_migration, start_watcher

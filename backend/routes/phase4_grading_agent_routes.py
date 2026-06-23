@@ -36,6 +36,21 @@ def _require_agent_identity(
 
 
 @router.post(
+    "/batch",
+    summary="Batch-grade all pending Phase-4 decisions (agent.grading.v1 only)",
+    dependencies=[Depends(_require_agent_identity)],
+)
+def batch_grade():
+    """
+    Grade all ungraded EDGE + LEAN Phase-4 decisions.
+
+    ONLY callable with header  X-Agent-Id: agent.grading.v1.
+    """
+    counts = grading_agent.run_batch_grade()
+    return {"status": "complete", "counts": counts, "agent_id": AGENT_ID}
+
+
+@router.post(
     "/{decision_id}",
     summary="Grade a Phase-4 decision (agent.grading.v1 only)",
     dependencies=[Depends(_require_agent_identity)],
@@ -54,18 +69,3 @@ def grade_decision(decision_id: str, force_regrade: bool = False):
             detail=f"Decision '{decision_id}' not found or game not yet final",
         )
     return result
-
-
-@router.post(
-    "/batch",
-    summary="Batch-grade all pending Phase-4 decisions (agent.grading.v1 only)",
-    dependencies=[Depends(_require_agent_identity)],
-)
-def batch_grade():
-    """
-    Grade all ungraded EDGE + LEAN Phase-4 decisions.
-
-    ONLY callable with header  X-Agent-Id: agent.grading.v1.
-    """
-    counts = grading_agent.run_batch_grade()
-    return {"status": "complete", "counts": counts, "agent_id": AGENT_ID}

@@ -1,7 +1,7 @@
 import type { EventWithPrediction } from '../types';
 import { normalizeTeamAliasesInText } from './matchupLabel';
 
-export const CANONICAL_PROP_LABEL = 'MARKET_ALIGNED';
+export const CANONICAL_PROP_LABEL = 'Market Aligned';
 
 export const getCanonicalPropHeadline = (event: EventWithPrediction): string => {
   const fromTopPropBet = normalizeTeamAliasesInText(event.top_prop_bet);
@@ -12,7 +12,7 @@ export const getCanonicalPropHeadline = (event: EventWithPrediction): string => 
   const structured = event.top_prop_mispricings?.[0];
   if (structured) {
     const hasLine = Number.isFinite(structured.line);
-    const lineText = hasLine ? ` @ ${structured.line}` : '';
+    const lineText = hasLine ? ` (Line ${structured.line})` : '';
     return `${structured.player_name} - ${structured.market}${lineText}`;
   }
 

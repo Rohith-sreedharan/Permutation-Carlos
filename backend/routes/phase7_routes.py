@@ -34,7 +34,7 @@ def performance_endpoint():
     Every response includes:
       - disclosure: "Past performance does not guarantee future results…"
       - powered_by: "Powered by agentic simulation"
-      - response_hash: SHA256 of sorted metrics JSON (logged to performance_api_log)
+            - response_hash: SHA256 of sorted metrics JSON (logged to system_performance)
     """
     try:
         return get_performance_metrics()
@@ -49,7 +49,7 @@ def trace_metric_endpoint(
 ):
     """
     AC-3: Trace a metric key back through the full chain:
-      API response → performance_api_log → source table → decisions.snapshot_hash
+            API response → system_performance → source table → decisions.snapshot_hash
     """
     result = trace_metric(metric_key, response_hash)
     if "error" in result:
@@ -72,7 +72,8 @@ class WriteAttemptRequest(BaseModel):
 def sentinel_write_attempt(req: WriteAttemptRequest):
     """
     AC-1: Attempt a manual write to a truth-source collection.
-    Protected collections (truth_dataset_v1, grading_records, calibration_records)
+    Protected collections (truth_dataset, grading, calibration_versions,
+    calibration_segments, calibration_audit_log)
     are unconditionally blocked.  Every attempt — allowed or blocked — is logged
     to sentinel_event_log with CRITICAL severity.
     """

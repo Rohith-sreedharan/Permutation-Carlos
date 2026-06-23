@@ -231,17 +231,23 @@ const ParlayArchitect: React.FC<ParlayArchitectProps> = ({
     }
 
     if (!resolvedPlatformAccess) {
+      // Section 2D — Syndicate subscriber (has Telegram, no Platform) — directive copy
       return (
-        <div className="bg-charcoal border border-electric-blue/30 rounded-xl p-5">
-          <h3 className="text-xl font-bold text-white mb-2">Parlay Architect - Platform Only</h3>
-          <p className="text-light-gray mb-4">Build up to 6-leg decision combinations from engine outputs.</p>
-          <button
-            type="button"
-            onClick={onUpgradeToPlatform}
-            className="px-4 py-2 bg-electric-blue text-white font-semibold rounded-lg hover:bg-electric-blue/90"
+        <div className="bg-charcoal border border-yellow-400/20 rounded-xl p-6 text-center space-y-4">
+          <div className="text-3xl">🔒</div>
+          <h3 className="text-xl font-bold text-white">Parlay Architect — Platform Exclusive</h3>
+          <p className="text-light-gray text-sm">
+            Multi-leg decision optimization is available on Platform. Upgrade to unlock Parlay
+            Architect and 100,000 monthly cycles.
+          </p>
+          <a
+            href="https://beatvegas.app/upgrade"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block bg-yellow-400 text-[#0a0e1a] font-bold px-6 py-3 rounded-lg hover:bg-yellow-300 transition-colors text-sm"
           >
-            Upgrade to Platform
-          </button>
+            Upgrade to Platform — $97/month
+          </a>
         </div>
       );
     }

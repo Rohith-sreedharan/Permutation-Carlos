@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import SubscriberReferralPanel from './SubscriberReferralPanel';
 import { getUserSettings, updateUserSettings, changePassword, enable2FA, verify2FA, disable2FA, get2FAStatus, deleteAccount, beginPasskeyRegistration, completePasskeyRegistration, listPasskeys, deletePasskey } from '../services/api';
+import { canonicalLogout } from '../services/api';
 import { swalSuccess, swalError } from '../utils/swal';
 import LoadingSpinner from './LoadingSpinner';
 import Swal from 'sweetalert2';
@@ -276,9 +277,8 @@ const Settings: React.FC = () => {
       try {
         await deleteAccount(result.value.password, result.value.confirmation);
         await swalSuccess('Account Deleted', 'Your account has been deleted. Redirecting...');
-        // Clear token and redirect to login
-        localStorage.removeItem('authToken');
-        setTimeout(() => window.location.href = '/auth', 1500);
+        // Use canonical logout (handles iOS Safari token clearing)
+        setTimeout(() => canonicalLogout(), 1500);
       } catch (err: any) {
         await swalError('Failed', err.message || 'Failed to delete account');
       }

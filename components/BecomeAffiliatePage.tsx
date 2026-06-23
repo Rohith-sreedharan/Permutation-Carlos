@@ -68,14 +68,20 @@ const BecomeAffiliatePage: React.FC = () => {
               The BeatVegas Affiliate Program is available to Platform and Syndicate subscribers.
               Upgrade to Platform to join the affiliate program and earn $30 per conversion.
             </p>
-            <a
-              href="https://beatvegas.app/upgrade"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block bg-yellow-400 text-[#0a0e1a] font-bold px-6 py-3 rounded-lg hover:bg-yellow-300 transition-colors text-sm mt-2"
-            >
-              Upgrade to Platform — $97/month
-            </a>
+            <div className="grid gap-3 sm:grid-cols-2 pt-2">
+              <a
+                href="/upgrade?plan=syndicate"
+                className="inline-block border border-yellow-400 text-yellow-400 font-bold px-6 py-3 rounded-lg hover:bg-yellow-400/10 transition-colors text-sm"
+              >
+                Join Syndicate — $39/month
+              </a>
+              <a
+                href="/upgrade?plan=platform"
+                className="inline-block bg-yellow-400 text-[#0a0e1a] font-bold px-6 py-3 rounded-lg hover:bg-yellow-300 transition-colors text-sm"
+              >
+                Subscribe to Platform — $97/month
+              </a>
+            </div>
           </div>
         ) : (
           /* ── Eligible subscriber — show enrollment form ────────────────── */
