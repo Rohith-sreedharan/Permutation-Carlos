@@ -14,7 +14,7 @@ All downstream features MUST read from this table:
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
