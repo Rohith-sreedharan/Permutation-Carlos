@@ -100,9 +100,11 @@ class ReflectionLoop:
         )
         try:
             from services.trust_metrics import trust_metrics_service
-            loop = asyncio.new_event_loop()
-            metrics = loop.run_until_complete(trust_metrics_service.get_cached_metrics())
-            loop.close()
+            import asyncio, concurrent.futures
+            def _fetch():
+                return asyncio.run(trust_metrics_service.get_cached_metrics())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                metrics = pool.submit(_fetch).result(timeout=10)
             overall = metrics.get("overall", {})
             return {
                 "total_picks": overall.get("total_predictions", 0),

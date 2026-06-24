@@ -181,11 +181,12 @@ class PredictionLogger:
             "reading from canonical trust_metrics.system_performance cache"
         )
         try:
-            import asyncio
+            import asyncio, concurrent.futures
             from services.trust_metrics import trust_metrics_service
-            loop = asyncio.new_event_loop()
-            metrics = loop.run_until_complete(trust_metrics_service.get_cached_metrics())
-            loop.close()
+            def _fetch():
+                return asyncio.run(trust_metrics_service.get_cached_metrics())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                metrics = pool.submit(_fetch).result(timeout=10)
             overall = metrics.get("overall", {})
             return {
                 "total_predictions": overall.get("total_predictions", 0),
@@ -212,11 +213,12 @@ class PredictionLogger:
             "reading from canonical trust_metrics.system_performance cache"
         )
         try:
-            import asyncio
+            import asyncio, concurrent.futures
             from services.trust_metrics import trust_metrics_service
-            loop = asyncio.new_event_loop()
-            metrics = loop.run_until_complete(trust_metrics_service.get_cached_metrics())
-            loop.close()
+            def _fetch2():
+                return asyncio.run(trust_metrics_service.get_cached_metrics())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                metrics = pool.submit(_fetch2).result(timeout=10)
             overall = metrics.get("overall", {})
             return {
                 "total_predictions": overall.get("total_predictions", 0),
