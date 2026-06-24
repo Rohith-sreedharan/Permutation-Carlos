@@ -18,10 +18,15 @@ from datetime import datetime, timedelta
 import logging
 
 from db.mongo import db
+from services.entitlement_gate import require_web_platform_feature
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/market-states", tags=["Market State Registry"])
+router = APIRouter(
+    prefix="/api/market-states",
+    tags=["Market State Registry"],
+    dependencies=[Depends(require_web_platform_feature)],
+)
 
 
 def get_market_state_service():

@@ -54,6 +54,11 @@ class GradingService:
         Returns:
             graded_id or None if cannot grade yet
         """
+        logger.warning(
+            "grading_service.grade_published_prediction is retired; unified_grading_service_v2 is the only grading writer"
+        )
+        return None
+
         # Check if already graded
         existing = self.grading_collection.find_one({"publish_id": publish_id})
         if existing and not force_regrade:
@@ -324,6 +329,11 @@ class GradingService:
         Returns:
             {graded: X, voided: Y, pending: Z}
         """
+        logger.warning(
+            "grading_service.grade_all_pending is retired; unified_grading_service_v2 is the only grading writer"
+        )
+        return {"graded": 0, "voided": 0, "pending": 0, "retired": True}
+
         cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         
         # Get published predictions not yet graded

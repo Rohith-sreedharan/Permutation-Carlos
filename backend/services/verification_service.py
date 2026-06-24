@@ -131,6 +131,11 @@ class VerificationService:
         """
         Verify AI model predictions for trust loop metrics
         """
+        logger.warning(
+            "verification_service._verify_ai_predictions is retired; unified_grading_service_v2 is the only grading writer"
+        )
+        return
+
         predictions = list(self.db["predictions"].find({
             "event_id": event_id,
             "verification_status": FORECAST_STATUS["PENDING"]

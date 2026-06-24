@@ -44,6 +44,19 @@ class ResultGradingService:
                 "win_rate": 66.7
             }
         """
+        logger.warning(
+            "result_grading.grade_completed_games is retired; unified_grading_service_v2 is the only grading writer"
+        )
+        return {
+            'graded_count': 0,
+            'wins': 0,
+            'losses': 0,
+            'units_won': 0.0,
+            'win_rate': 0.0,
+            'retired': True,
+            'authority': 'services.unified_grading_service_v2.UnifiedGradingService'
+        }
+
         try:
             since = now_utc() - timedelta(hours=hours_back)
             
