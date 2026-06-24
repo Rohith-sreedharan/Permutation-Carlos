@@ -41,6 +41,7 @@ from core.sport_configs import VolatilityLevel
 from core.feedback_loop import store_prediction
 from core.reality_check_layer import get_public_total_projection
 from core.output_consistency import output_consistency_validator, SharpAction
+from core.compute_market_decision import MarketDecisionComputer
 from utils.calibration_logger import calibration_logger
 from utils.team_validator import team_identity_validator, extreme_edge_validator
 from core.sim_integrity import (
@@ -57,6 +58,7 @@ from core.selection_id_generator import (
     generate_total_selections,
     validate_selection_consistency
 )
+from core.canonical_contract_enforcer import enforce_canonical_contract
 from dataclasses import dataclass
 
 # TEMPORARY: SpreadAnalysis and TotalAnalysis removed from deleted sharp_analysis.py
@@ -876,8 +878,9 @@ class MonteCarloEngine:
         
         # Lock Vegas spread to sportsbook source (preserve sign exactly as published)
         # Negative = home favored, Positive = away favored
+        spread_market_available = bool(market_context.get('has_spread_market', True))
         vegas_spread_home_perspective = market_context.get('current_spread', 0.0)
-        
+
         # SPREAD: Calculate cover probabilities at current market line
         # CRITICAL FIX: Spread cover logic was inverted
         # 
@@ -903,11 +906,16 @@ class MonteCarloEngine:
         #   - Example 3: HOME +3.5, margin = -2  → -2 + 3.5 = 1.5 > 0 ✅ Covers
         # 
         margins_array = np.array(results["margins"])
-        home_covers_count = np.sum(margins_array + vegas_spread_home_perspective > 0)
-        p_cover_home = float(home_covers_count / iterations)
-        p_cover_away = 1.0 - p_cover_home
-        
-        logger.info(f"Cover Probabilities at market line {vegas_spread_home_perspective}: Home {p_cover_home:.1%}, Away {p_cover_away:.1%}")
+        if spread_market_available:
+            home_covers_count = np.sum(margins_array + vegas_spread_home_perspective > 0)
+            p_cover_home = float(home_covers_count / iterations)
+            p_cover_away = 1.0 - p_cover_home
+            logger.info(f"Cover Probabilities at market line {vegas_spread_home_perspective}: Home {p_cover_home:.1%}, Away {p_cover_away:.1%}")
+        else:
+            # No spread market in upstream payload; keep neutral probabilities and force NO_EDGE downstream.
+            p_cover_home = 0.5
+            p_cover_away = 0.5
+            logger.warning("Spread market unavailable from upstream odds payload; forcing spread NO_EDGE")
         
         # SIM INTEGRITY: Generate metadata for versioning
         odds_snapshot_id = generate_odds_snapshot_id(
@@ -1094,6 +1102,31 @@ class MonteCarloEngine:
             spread_sharp_result.sharp_action = "NO_SHARP_PLAY"
             spread_sharp_result.sharp_selection = "NO PLAY - DATA/LOGIC FLAG"
             spread_sharp_result.reasoning = "; ".join(integrity_flags)
+
+        # Canonical consistency guard:
+        # NO_SHARP_PLAY (or missing team binding) must never be treated as has_edge=True.
+        if not spread_market_available:
+            spread_sharp_result.sharp_action = "NO_SHARP_PLAY"
+            spread_sharp_result.sharp_selection = "NO PLAY"
+            spread_sharp_result.sharp_team = None
+            spread_sharp_result.sharp_line = None
+            spread_sharp_result.edge_points = 0.0
+            spread_sharp_result.delta = 0.0
+            spread_sharp_result.has_edge = False
+            spread_sharp_result.reasoning = "Spread market unavailable in upstream odds payload"
+
+        spread_selection = str(getattr(spread_sharp_result, "sharp_selection", "") or "").upper()
+        spread_action = str(getattr(spread_sharp_result, "sharp_action", "") or "").upper()
+        spread_team = getattr(spread_sharp_result, "sharp_team", None)
+        if (
+            spread_action == "NO_SHARP_PLAY"
+            or "NO PLAY" in spread_selection
+            or spread_team not in {home_team_name, away_team_name}
+        ):
+            spread_sharp_result.edge_direction = "NO_EDGE"
+            spread_sharp_result.sharp_team = None
+            spread_sharp_result.sharp_side = "NO PLAY"
+            spread_sharp_result.has_edge = False
         
         # Calculate TOTAL sharp side
         total_sharp_result = output_consistency_validator.calculate_total_sharp_side(
@@ -1142,8 +1175,21 @@ class MonteCarloEngine:
         spread_selections["away"]["model_fair_line_for_selection"] = -model_spread_home_perspective
 
         spread_prob_valid = abs((p_cover_home or 0) + (p_cover_away or 0) - 1.0) <= probability_tolerance
+        spread_has_bound_edge = bool(
+            spread_sharp_result
+            and spread_sharp_result.has_edge
+            and spread_sharp_result.sharp_team in {home_team_name, away_team_name}
+        )
+        if not spread_has_bound_edge:
+            spread_analysis.edge_direction = "NO_EDGE"
+            spread_analysis.edge_points = 0.0
+            spread_analysis.sharp_side = None
+            spread_analysis.sharp_side_reason = (
+                spread_sharp_result.reasoning if spread_sharp_result else "No spread edge"
+            )
+
         spread_preference_id = "NO_EDGE"
-        if spread_sharp_result and spread_sharp_result.has_edge:
+        if spread_has_bound_edge:
             spread_preference_id = spread_selections["home"]["selection_id"] if spread_sharp_result.sharp_team == home_team_name else spread_selections["away"]["selection_id"]
         spread_direction_id = spread_preference_id
         spread_valid, spread_errors = validate_selection_consistency(
@@ -1156,7 +1202,29 @@ class MonteCarloEngine:
             spread_integrity_errors.append("SPREAD_PROB_SUM_INVALID")
         if not spread_valid:
             spread_integrity_errors.extend(spread_errors)
-        spread_edge_class = "INVALID" if spread_integrity_errors else ("EDGE" if spread_sharp_result and spread_sharp_result.has_edge else "MARKET_ALIGNED")
+        computer = MarketDecisionComputer(
+            league=market_context.get("sport_key", "basketball_nba"),
+            game_id=event_id,
+            odds_event_id=event_id,
+        )
+        spread_decision = computer.compute_spread(
+            odds_snapshot=market_context,
+            sim_result={
+                "model_spread_home_perspective": model_spread_home_perspective,
+                "home_cover_probability": p_cover_home,
+                "away_cover_probability": p_cover_away,
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "volatility": volatility_label,
+                "total_injury_impact": sum(abs(inj.get("impact_points", 0)) for inj in injury_impact),
+                "simulation_id": simulation_id,
+                "rcl_total": rcl_total,
+                "over_probability": over_probability,
+                "under_probability": under_probability,
+            },
+            config={"profile": tier_config.get("label", "balanced")},
+            game_competitors={home_team_name: home_team_name, away_team_name: away_team_name},
+        )
+        spread_edge_class = "INVALID" if spread_integrity_errors else (spread_decision.classification.value if spread_decision.classification else "MARKET_ALIGNED")
         spread_ui_mode = "SAFE" if spread_integrity_errors else "FULL"
 
         # Moneyline selections (lines are null but IDs deterministic)
@@ -1209,21 +1277,50 @@ class MonteCarloEngine:
         total_selections["over"]["model_fair_line_for_selection"] = rcl_total
         total_selections["under"]["model_fair_line_for_selection"] = rcl_total
         total_prob_valid = abs((over_probability or 0) + (under_probability or 0) - 1.0) <= probability_tolerance
+        total_decision = computer.compute_total(
+            odds_snapshot=market_context,
+            sim_result={
+                "rcl_total": rcl_total,
+                "over_probability": over_probability,
+                "under_probability": under_probability,
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "volatility": volatility_label,
+                "total_injury_impact": sum(abs(inj.get("impact_points", 0)) for inj in injury_impact),
+                "simulation_id": simulation_id,
+            },
+            config={"profile": tier_config.get("label", "balanced")},
+            game_competitors={home_team_name: home_team_name, away_team_name: away_team_name},
+        )
+        # Canonical write-path source of truth for total market:
+        # edge_class and selection IDs must be derived from the SAME decision object.
+        total_integrity_errors = []
+        total_decision_class = str(total_decision.classification.value if total_decision.classification else "MARKET_ALIGNED").upper()
+        total_actionable = total_decision_class in {"EDGE", "LEAN"}
+        total_allowed_selection_ids = {
+            total_selections["over"]["selection_id"],
+            total_selections["under"]["selection_id"],
+        }
+
         total_preference_id = "NO_EDGE"
-        if total_sharp_result and total_sharp_result.has_edge:
-            total_preference_id = total_selections["over"]["selection_id"] if total_sharp_result.sharp_action == SharpAction.OVER else total_selections["under"]["selection_id"]
+        if total_actionable:
+            decision_pref = str(getattr(total_decision, "preferred_selection_id", "") or "")
+            if decision_pref in total_allowed_selection_ids:
+                total_preference_id = decision_pref
+            else:
+                total_integrity_errors.append("TOTAL_ACTIONABLE_MISSING_CANONICAL_SELECTION")
+
         total_direction_id = total_preference_id
         total_valid, total_errors = validate_selection_consistency(
             selections=total_selections,
             model_preference_selection_id=total_preference_id,
             model_direction_selection_id=total_direction_id
         )
-        total_integrity_errors = []
         if not total_prob_valid:
             total_integrity_errors.append("TOTAL_PROB_SUM_INVALID")
         if not total_valid:
             total_integrity_errors.extend(total_errors)
-        total_edge_class = "INVALID" if total_integrity_errors else ("EDGE" if total_sharp_result and total_sharp_result.has_edge else "MARKET_ALIGNED")
+
+        total_edge_class = "INVALID" if total_integrity_errors else total_decision_class
         total_ui_mode = "SAFE" if total_integrity_errors else "FULL"
 
         overall_integrity_errors = spread_integrity_errors + ml_integrity_errors + total_integrity_errors
@@ -1253,6 +1350,18 @@ class MonteCarloEngine:
             )
         
         # Format for API
+        if not spread_has_bound_edge:
+            spread_analysis = SpreadAnalysis(
+                vegas_spread=spread_analysis.vegas_spread,
+                model_spread=spread_analysis.model_spread,
+                edge_points=0.0,
+                edge_direction="NO_EDGE",
+                sharp_side=None,
+                sharp_side_reason=spread_sharp_result.reasoning if spread_sharp_result else "No canonical spread edge",
+                edge_grade="F",
+                edge_strength="NEUTRAL"
+            )
+
         spread_edge_api = format_for_api(spread_analysis)
         total_edge_api = format_for_api(total_analysis)
         
@@ -1591,8 +1700,8 @@ class MonteCarloEngine:
                     # === SELECTION IDs (CRITICAL - MUST NOT DIVERGE) ===
                     "home_selection_id": f"{event_id}_spread_home",
                     "away_selection_id": f"{event_id}_spread_away",
-                    "model_preference_selection_id": f"{event_id}_spread_{'home' if sharp_side_result.sharp_action == 'FAV' and vegas_spread_home_perspective < 0 else 'away'}",
-                    "model_direction_selection_id": f"{event_id}_spread_{'home' if sharp_side_result.sharp_action == 'FAV' and vegas_spread_home_perspective < 0 else 'away'}",
+                    "model_preference_selection_id": spread_preference_id,
+                    "model_direction_selection_id": spread_direction_id,
                     
                     # Market and fair lines (signed from home perspective)
                     "market_spread_home": vegas_spread_home_perspective,
@@ -1614,7 +1723,7 @@ class MonteCarloEngine:
                     "sharp_action": sharp_side_result.sharp_action,  # Use NEW sharp side selection result
                     "sharp_team": spread_sharp_result.sharp_team if spread_sharp_result else None,
                     "sharp_line": spread_sharp_result.sharp_line if spread_sharp_result else None,
-                    "has_edge": sharp_side_result.edge_after_penalty > 0,  # Use NEW edge calculation
+                    "has_edge": spread_has_bound_edge,
                     
                     # Legacy sharp_side (keep for backward compatibility)
                     "sharp_side": spread_sharp_result.sharp_selection if spread_sharp_result else None,
@@ -1773,8 +1882,18 @@ class MonteCarloEngine:
             "debug_label": get_debug_label("monte_carlo_engine", iterations, median_total, variance_total)
         }
         
+        # Enforce canonical contract before persisting so contradictory states
+        # never exist in storage, even transiently between write and read paths.
+        simulation_result = enforce_canonical_contract(simulation_result)
+
         # Sanitize numpy types before saving to MongoDB
         simulation_result = sanitize_mongo_doc(simulation_result)
+
+        # TASK 2 INTEGRITY GUARD (fail-closed): never persist a simulation
+        # unless a canonical event record exists for this event_id.
+        event_exists = db["events"].find_one({"event_id": event_id}, {"_id": 1}) is not None
+        if not event_exists:
+            raise ValueError(f"SIMULATION_ORPHAN_BLOCKED: missing event record for event_id={event_id}")
         
         # Store simulation in database - use update_one with upsert to avoid duplicate key errors
         # This handles regeneration cases where simulation_id might already exist
@@ -2135,8 +2254,17 @@ class MonteCarloEngine:
             "debug_label": get_debug_label(f"monte_carlo_1h", iterations, h1_median_total, h1_variance)
         }
         
+        # Enforce canonical contract at write-time for period simulations too.
+        simulation_result = enforce_canonical_contract(simulation_result)
+
         # Sanitize numpy types before saving to MongoDB
         simulation_result = sanitize_mongo_doc(simulation_result)
+
+        # TASK 2 INTEGRITY GUARD (fail-closed): never persist a period simulation
+        # unless a canonical event record exists for this event_id.
+        event_exists = db["events"].find_one({"event_id": event_id}, {"_id": 1}) is not None
+        if not event_exists:
+            raise ValueError(f"SIMULATION_ORPHAN_BLOCKED: missing event record for event_id={event_id}")
         
         # Store period simulation in database - use update_one with upsert to avoid duplicate key errors
         db["monte_carlo_simulations"].update_one(

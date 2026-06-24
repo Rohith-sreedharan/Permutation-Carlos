@@ -135,8 +135,12 @@ class SnapshotCaptureService:
                     if price is not None:
                         if price >= 2.0:
                             price_american = int((price - 1.0) * 100)
-                        else:
+                        elif price > 1.0:
                             price_american = int(-100 / (price - 1.0))
+                        else:
+                            # Decimal odds of 1.0 are invalid for conversion and appear in some feeds.
+                            # Keep None so the snapshot is still captured without breaking lineage writes.
+                            price_american = None
                     
                     snapshot_id = self.capture_odds_snapshot(
                         event_id=event_id,

@@ -70,7 +70,7 @@ class Database:
         """Get recent simulations"""
         query = {}
         if hours:
-            query["created_at"] = {"$gte": datetime.now() - timedelta(hours=hours)}
+            query["created_at"] = {"$gte": datetime.now(timezone.utc) - timedelta(hours=hours)}
         
         cursor = self.simulations.find(query).sort("created_at", -1)
         if limit:
@@ -79,12 +79,12 @@ class Database:
     
     async def get_api_requests(self, minutes: int) -> List[Dict]:
         """Get recent API requests"""
-        start_time = datetime.now() - timedelta(minutes=minutes)
+        start_time = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         return list(self.db.api_logs.find({"timestamp": {"$gte": start_time}}))
     
     async def get_telegram_posts(self, hours: int) -> List[Dict]:
         """Get recent Telegram posts"""
-        start_time = datetime.now() - timedelta(hours=hours)
+        start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         return list(self.db.telegram_posts.find({"sent_at": {"$gte": start_time}}))
     
     async def ping(self):
@@ -99,7 +99,7 @@ class Database:
     
     async def get_simsports_api_requests(self, minutes: int) -> List[Dict]:
         """Get recent SimSports API requests"""
-        start_time = datetime.now() - timedelta(minutes=minutes)
+        start_time = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         return list(self.db.api_logs.find({
             "timestamp": {"$gte": start_time},
             "endpoint": {"$regex": "^/api/simsports"}

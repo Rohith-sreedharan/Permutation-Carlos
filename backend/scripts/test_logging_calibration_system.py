@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def create_sample_event():
     """Create a sample event"""
     # Use timestamp to ensure unique event ID
-    event_id = f"nba_lakers_celtics_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}"
+    event_id = f"nba_lakers_celtics_{datetime.now(timezone.utc).strftime('%Y_%m_%d_%H%M%S')}"
     
     event = {
         "event_id": event_id,
@@ -211,7 +211,7 @@ def create_sample_graded_predictions(num_predictions=50):
     logger.info(f"Creating {num_predictions} Sample Graded Predictions")
     logger.info("="*60)
     
-    timestamp_suffix = datetime.now().strftime('%Y%m%d%H%M%S')
+    timestamp_suffix = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
     
     for i in range(num_predictions):
         # Create event with unique timestamp

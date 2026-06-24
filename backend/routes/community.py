@@ -117,7 +117,7 @@ async def create_channel(
     # Calculate expiration
     expires_at = None
     if request.ttl_hours and request.game_id:
-        expires_at = datetime.now() + timedelta(hours=request.ttl_hours)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=request.ttl_hours)
     
     channel = await community_manager.create_channel(
         channel_type=request.channel_type,

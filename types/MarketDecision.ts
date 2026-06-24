@@ -14,13 +14,15 @@ export type Classification =
   | 'EDGE'              // Official trade candidate
   | 'LEAN'              // Info-only / low confidence
   | 'MARKET_ALIGNED'    // No edge
-  | 'NO_ACTION';        // Blocked by risk/integrity
+  | 'NO_ACTION'         // Blocked by risk/integrity
+  | 'BLOCKED';          // Blocked classification
 
 export type ReleaseStatus = 
   | 'OFFICIAL'                // Eligible for release + telegram
   | 'INFO_ONLY'               // Visible but not a pick
   | 'BLOCKED_BY_RISK'         // Blocked by risk flags
-  | 'BLOCKED_BY_INTEGRITY';   // Blocked by integrity violations
+  | 'BLOCKED_BY_INTEGRITY'    // Blocked by integrity violations
+  | 'BLOCKED_MISSING_CONTEXT'; // Missing required context
 
 export interface MarketDecision {
   // Identity
@@ -28,7 +30,19 @@ export interface MarketDecision {
   game_id: string;             // Internal event ID
   odds_event_id: string;       // Provider event ID (prevents cross-game bleed)
   market_type: MarketType;
+  
+  // CANONICAL IDENTIFIERS (required for audit + display)
+  decision_id: string;         // UUID for this specific decision
   selection_id: string;        // Canonical selection ID
+  preferred_selection_id: string; // The bettable leg anchor
+  market_selections: Array<{   // Both sides of the market
+    selection_id: string;
+    team_id?: string;
+    team_name?: string;
+    side?: 'OVER' | 'UNDER' | 'HOME' | 'AWAY';
+    line?: number;
+    odds?: number;
+  }>;
   
   // Pick (what the model recommends)
   pick: {
@@ -54,6 +68,14 @@ export interface MarketDecision {
     win_prob?: number;         // Moneyline: win probability
   };
   
+  // Fair selection (fair line for preferred selection)
+  fair_selection: {
+    line?: number;             // Spread: fair line for preferred team
+    total?: number;            // Total: fair total for preferred side
+    team_id?: string;          // Team anchor for spread
+    side?: 'OVER' | 'UNDER';   // Side anchor for total
+  };
+  
   // Probabilities (bound to pick)
   probabilities: {
     model_prob: number;        // Model probability of cover/win/over
@@ -69,6 +91,11 @@ export interface MarketDecision {
   
   // Classification (backend-computed)
   classification: Classification;
+  market_type_display: string;     // Display-safe market type label (e.g., "Spread", "Moneyline", "Total")
+  selection_label: string | null;  // Canonical selection label for cards/detail
+  edge_points: number | null;      // Promoted edge points for API consumers
+  model_probability: number | null; // Promoted model probability for API consumers
+  market_implied_probability: number | null; // Promoted market implied probability for API consumers
   release_status: ReleaseStatus;
   
   // Reasons (pre-written by backend)
@@ -84,13 +111,13 @@ export interface MarketDecision {
   
   // Debug metadata
   debug: {
-    inputs_hash: string;       // Hash of odds snapshot + sim run + config
+    inputs_hash: string;       // Hash of odds snapshot + sim run + config (MUST match across all markets)
     odds_timestamp?: string;
     sim_run_id?: string;
+    trace_id: string;          // Trace ID for audit/debugging (MUST match across all markets)
     config_profile?: string;   // balanced/high-vol/high-confidence
-    decision_version?: number; // Monotonic version for freshness
-    computed_at?: string;      // ISO timestamp
-    trace_id?: string;         // For backend correlation
+    decision_version: number;  // Monotonic version (MUST be identical across all markets in same response)
+    computed_at: string;       // ISO timestamp (MUST match across all markets)
   };
   
   // Integrity violations (if blocked)

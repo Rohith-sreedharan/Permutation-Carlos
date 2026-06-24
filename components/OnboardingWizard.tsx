@@ -1,486 +1,390 @@
+/**
+ * Phase 5A — OnboardingWizard
+ * ============================
+ * Three locked screens. No more. No less. (Phase 5 directive §5A.1)
+ *
+ * Screen 1 — What BeatVegas Is
+ * Screen 2 — Classifications Explained (EDGE, LEAN, MARKET_ALIGNED, NO_ACTION, BLOCKED)
+ * Screen 3 — Credit System
+ *
+ * Rules:
+ *  - Agentic language throughout. Zero betting / wagering / sportsbook framing.
+ *  - No fabricated data shown (AC-5). Empty states only when no real data exists.
+ *  - onboarding_complete flag set ONLY after screen 3 is completed via API (AC-2).
+ *  - Responsive at 390px mobile viewport (§5A.7).
+ */
 import React, { useState } from 'react';
-import LoadingSpinner from './LoadingSpinner';
-
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
-
-interface OnboardingData {
-  bankroll: number;
-  unit_size: number;
-  unit_strategy: 'fixed' | 'percentage';
-  risk_profile: 'grinder' | 'gunslinger';
-  preferred_sports: string[];
-  preferred_markets: string[];
-}
+import { API_BASE_URL } from '../services/api';
 
 interface OnboardingWizardProps {
   onComplete: () => void;
-  onSkip: () => void;
 }
 
-const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete, onSkip }) => {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [loading, setLoading] = useState(false);
+const TOTAL_SCREENS = 3;
+
+// ── Tooltip helper ───────────────────────────────────────────────────────────
+const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span className="relative inline-block">
+      <span
+        onMouseEnter={() => setVisible(true)}
+        onMouseLeave={() => setVisible(false)}
+        onTouchStart={() => setVisible(v => !v)}
+        className="cursor-help border-b border-dashed border-gold/60"
+      >
+        {children}
+      </span>
+      {visible && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 text-xs text-white bg-charcoal border border-gold/30 rounded px-3 py-2 shadow-lg pointer-events-none">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+};
+
+// ── Screen 1: What BeatVegas Is ──────────────────────────────────────────────
+const Screen1: React.FC = () => (
+  <div className="space-y-6">
+    <div className="text-center">
+      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gold/10 border border-gold/30 mb-4">
+        <svg className="w-8 h-8 text-gold" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.8 1.8A2.25 2.25 0 0116.4 17.4H7.6a2.25 2.25 0 01-1.6-.663L4.2 15m15.6 0l-3.6-3.6" />
+        </svg>
+      </div>
+      <h2 className="text-2xl font-bold text-white mb-2">What is BeatVegas?</h2>
+      <p className="text-lightGold/70 text-sm">Agentic simulation intelligence platform</p>
+    </div>
+
+    <div className="space-y-4">
+      <div className="bg-navy/60 border border-gold/20 rounded-lg p-4">
+        <h3 className="text-gold font-semibold mb-2 flex items-center gap-2">
+          <span className="text-lg">&#9889;</span> Not a Sportsbook
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          BeatVegas does not place bets. No wagering. No gambling facilitation.
+          This is a <strong className="text-gold">simulation intelligence platform</strong> that
+          models probability distributions using autonomous agents.
+        </p>
+      </div>
+
+      <div className="bg-navy/60 border border-blue-500/20 rounded-lg p-4">
+        <h3 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+          <span className="text-lg">&#129302;</span> Autonomous Agents
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          Every decision record is produced by a named agent running deterministic simulations.
+          No human editorial. No guesswork. Institutional-grade analytics delivered autonomously.
+        </p>
+      </div>
+
+      <div className="bg-navy/60 border border-purple-500/20 rounded-lg p-4">
+        <h3 className="text-purple-400 font-semibold mb-2 flex items-center gap-2">
+          <span className="text-lg">&#128202;</span> Decision Intelligence
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          BeatVegas surfaces probability gaps between model outputs and market-implied probabilities.
+          The platform helps you understand where the simulation diverges from the market.
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+// ── Screen 2: Classifications Explained ──────────────────────────────────────
+const Screen2: React.FC = () => (
+  <div className="space-y-6">
+    <div className="text-center">
+      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 mb-4">
+        <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+      </div>
+      <h2 className="text-2xl font-bold text-white mb-2">Intelligence Classifications</h2>
+      <p className="text-lightGold/70 text-sm">Every decision record carries one of five classifications</p>
+    </div>
+
+    <div className="space-y-3">
+      <div className="bg-navy/60 border border-green-500/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-green-500/20 text-green-400 text-xs font-bold rounded border border-green-500/40 shrink-0">
+            EDGE
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              The simulation model assigns a probability that <em>exceeds</em> the market-implied
+              probability by a meaningful threshold. A divergence between the agent's assessment
+              and current market pricing.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              model_prob &minus; market_implied_prob exceeds threshold
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-navy/60 border border-yellow-500/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-bold rounded border border-yellow-500/40 shrink-0">
+            LEAN
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              A directional signal is present. The model diverges from the market,
+              but the gap is smaller than the EDGE threshold. Directional, not conclusive.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Smaller gap than EDGE — signal present, not at threshold strength
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-navy/60 border border-gray-500/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs font-bold rounded border border-gray-500/40 shrink-0 whitespace-nowrap">
+            MARKET_ALIGNED
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              The model agrees with the market's implied probability. No actionable signal.
+              The simulation output is consistent with current market pricing.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Model and market are aligned — no divergence detected
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-navy/60 border border-blue-400/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-blue-400/20 text-blue-300 text-xs font-bold rounded border border-blue-400/40 shrink-0 whitespace-nowrap">
+            NO_ACTION
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              No material gap detected. Market is efficiently priced for this event.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Divergence below minimum threshold — no signal produced
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-navy/60 border border-red-500/30 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 px-2 py-0.5 bg-red-500/20 text-red-400 text-xs font-bold rounded border border-red-500/40 shrink-0">
+            BLOCKED
+          </span>
+          <div>
+            <p className="text-white/90 text-sm leading-relaxed">
+              Analysis unavailable. Triggered by risk controls, integrity check failure, or missing context.
+            </p>
+            <p className="text-white/50 text-xs mt-1">
+              Agent halted — output suppressed by regulatory or integrity controls
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-charcoal/50 rounded p-3 border border-white/10">
+        <p className="text-white/50 text-xs text-center">
+          Classifications are produced exclusively by autonomous agents. No human editorial input.
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+// ── Screen 3: Credit System ──────────────────────────────────────────────────
+const Screen3: React.FC = () => (
+  <div className="space-y-6">
+    <div className="text-center">
+      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/30 mb-4">
+        <svg className="w-8 h-8 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <h2 className="text-2xl font-bold text-white mb-2">Intelligence Cycles</h2>
+      <p className="text-lightGold/70 text-sm">How the credit system works</p>
+    </div>
+
+    <div className="space-y-4">
+      <div className="bg-navy/60 border border-purple-500/20 rounded-lg p-4">
+        <h3 className="text-purple-400 font-semibold mb-2 flex items-center gap-2">
+          <span>&#128161;</span> Always Visible
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          Your Intelligence Cycle balance is displayed at all times in the sidebar and header.
+          You always know exactly how many cycles remain.
+        </p>
+      </div>
+
+      <div className="bg-navy/60 border border-gold/20 rounded-lg p-4">
+        <h3 className="text-gold font-semibold mb-2 flex items-center gap-2">
+          <span>&#10003;</span> Cost Confirmed Before Every Action
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          The cost of every credit-consuming action is shown before it executes.
+          You confirm before any cycles are deducted.{' '}
+          <strong className="text-gold">No silent deductions. Ever.</strong>
+        </p>
+      </div>
+
+      <div className="bg-navy/60 border border-red-500/20 rounded-lg p-4">
+        <h3 className="text-red-400 font-semibold mb-2 flex items-center gap-2">
+          <span>&#9888;&#65039;</span> Low-Balance Warning
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          A warning fires automatically when your balance approaches the minimum threshold.
+          No action executes if insufficient credits remain — you will see a clear message
+          and an upgrade path instead.
+        </p>
+      </div>
+
+      <div className="bg-gold/5 border border-gold/30 rounded-lg p-4">
+        <h3 className="text-gold font-semibold mb-2 flex items-center gap-2">
+          <span>&#128640;</span> Platform Access &mdash; $97/month
+        </h3>
+        <p className="text-white/80 text-sm leading-relaxed">
+          Platform access unlocks full Decision Engine capacity, Parlay Architect intelligence,
+          and priority simulation cycles. Upgrade prompt fires automatically at 80% usage.
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+// ── Main OnboardingWizard ────────────────────────────────────────────────────
+const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
+  const [currentScreen, setCurrentScreen] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<OnboardingData>({
-    bankroll: 1000,
-    unit_size: 50,
-    unit_strategy: 'fixed',
-    risk_profile: 'grinder',
-    preferred_sports: [],
-    preferred_markets: []
-  });
+  const isLastScreen = currentScreen === TOTAL_SCREENS;
 
-  const handleBankrollChange = (value: number) => {
-    setFormData(prev => ({ ...prev, bankroll: value }));
-    
-    // Auto-calculate conservative unit size (1% of bankroll)
-    if (formData.unit_strategy === 'percentage') {
-      setFormData(prev => ({ ...prev, unit_size: Math.round(value * 0.01) }));
+  const handleNext = () => {
+    if (currentScreen < TOTAL_SCREENS) {
+      setCurrentScreen(s => s + 1);
     }
   };
 
-  const handleUnitStrategyChange = (strategy: 'fixed' | 'percentage') => {
-    setFormData(prev => ({ 
-      ...prev, 
-      unit_strategy: strategy,
-      unit_size: strategy === 'percentage' ? Math.round(prev.bankroll * 0.01) : 50
-    }));
+  const handleBack = () => {
+    if (currentScreen > 1) {
+      setCurrentScreen(s => s - 1);
+    }
   };
 
-  const toggleSport = (sport: string) => {
-    setFormData(prev => ({
-      ...prev,
-      preferred_sports: prev.preferred_sports.includes(sport)
-        ? prev.preferred_sports.filter(s => s !== sport)
-        : [...prev.preferred_sports, sport]
-    }));
-  };
-
-  const toggleMarket = (market: string) => {
-    setFormData(prev => ({
-      ...prev,
-      preferred_markets: prev.preferred_markets.includes(market)
-        ? prev.preferred_markets.filter(m => m !== market)
-        : [...prev.preferred_markets, market]
-    }));
-  };
-
-  const handleSubmit = async () => {
-    setLoading(true);
+  const handleFinish = async () => {
+    setSubmitting(true);
     setError(null);
-
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
+      const res = await fetch(`${API_BASE_URL}/api/onboarding/complete`, {
         method: 'POST',
         headers: {
+          Authorization: token ? `Bearer ${token}` : '',
           'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
         },
-        body: JSON.stringify(formData)
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save profile');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).detail || 'Failed to complete onboarding');
       }
-
-      // Mark onboarding as complete
-      localStorage.setItem('onboarding_complete', 'true');
-      
-      // Trigger completion callback
       onComplete();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save profile. Please try again.');
-      setLoading(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+      setError(message);
+    } finally {
+      setSubmitting(false);
     }
   };
-
-  const nextStep = () => {
-    if (currentStep < 3) {
-      setCurrentStep(currentStep + 1);
-    } else {
-      handleSubmit();
-    }
-  };
-
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const canProceed = () => {
-    if (currentStep === 1) {
-      return formData.bankroll > 0 && formData.unit_size > 0;
-    }
-    if (currentStep === 2) {
-      return formData.risk_profile !== null;
-    }
-    if (currentStep === 3) {
-      return formData.preferred_sports.length > 0 && formData.preferred_markets.length > 0;
-    }
-    return true;
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-dark-navy flex items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-dark-navy flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-5xl font-black text-white font-teko mb-2">
-            STRATEGY WIZARD
-          </h1>
-          <p className="text-light-gray text-lg">
-            Let's personalize your AI betting experience
-          </p>
+    <div className="min-h-screen bg-linear-to-br from-darkNavy via-navy to-black flex items-center justify-center p-4">
+      <div className="w-full max-w-lg">
+        {/* Logo header */}
+        <div className="text-center mb-6">
+          <p className="text-white/40 text-xs uppercase tracking-widest font-teko">BEATVEGAS &mdash; SPORTS INTELLIGENCE</p>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-light-gray">Step {currentStep} of 3</span>
-            <span className="text-sm text-electric-blue">{Math.round((currentStep / 3) * 100)}% Complete</span>
-          </div>
-          <div className="h-2 bg-charcoal rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-linear-to-r from-electric-blue to-purple-600 transition-all duration-300"
-              style={{ width: `${(currentStep / 3) * 100}%` }}
-            />
-          </div>
+        {/* Step indicators */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          {Array.from({ length: TOTAL_SCREENS }, (_, i) => i + 1).map(step => (
+            <React.Fragment key={step}>
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border transition-all ${
+                  step < currentScreen
+                    ? 'bg-gold border-gold text-darkNavy'
+                    : step === currentScreen
+                    ? 'bg-gold/20 border-gold text-gold'
+                    : 'bg-navy/50 border-white/20 text-white/30'
+                }`}
+              >
+                {step < currentScreen ? '\u2713' : step}
+              </div>
+              {step < TOTAL_SCREENS && (
+                <div className={`h-px w-10 transition-all ${step < currentScreen ? 'bg-gold' : 'bg-white/20'}`} />
+              )}
+            </React.Fragment>
+          ))}
         </div>
 
-        {/* Step Content */}
-        <div className="bg-charcoal rounded-2xl p-8 border border-navy">
-          {/* Step 1: The Bankroll */}
-          {currentStep === 1 && (
-            <div className="space-y-6">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">💰</div>
-                <h2 className="text-3xl font-bold text-white font-teko mb-2">THE BANKROLL</h2>
-                <p className="text-light-gray">Set your starting capital and unit size</p>
-              </div>
+        {/* Card */}
+        <div className="bg-charcoal/80 backdrop-blur border border-white/10 rounded-xl p-6 shadow-2xl">
+          {currentScreen === 1 && <Screen1 />}
+          {currentScreen === 2 && <Screen2 />}
+          {currentScreen === 3 && <Screen3 />}
 
-              {/* Starting Bankroll */}
-              <div>
-                <label className="block text-white font-semibold mb-2">
-                  Starting Bankroll
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-light-gray text-xl">$</span>
-                  <input
-                    type="number"
-                    value={formData.bankroll}
-                    onChange={(e) => handleBankrollChange(parseInt(e.target.value) || 0)}
-                    className="w-full bg-dark-navy border border-navy rounded-lg px-4 py-3 pl-8 text-white text-xl focus:ring-2 focus:ring-electric-blue focus:outline-none"
-                    placeholder="1000"
-                  />
-                </div>
-                <p className="text-xs text-light-gray mt-1">
-                  💡 Only bet what you can afford to lose
-                </p>
-              </div>
-
-              {/* Unit Strategy */}
-              <div>
-                <label className="block text-white font-semibold mb-3">
-                  Unit Size Strategy
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => handleUnitStrategyChange('fixed')}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      formData.unit_strategy === 'fixed'
-                        ? 'border-electric-blue bg-electric-blue/10'
-                        : 'border-navy hover:border-light-gray'
-                    }`}
-                  >
-                    <div className="text-2xl mb-2">🎯</div>
-                    <div className="text-white font-semibold mb-1">Fixed</div>
-                    <div className="text-sm text-light-gray">Same bet every time</div>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleUnitStrategyChange('percentage')}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      formData.unit_strategy === 'percentage'
-                        ? 'border-electric-blue bg-electric-blue/10'
-                        : 'border-navy hover:border-light-gray'
-                    }`}
-                  >
-                    <div className="text-2xl mb-2">📊</div>
-                    <div className="text-white font-semibold mb-1">Percentage</div>
-                    <div className="text-sm text-light-gray">1% of bankroll</div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Unit Size */}
-              <div>
-                <label className="block text-white font-semibold mb-2">
-                  Typical Unit Size
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-light-gray text-xl">$</span>
-                  <input
-                    type="number"
-                    value={formData.unit_size}
-                    onChange={(e) => setFormData(prev => ({ ...prev, unit_size: parseInt(e.target.value) || 0 }))}
-                    disabled={formData.unit_strategy === 'percentage'}
-                    className={`w-full bg-dark-navy border border-navy rounded-lg px-4 py-3 pl-8 text-white text-xl focus:ring-2 focus:ring-electric-blue focus:outline-none ${
-                      formData.unit_strategy === 'percentage' ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                    placeholder="50"
-                  />
-                </div>
-                <p className="text-xs text-light-gray mt-1">
-                  {formData.unit_strategy === 'percentage' 
-                    ? `Auto-calculated: ${((formData.unit_size / formData.bankroll) * 100).toFixed(1)}% of bankroll`
-                    : `Recommended: $${Math.round(formData.bankroll * 0.01)} - $${Math.round(formData.bankroll * 0.05)}`
-                  }
-                </p>
-              </div>
-
-              {/* Risk Warning */}
-              <div className="bg-bold-red/10 border border-bold-red/30 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <span className="text-2xl">⚠️</span>
-                  <div>
-                    <div className="text-bold-red font-semibold mb-1">Responsible Gaming</div>
-                    <div className="text-sm text-light-gray">
-                      Never bet more than you can afford to lose. The AI can predict edges, but variance is real.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Risk Profile */}
-          {currentStep === 2 && (
-            <div className="space-y-6">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">🎲</div>
-                <h2 className="text-3xl font-bold text-white font-teko mb-2">THE RISK PROFILE</h2>
-                <p className="text-light-gray">Choose your betting personality</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Grinder */}
-                <button
-                  onClick={() => setFormData(prev => ({ ...prev, risk_profile: 'grinder' }))}
-                  className={`p-6 rounded-xl border-2 text-left transition-all ${
-                    formData.risk_profile === 'grinder'
-                      ? 'border-neon-green bg-neon-green/10'
-                      : 'border-navy hover:border-light-gray'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">📊</div>
-                  <h3 className="text-2xl font-bold text-white font-teko mb-2">GRINDER</h3>
-                  <p className="text-light-gray text-sm mb-4">
-                    Low risk, high win rate. Focus on consistent profits over flashy wins.
-                  </p>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-neon-green">✓</span>
-                      <span className="text-white">Low volatility picks</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-neon-green">✓</span>
-                      <span className="text-white">High confidence (75%+)</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-neon-green">✓</span>
-                      <span className="text-white">Steady bankroll growth</span>
-                    </div>
-                  </div>
-                  {formData.risk_profile === 'grinder' && (
-                    <div className="mt-4 text-neon-green font-semibold flex items-center space-x-2">
-                      <span>✓</span>
-                      <span>SELECTED</span>
-                    </div>
-                  )}
-                </button>
-
-                {/* Gunslinger */}
-                <button
-                  onClick={() => setFormData(prev => ({ ...prev, risk_profile: 'gunslinger' }))}
-                  className={`p-6 rounded-xl border-2 text-left transition-all ${
-                    formData.risk_profile === 'gunslinger'
-                      ? 'border-bold-red bg-bold-red/10'
-                      : 'border-navy hover:border-light-gray'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">🔥</div>
-                  <h3 className="text-2xl font-bold text-white font-teko mb-2">GUNSLINGER</h3>
-                  <p className="text-light-gray text-sm mb-4">
-                    High risk, high reward. Swing for the fences with volatile picks.
-                  </p>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-bold-red">✓</span>
-                      <span className="text-white">High volatility tolerance</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-bold-red">✓</span>
-                      <span className="text-white">High EV upside (10%+)</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-bold-red">✓</span>
-                      <span className="text-white">Big win potential</span>
-                    </div>
-                  </div>
-                  {formData.risk_profile === 'gunslinger' && (
-                    <div className="mt-4 text-bold-red font-semibold flex items-center space-x-2">
-                      <span>✓</span>
-                      <span>SELECTED</span>
-                    </div>
-                  )}
-                </button>
-              </div>
-
-              {/* Explanation */}
-              <div className="bg-navy/50 rounded-lg p-4">
-                <div className="text-sm text-light-gray">
-                  <strong className="text-white">What does this affect?</strong><br/>
-                  The AI's Risk Agent will filter picks based on your profile. Grinders see low-variance plays, Gunslingers see high-upside bets.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: The Focus */}
-          {currentStep === 3 && (
-            <div className="space-y-6">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">🎯</div>
-                <h2 className="text-3xl font-bold text-white font-teko mb-2">THE FOCUS</h2>
-                <p className="text-light-gray">Choose your favorite sports and markets</p>
-              </div>
-
-              {/* Preferred Sports */}
-              <div>
-                <label className="block text-white font-semibold mb-3">
-                  Favorite Sports
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  {['NBA', 'NFL', 'MLB', 'NHL', 'CFB', 'CBB'].map(sport => (
-                    <button
-                      key={sport}
-                      onClick={() => toggleSport(sport)}
-                      className={`py-3 px-4 rounded-lg border-2 font-semibold transition-all ${
-                        formData.preferred_sports.includes(sport)
-                          ? 'border-electric-blue bg-electric-blue/10 text-electric-blue'
-                          : 'border-navy text-light-gray hover:border-light-gray'
-                      }`}
-                    >
-                      {sport}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-light-gray mt-2">
-                  Select at least one sport
-                </p>
-              </div>
-
-              {/* Preferred Markets */}
-              <div>
-                <label className="block text-white font-semibold mb-3">
-                  Preferred Markets
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { key: 'spreads', label: 'Spreads', icon: '📊' },
-                    { key: 'totals', label: 'Totals (O/U)', icon: '⚡' },
-                    { key: 'moneyline', label: 'Moneyline', icon: '💰' },
-                    { key: 'player_props', label: 'Player Props', icon: '🏀' },
-                    { key: 'parlays', label: 'Parlays', icon: '🎯' },
-                    { key: 'live', label: 'Live Betting', icon: '🔴' }
-                  ].map(market => (
-                    <button
-                      key={market.key}
-                      onClick={() => toggleMarket(market.key)}
-                      className={`py-3 px-4 rounded-lg border-2 font-semibold transition-all text-left ${
-                        formData.preferred_markets.includes(market.key)
-                          ? 'border-purple-600 bg-purple-600/10 text-purple-400'
-                          : 'border-navy text-light-gray hover:border-light-gray'
-                      }`}
-                    >
-                      <span className="mr-2">{market.icon}</span>
-                      {market.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-light-gray mt-2">
-                  Select at least one market type
-                </p>
-              </div>
-
-              {/* Summary */}
-              <div className="bg-navy/50 rounded-lg p-4">
-                <div className="text-sm text-light-gray">
-                  <strong className="text-white">Personalized Dashboard Ready</strong><br/>
-                  The AI will prioritize {formData.preferred_sports.join(', ')} games with {formData.preferred_markets.join(', ')} opportunities that match your {formData.risk_profile} profile.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
           {error && (
-            <div className="mt-6 bg-bold-red/10 border border-bold-red rounded-lg p-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-bold-red text-xl">❌</span>
-                <span className="text-bold-red">{error}</span>
-              </div>
+            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">
+              {error}
             </div>
           )}
 
-          {/* Navigation Buttons */}
-          <div className="flex items-center justify-between mt-8 pt-6 border-t border-navy">
+          {/* Navigation row */}
+          <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/10">
             <button
-              onClick={prevStep}
-              disabled={currentStep === 1}
-              className={`px-6 py-3 rounded-lg font-semibold transition-all ${
-                currentStep === 1
-                  ? 'bg-charcoal text-light-gray cursor-not-allowed'
-                  : 'bg-navy text-white hover:bg-navy/80'
-              }`}
+              onClick={handleBack}
+              disabled={currentScreen === 1}
+              className="px-4 py-2 text-sm text-white/50 hover:text-white disabled:opacity-0 disabled:pointer-events-none transition-colors"
             >
-              ← Back
+              &larr; Back
             </button>
 
-            <button
-              onClick={nextStep}
-              disabled={!canProceed()}
-              className={`px-8 py-3 rounded-lg font-semibold transition-all ${
-                canProceed()
-                  ? 'bg-linear-to-r from-electric-blue to-purple-600 text-white hover:shadow-lg hover:shadow-electric-blue/50'
-                  : 'bg-charcoal text-light-gray cursor-not-allowed'
-              }`}
-            >
-              {currentStep === 3 ? '🚀 Launch Dashboard' : 'Next →'}
-            </button>
+            <span className="text-white/30 text-xs">
+              {currentScreen}&nbsp;/&nbsp;{TOTAL_SCREENS}
+            </span>
+
+            {isLastScreen ? (
+              <button
+                onClick={handleFinish}
+                disabled={submitting}
+                className="px-6 py-2 bg-linear-to-r from-gold to-lightGold text-darkNavy text-sm font-bold rounded hover:shadow-lg hover:shadow-gold/30 transition-all disabled:opacity-50"
+              >
+                {submitting ? 'Activating\u2026' : 'Activate Dashboard \u2192'}
+              </button>
+            ) : (
+              <button
+                onClick={handleNext}
+                className="px-6 py-2 bg-linear-to-r from-gold to-lightGold text-darkNavy text-sm font-bold rounded hover:shadow-lg hover:shadow-gold/30 transition-all"
+              >
+                Next &rarr;
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Skip Link */}
-        <div className="text-center mt-6">
-          <button
-            onClick={onSkip}
-            className="text-light-gray text-sm hover:text-white transition-colors"
-          >
-            Skip for now (not recommended)
-          </button>
-        </div>
+        {/* Regulatory footer */}
+        <p className="text-center text-white/20 text-xs mt-4">
+          BeatVegas is not a sportsbook. No bet placement. No wagering. Simulation intelligence only.
+        </p>
       </div>
     </div>
   );

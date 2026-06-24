@@ -14,6 +14,7 @@ import uuid
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 from db.mongo import db
+from services.observability_service import observability_service
 from db.schemas.logging_calibration_schemas import (
     Grading,
     BetStatus,
@@ -53,6 +54,11 @@ class GradingService:
         Returns:
             graded_id or None if cannot grade yet
         """
+        logger.warning(
+            "grading_service.grade_published_prediction is retired; unified_grading_service_v2 is the only grading writer"
+        )
+        return None
+
         # Check if already graded
         existing = self.grading_collection.find_one({"publish_id": publish_id})
         if existing and not force_regrade:
@@ -118,12 +124,34 @@ class GradingService:
             ticket_terms=published.get("ticket_terms", {})
         )
         
-        # Get closing line for CLV
-        close_snapshot = self._get_closing_line_snapshot(
-            event_id=published["event_id"],
-            market_key=prediction["market_key"],
-            selection=prediction["selection"]
-        )
+        # Get closing line for CLV (legacy-safe)
+        prediction_market_key = prediction.get("market_key")
+        if not prediction_market_key:
+            legacy_market_type = str(prediction.get("market_type", "")).upper()
+            if legacy_market_type == "SPREAD":
+                prediction_market_key = "SPREAD"
+            elif legacy_market_type == "TOTAL":
+                prediction_market_key = "TOTAL"
+            elif legacy_market_type == "MONEYLINE":
+                prediction_market_key = "MONEYLINE"
+
+        prediction_selection = prediction.get("selection")
+        if not prediction_selection:
+            sharp_side = str(prediction.get("sharp_side", "")).upper()
+            if "OVER" in sharp_side:
+                prediction_selection = "OVER"
+            elif "UNDER" in sharp_side:
+                prediction_selection = "UNDER"
+            else:
+                prediction_selection = "HOME"
+
+        close_snapshot = None
+        if prediction_market_key:
+            close_snapshot = self._get_closing_line_snapshot(
+                event_id=published["event_id"],
+                market_key=prediction_market_key,
+                selection=prediction_selection,
+            )
         
         clv = None
         close_snapshot_id = None
@@ -181,14 +209,105 @@ class GradingService:
         )
         
         # Insert or update
+        grading_doc = grading.model_dump()
+        grading_doc.setdefault("service_authority", "agent.grading.v1")
+
         if existing and force_regrade:
             self.grading_collection.update_one(
                 {"graded_id": existing["graded_id"]},
-                {"$set": grading.model_dump()}
+                {"$set": grading_doc}
             )
             graded_id = existing["graded_id"]
         else:
-            self.grading_collection.insert_one(grading.model_dump())
+            self.grading_collection.insert_one(grading_doc)
+
+        # Append-only observability records for settlement
+        trace_id = (
+            published.get("trace_id")
+            or prediction.get("trace_id")
+            or f"trace_grade_{publish_id}"
+        )
+        snapshot_hash = (
+            published.get("snapshot_hash")
+            or prediction.get("snapshot_hash")
+            or prediction.get("market_snapshot_id_used")
+            or published.get("locked_market_snapshot_id")
+        )
+        p_predicted = prediction.get("p_win") or prediction.get("p_cover") or prediction.get("p_over")
+        actual_outcome = None
+        if result_code == ResultCode.WIN:
+            actual_outcome = 1
+        elif result_code == ResultCode.LOSS:
+            actual_outcome = 0
+
+        ece_bucket_error = None
+        if p_predicted is not None and actual_outcome is not None:
+            ece_bucket_error = abs(float(p_predicted) - float(actual_outcome))
+
+        observability_service.log_settlement_metrics(
+            graded_id=graded_id,
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            result_code=result_code.value,
+            bet_status=BetStatus.SETTLED.value,
+            brier=brier,
+            logloss=logloss,
+            ece_bucket_error=ece_bucket_error,
+            clv=clv,
+            p_predicted=p_predicted,
+            actual_outcome=actual_outcome,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={"unit_return": unit_return, "cohort_tags": cohort_tags},
+        )
+
+        observability_service.log_truth_dataset_row(
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            feature_snapshot={
+                "market_key": prediction.get("market_key"),
+                "selection": prediction.get("selection"),
+                "ticket_terms": published.get("ticket_terms", {}),
+                "cohort_tags": cohort_tags,
+            },
+            label={
+                "result_code": result_code.value,
+                "actual_outcome": actual_outcome,
+                "unit_return": unit_return,
+            },
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+        )
+
+        observability_service.log_clv_capture(
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            entry_price=published.get("ticket_terms", {}).get("price"),
+            closing_price=close_snapshot.get("price_american") if close_snapshot else None,
+            clv=clv,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+        )
+
+        observability_service.log_prediction_lifecycle(
+            stage="SETTLED",
+            decision_id=prediction.get("decision_id"),
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={
+                "bet_status": BetStatus.SETTLED.value,
+                "result_code": result_code.value,
+            },
+        )
         
         clv_str = f"{clv:.2f}" if clv is not None else "0.00"
         brier_str = f"{brier:.4f}" if brier is not None else "0.0000"
@@ -210,6 +329,11 @@ class GradingService:
         Returns:
             {graded: X, voided: Y, pending: Z}
         """
+        logger.warning(
+            "grading_service.grade_all_pending is retired; unified_grading_service_v2 is the only grading writer"
+        )
+        return {"graded": 0, "voided": 0, "pending": 0, "retired": True}
+
         cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         
         # Get published predictions not yet graded
@@ -276,7 +400,47 @@ class GradingService:
             graded_at=datetime.now(timezone.utc)
         )
         
-        self.grading_collection.insert_one(grading.model_dump())
+        grading_doc = grading.model_dump()
+        grading_doc.setdefault("service_authority", "agent.grading.v1")
+        self.grading_collection.insert_one(grading_doc)
+
+        trace_id = published.get("trace_id") or prediction.get("trace_id") or f"trace_grade_{publish_id}"
+        snapshot_hash = (
+            published.get("snapshot_hash")
+            or prediction.get("snapshot_hash")
+            or prediction.get("market_snapshot_id_used")
+            or published.get("locked_market_snapshot_id")
+        )
+
+        observability_service.log_settlement_metrics(
+            graded_id=graded_id,
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            result_code=ResultCode.VOID.value,
+            bet_status=BetStatus.VOID.value,
+            brier=None,
+            logloss=None,
+            ece_bucket_error=None,
+            clv=0.0,
+            p_predicted=None,
+            actual_outcome=None,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={"void_reason": reason},
+        )
+
+        observability_service.log_prediction_lifecycle(
+            stage="VOIDED",
+            decision_id=prediction.get("decision_id"),
+            event_id=published["event_id"],
+            prediction_id=published["prediction_id"],
+            publish_id=publish_id,
+            graded_id=graded_id,
+            trace_id=trace_id,
+            snapshot_hash=snapshot_hash,
+            metadata={"void_reason": reason},
+        )
         
         logger.info(f"❌ Graded as VOID: {graded_id} ({reason})")
         
@@ -291,8 +455,36 @@ class GradingService:
         """
         Determine if prediction was WIN/LOSS/PUSH
         """
-        market_key = prediction["market_key"]
-        selection = prediction["selection"]
+        market_key = prediction.get("market_key")
+        if not market_key:
+            legacy_market_type = str(prediction.get("market_type", "")).upper()
+            if legacy_market_type == "SPREAD":
+                market_key = "SPREAD"
+            elif legacy_market_type == "TOTAL":
+                market_key = "TOTAL"
+            elif legacy_market_type == "MONEYLINE":
+                market_key = "MONEYLINE"
+            else:
+                market_key = "UNKNOWN"
+
+        selection = prediction.get("selection")
+        if not selection:
+            sharp_side = str(prediction.get("sharp_side", ""))
+            sharp_upper = sharp_side.upper()
+            if "OVER" in sharp_upper:
+                selection = "OVER"
+            elif "UNDER" in sharp_upper:
+                selection = "UNDER"
+            else:
+                home_team = str(prediction.get("home_team", "")).lower()
+                away_team = str(prediction.get("away_team", "")).lower()
+                sharp_lower = sharp_side.lower()
+                if home_team and home_team in sharp_lower:
+                    selection = "HOME"
+                elif away_team and away_team in sharp_lower:
+                    selection = "AWAY"
+                else:
+                    selection = "HOME"
         
         # Extract scores
         home_score = event_result.get("home_score")
@@ -305,17 +497,19 @@ class GradingService:
         
         # Get line from ticket terms
         line = ticket_terms.get("line", prediction.get("model_line"))
+        if line is None:
+            line = prediction.get("vegas_line_value")
         
         if line is None:
             logger.warning(f"No line available for {prediction['prediction_id']}")
             return None
         
         # Grade based on market type
-        if "SPREAD" in market_key:
+        if "SPREAD" in str(market_key).upper():
             return self._grade_spread(selection, line, margin)
-        elif "TOTAL" in market_key:
+        elif "TOTAL" in str(market_key).upper():
             return self._grade_total(selection, line, total_score)
-        elif "MONEYLINE" in market_key:
+        elif "MONEYLINE" in str(market_key).upper():
             return self._grade_moneyline(selection, margin)
         
         return None
@@ -431,13 +625,17 @@ class GradingService:
         event = db.events.find_one({"event_id": event_id})
         if not event:
             return None
+
+        start_time = event.get("start_time_utc") or event.get("commence_time")
+        if not start_time:
+            return None
         
         snapshot = self.odds_snapshots_collection.find_one(
             {
                 "event_id": event_id,
                 "market_key": market_key,
                 "selection": selection,
-                "timestamp_utc": {"$lte": event["start_time_utc"]}
+                "timestamp_utc": {"$lte": start_time}
             },
             sort=[("timestamp_utc", -1)]
         )
@@ -484,7 +682,12 @@ class GradingService:
             return None
         
         # Get predicted probability
-        p_win = prediction.get("p_win") or prediction.get("p_cover") or prediction.get("p_over")
+        p_win = (
+            prediction.get("p_win")
+            or prediction.get("p_cover")
+            or prediction.get("p_over")
+            or prediction.get("predicted_win_probability")
+        )
         
         if p_win is None:
             return None
@@ -510,7 +713,12 @@ class GradingService:
         if result_code == ResultCode.VOID or result_code == ResultCode.PUSH:
             return None
         
-        p_win = prediction.get("p_win") or prediction.get("p_cover") or prediction.get("p_over")
+        p_win = (
+            prediction.get("p_win")
+            or prediction.get("p_cover")
+            or prediction.get("p_over")
+            or prediction.get("predicted_win_probability")
+        )
         
         if p_win is None:
             return None

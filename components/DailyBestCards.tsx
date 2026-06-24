@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface DailyCard {
   event_id?: string;
@@ -170,10 +170,13 @@ const DailyBestCards: React.FC = () => {
           <div className="mt-3 text-center">
             <div className="text-xs text-light-gray mb-1">Model Projection</div>
             <div className="text-lg font-bold text-white">{card.recommended_bet}</div>
-            {card.odds && card.odds !== 0 && (
+            {card.odds && card.odds !== 0 && Math.abs(card.odds) !== 999900 && (
               <div className="text-sm text-gold">
                 {card.odds > 0 ? '+' : ''}{card.odds}
               </div>
+            )}
+            {card.odds && Math.abs(card.odds) === 999900 && (
+              <div className="text-sm text-light-gray/50">Line pending</div>
             )}
           </div>
         )}
@@ -285,7 +288,9 @@ const DailyBestCards: React.FC = () => {
               <div className="bg-navy/50 rounded-lg p-3 border border-gold/20 text-center">
                 <div className="text-[10px] text-light-gray uppercase mb-1">Odds</div>
                 <div className="text-xl font-bold text-gold">
-                  {card.parlay_odds && card.parlay_odds > 0 ? '+' : ''}{card.parlay_odds}
+                  {card.parlay_odds && Math.abs(card.parlay_odds) !== 999900
+                    ? `${card.parlay_odds > 0 ? '+' : ''}${card.parlay_odds}`
+                    : 'Line pending'}
                 </div>
               </div>
               <div className="bg-navy/50 rounded-lg p-3 border border-gold/20 text-center">
@@ -372,13 +377,13 @@ const DailyBestCards: React.FC = () => {
             <div className="text-6xl mb-4">📭</div>
             <div className="text-2xl text-gold mb-4">No Cards Available</div>
             <div className="text-light-gray mb-6">
-              {(cards as any)?.message || 'No games or simulations available for today\'s slate.'}
+              {(cards as any)?.message || 'No games or decision outputs available for today\'s slate.'}
             </div>
             <div className="text-sm text-light-gray/60">
               This happens when:
               <ul className="mt-2 space-y-1">
                 <li>• No upcoming games in the next 24 hours</li>
-                <li>• Simulations are still processing (check back in 5-10 minutes)</li>
+                <li>• Decision cycles are still processing (check back in 5-10 minutes)</li>
                 <li>• Database was recently cleared</li>
               </ul>
             </div>
@@ -403,7 +408,7 @@ const DailyBestCards: React.FC = () => {
             TODAY'S BEST CARDS
           </h1>
           <p className="text-lightGold text-lg mb-2">
-            6 Flagship Posts • Curated by Monte Carlo Simulation
+            6 Flagship Posts • Curated by BeatVegas Decision Engine
           </p>
           <div className="text-sm text-light-gray">
             Generated at {cards?.generated_at ? new Date(cards.generated_at).toLocaleTimeString() : 'N/A'}

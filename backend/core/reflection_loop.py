@@ -89,31 +89,46 @@ class ReflectionLoop:
     
     def compute_pick_performance(self, days: int = 7) -> Dict[str, Any]:
         """
-        Analyze pick performance over last N days
-        Returns ROI, CLV, and win rate metrics
+        RETIRED: Independent recomputation from ai_picks was a non-canonical trust path.
+        Delegates to canonical trust_metrics.system_performance cache.
         """
+        import logging
+        import asyncio
+        logging.getLogger(__name__).warning(
+            "reflection_loop.compute_pick_performance is retired; "
+            "reading from canonical trust_metrics.system_performance cache"
+        )
+        try:
+            from services.trust_metrics import trust_metrics_service
+            import asyncio, concurrent.futures
+            def _fetch():
+                return asyncio.run(trust_metrics_service.get_cached_metrics())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                metrics = pool.submit(_fetch).result(timeout=10)
+            overall = metrics.get("overall", {})
+            return {
+                "total_picks": overall.get("total_predictions", 0),
+                "roi": overall.get("30day_roi", 0.0),
+                "avg_clv": 0.0,
+                "win_rate": overall.get("7day_accuracy", 0.0),
+                "source": "system_performance.metrics",
+            }
+        except Exception as exc:
+            logging.getLogger(__name__).error("canonical metrics fallback failed: %s", exc)
+            return {"total_picks": 0, "roi": 0.0, "avg_clv": 0.0, "win_rate": 0.0}
+
+    def _compute_pick_performance_RETIRED(self, days: int = 7) -> Dict[str, Any]:
+        # RETIRED: do not call; kept for reference only
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        
-        # Get all settled picks from the period
         picks = list(db["ai_picks"].find({
             "created_at": {"$gte": cutoff_date},
-            "outcome": {"$in": ["win", "loss"]}  # Exclude push/void
+            "outcome": {"$in": ["win", "loss"]}
         }))
-        
         if not picks:
-            return {
-                "total_picks": 0,
-                "roi": 0.0,
-                "avg_clv": 0.0,
-                "win_rate": 0.0
-            }
-        
-        # Calculate metrics
+            return {"total_picks": 0, "roi": 0.0, "avg_clv": 0.0, "win_rate": 0.0}
         total_picks = len(picks)
         wins = sum(1 for p in picks if p["outcome"] == "win")
         win_rate = wins / total_picks
-        
-        # ROI calculation (assumes 1 unit stakes)
         total_profit = sum(
             (p.get("market_decimal", 2.0) - 1.0) if p["outcome"] == "win" else -1.0
             for p in picks

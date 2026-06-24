@@ -17,7 +17,7 @@ CRITICAL FLAGS:
 
 import logging
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pymongo.database import Database
 
 
@@ -100,7 +100,7 @@ class FeatureFlagService:
         
         # Update cache
         self._cache[flag_name] = enabled
-        self._cache_timestamp = datetime.utcnow()
+        self._cache_timestamp = datetime.now(timezone.utc)
         
         return enabled
     
@@ -133,7 +133,7 @@ class FeatureFlagService:
                 "$set": {
                     "enabled": enabled,
                     "changed_by": changed_by,
-                    "changed_at": datetime.utcnow(),
+                    "changed_at": datetime.now(timezone.utc),
                     "reason": reason,
                 },
                 "$setOnInsert": {
@@ -200,7 +200,7 @@ class FeatureFlagService:
                     "enabled": flag_data["enabled"],
                     "description": flag_data["description"],
                     "changed_by": "system_init",
-                    "changed_at": datetime.utcnow(),
+                    "changed_at": datetime.now(timezone.utc),
                     "reason": "Initial setup",
                 })
                 logger.info(f"Initialized flag {flag_name} = {flag_data['enabled']}")
@@ -210,7 +210,7 @@ class FeatureFlagService:
         if self._cache_timestamp is None:
             return False
         
-        age_seconds = (datetime.utcnow() - self._cache_timestamp).total_seconds()
+        age_seconds = (datetime.now(timezone.utc) - self._cache_timestamp).total_seconds()
         return age_seconds < self._cache_ttl_seconds
     
     def _invalidate_cache(self):

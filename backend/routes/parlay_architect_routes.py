@@ -20,6 +20,7 @@ from core.parlay_architect import (
 )
 from core.parlay_logging import persist_parlay_attempt, get_parlay_stats
 from db.mongo import db  # MongoDB connection
+from services.canonical_parlay_service import canonical_parlay_service
 
 
 router = APIRouter(prefix="/api/parlay-architect", tags=["parlay-architect"])
@@ -42,6 +43,9 @@ class GenerateParlayRequest(BaseModel):
 
 class ParlayLegResponse(BaseModel):
     """Single leg in parlay response"""
+    decision_id: str
+    snapshot_hash: str
+    canonical_state: str
     event_id: str
     sport: str
     league: str
@@ -80,41 +84,28 @@ async def get_candidate_legs(
     sports: Optional[List[str]] = None,
 ) -> List[Leg]:
     """
-    Fetch candidate legs from signals collection.
-    
-    Maps signal documents to Leg objects for parlay generation.
-    Filters by DI/MV pass flags and eligible states.
+    Fetch candidate legs from decision_records only.
+
+    Required filters:
+    - release_status = OFFICIAL
+    - classification IN (EDGE, LEAN)
+    - di_pass = TRUE
+    - mv_pass = TRUE
+    - snapshot_hash present
     """
-    from db.mongo import db
-    
-    # Build query
-    query = {
-        # Must pass data integrity and market validity gates
-        "gates.di_pass": True,
-        "gates.mv_pass": True,
-        # Only include EDGE and LEAN canonical states
-        "intent": {"$in": ["EDGE", "LEAN"]},
-        # Active signals only
-        "status": {"$in": ["ACTIVE", "VALIDATED", "LOCKED"]},
-    }
-    
-    if sports:
-        query["sport"] = {"$in": sports}
-    
-    # Fetch signals
-    signals = list(db.signals.find(query).sort("created_at", -1).limit(200))
-    
+    candidates = canonical_parlay_service.get_candidate_legs(sports=sports, limit=200)
+
     legs = []
-    for sig in signals:
-        # Derive tier from signal intent and confidence
+    for cand in candidates:
+        # Derive tier from canonical state and canonical probability.
         tier = derive_tier(
-            canonical_state=sig.get("intent", "LEAN"),
-            confidence=sig.get("confidence_band", {}).get("score", 50.0) or sig.get("win_prob", 50.0),
-            ev=sig.get("ev", 0.0)
+            canonical_state=cand.get("canonical_state", "LEAN"),
+            confidence=float(cand.get("true_probability", 0.5)) * 100.0,
+            ev=0.0,
+            sport=cand.get("sport"),
         )
-        
-        # Map market type
-        market_key = sig.get("market_key", "spread")
+
+        market_key = cand.get("pick_type", "spread")
         market_type_map = {
             "spread": MarketType.SPREAD,
             "total": MarketType.TOTAL,
@@ -122,40 +113,34 @@ async def get_candidate_legs(
             "prop": MarketType.PROP,
         }
         market_type = market_type_map.get(market_key.lower(), MarketType.SPREAD)
-        
-        # Extract team key for correlation blocking
-        # Use game_id + team/side for correlation detection
-        game_id = sig.get("game_id", sig.get("event_id", "unknown"))
-        selection = sig.get("selection", "")
-        team_key = None
-        
-        # Extract team from selection if possible
-        # Examples: "Bulls +10.5", "Lakers ML", "Under 228.5"
-        if selection:
-            parts = selection.split()
-            if len(parts) > 0 and parts[0] not in ["Over", "Under"]:
-                team_key = f"{game_id}_{parts[0]}"  # e.g., "game123_Bulls"
-        
-        # Build Leg object
+
+        event_id = cand.get("event_id", "unknown")
+        selection = cand.get("selection", "")
+        team_key = f"{event_id}_{selection.split()[0]}" if selection else None
+
         legs.append(Leg(
-            event_id=game_id,
-            sport=sig.get("sport", "NBA"),
-            league=sig.get("sport", "NBA"),  # or league field if available
-            start_time_utc=sig.get("created_at", datetime.now(timezone.utc)),
+            event_id=event_id,
+            sport=cand.get("sport", "UNKNOWN"),
+            league=cand.get("league", cand.get("sport", "UNKNOWN")),
+            start_time_utc=datetime.now(timezone.utc),
             market_type=market_type,
             selection=selection,
             tier=tier,
-            confidence=sig.get("confidence_band", {}).get("score", 50.0) or sig.get("win_prob", 50.0),
-            clv=sig.get("clv", 0.0),
-            total_deviation=abs(sig.get("edge_points", 0.0)),
-            volatility=sig.get("volatility_bucket", "MEDIUM").upper(),
-            ev=sig.get("ev", 0.0),
-            di_pass=sig.get("gates", {}).get("di_pass", True),
-            mv_pass=sig.get("gates", {}).get("mv_pass", True),
-            is_locked=sig.get("status") == "LOCKED",
-            injury_stable=sig.get("gates", {}).get("injury_stable", True),
+            confidence=float(cand.get("true_probability", 0.5)) * 100.0,
+            clv=0.0,
+            total_deviation=0.0,
+            volatility="MEDIUM",
+            ev=0.0,
+            di_pass=True,
+            mv_pass=True,
+            is_locked=False,
+            injury_stable=True,
             team_key=team_key,
-            canonical_state=sig.get("intent", "LEAN"),
+            canonical_state=cand.get("canonical_state", "LEAN"),
+            decision_id=cand.get("decision_id"),
+            snapshot_hash=cand.get("snapshot_hash"),
+            true_probability=float(cand.get("true_probability", 0.5)),
+            american_odds=int(cand.get("american_odds", -110)),
         ))
     
     return legs
@@ -220,6 +205,9 @@ async def generate_parlay(
             parlay_weight=result.parlay_weight,
             legs_selected=[
                 ParlayLegResponse(
+                    decision_id=str(leg.decision_id),
+                    snapshot_hash=str(leg.snapshot_hash),
+                    canonical_state=str(leg.canonical_state or ""),
                     event_id=leg.event_id,
                     sport=leg.sport,
                     league=leg.league,

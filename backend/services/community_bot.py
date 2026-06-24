@@ -222,7 +222,7 @@ class CommunityBot:
         content += f"**{game}**\n\n"
         content += f"{insight}\n\n"
         content += f"Confidence: **{confidence:.1f}%**\n"
-        content += f"_Powered by Monte Carlo simulation (10K+ iterations)_"
+        content += f"_Powered by Intelligence Cycles (10K+ iterations)_"
         
         return self._create_message(
             channel="general",

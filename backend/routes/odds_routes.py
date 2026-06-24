@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import sys
@@ -11,6 +11,39 @@ from integrations.odds_api import fetch_sports, fetch_odds, normalize_event, Odd
 from db.mongo import upsert_events, find_events
 
 router = APIRouter(prefix="/api/odds", tags=["odds"])
+
+
+# Canonical teaser payload allowlist.
+# IMPORTANT: serializer is a strict projection only (no remapping/transforms).
+TEASER_EVENT_ALLOWLIST = {
+    "id",
+    "event_id",
+    "sport_key",
+    "commence_time",
+    "local_date_est",
+    "local_datetime_est",
+    "local_date_utc",
+    "local_datetime_utc",
+    "home_team",
+    "away_team",
+    "status",
+    "completed",
+    "home_score",
+    "away_score",
+    "classification",
+    "edge_classification",
+    "pick_state",
+    "release_status",
+    "confidence_tier",
+}
+
+
+def _serialize_teaser_event(event_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a strict allowlist projection for teaser cards.
+
+    Zero-transform contract: values are copied only if the source field exists.
+    """
+    return {k: event_doc[k] for k in TEASER_EVENT_ALLOWLIST if k in event_doc}
 
 
 @router.post("/refresh")
@@ -87,7 +120,12 @@ def list_events(
     upcoming_only: bool = Query(True),
     limit: int = Query(1000)  # Increased default limit
 ):
-    """List events from database filtered by EST date."""
+    """List events from database filtered by EST date.
+    
+    CRITICAL FIX: Enriches each event with canonical classification from decision_records.payload.
+    This ensures all visible classifications come from the single source of truth.
+    Fails closed to BLOCKED if decision_records entry is missing.
+    """
     # Default date to today's EST if not provided
     if not date:
         date = get_est_date_today()
@@ -126,7 +164,32 @@ def list_events(
             except Exception:
                 continue
         
-        out.append(ev)
+        # CRITICAL FIX: Enrich with canonical classification from decision_records
+        event_id = ev.get("id") or ev.get("event_id")
+        if event_id:
+            decision_record = db["decision_records"].find_one(
+                {"$or": [{"event_id": event_id}, {"game_id": event_id}]},
+                sort=[("created_at", -1)]
+            )
+            if decision_record and "payload" in decision_record:
+                # Extract canonical spread classification (preferred) or total classification
+                payload = decision_record["payload"]
+                spread = payload.get("spread", {})
+                total = payload.get("total", {})
+                canonical_classification = spread.get("classification") or total.get("classification")
+                if canonical_classification:
+                    ev["classification"] = canonical_classification
+                else:
+                    # Fail closed: set to BLOCKED if no classification found
+                    ev["classification"] = "BLOCKED"
+            else:
+                # Fail closed: set to BLOCKED if no decision record found
+                ev["classification"] = "BLOCKED"
+        else:
+            # Fail closed: set to BLOCKED if no event_id found
+            ev["classification"] = "BLOCKED"
+        
+        out.append(_serialize_teaser_event(ev))
     
     return {"date": date, "sport": sport, "count": len(out), "events": out}
 

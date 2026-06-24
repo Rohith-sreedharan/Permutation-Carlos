@@ -43,7 +43,7 @@ class SlackNotifier:
                 "text": message,
                 "fields": [],
                 "footer": "BeatVegas Monitoring",
-                "ts": int(datetime.now().timestamp())
+                "ts": int(datetime.now(timezone.utc).timestamp())
             }]
         }
         

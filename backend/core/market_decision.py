@@ -18,25 +18,28 @@ from enum import Enum
 
 class MarketType(str, Enum):
     """Market types - league-agnostic"""
-    SPREAD = "spread"
-    MONEYLINE = "moneyline"
-    TOTAL = "total"
+    SPREAD = "SPREAD"
+    TOTAL = "TOTAL"
+    MONEYLINE_2WAY = "MONEYLINE_2WAY"
+    MONEYLINE_3WAY = "MONEYLINE_3WAY"
 
 
 class Classification(str, Enum):
     """Edge classification per market"""
-    EDGE = "EDGE"  # Official trade candidate
-    LEAN = "LEAN"  # Info-only / low confidence
-    MARKET_ALIGNED = "MARKET_ALIGNED"  # No edge detected
-    NO_ACTION = "NO_ACTION"  # Blocked by risk/integrity or insufficient signal
+    NO_ACTION = "NO_ACTION"
+    LEAN = "LEAN"
+    EDGE = "EDGE"
+    MARKET_ALIGNED = "MARKET_ALIGNED"
+    BLOCKED = "BLOCKED"
 
 
 class ReleaseStatus(str, Enum):
-    """Release eligibility per market"""
-    OFFICIAL = "OFFICIAL"  # Eligible for release + telegram
-    INFO_ONLY = "INFO_ONLY"  # Visible but not a pick
-    BLOCKED_BY_RISK = "BLOCKED_BY_RISK"  # Risk threshold exceeded
-    BLOCKED_BY_INTEGRITY = "BLOCKED_BY_INTEGRITY"  # Data integrity violation
+    """Phase 1 release status enum (closed)."""
+    OFFICIAL = "OFFICIAL"
+    INFO_ONLY = "INFO_ONLY"
+    BLOCKED_BY_RISK = "BLOCKED_BY_RISK"
+    BLOCKED_BY_INTEGRITY = "BLOCKED_BY_INTEGRITY"
+    BLOCKED_MISSING_CONTEXT = "BLOCKED_MISSING_CONTEXT"
 
 
 class PickSpread(BaseModel):
@@ -109,8 +112,11 @@ class Debug(BaseModel):
     inputs_hash: str = Field(..., description="Hash of odds snapshot + sim run + config")
     odds_timestamp: str = Field(..., description="ISO timestamp of odds snapshot")
     sim_run_id: str = Field(..., description="Simulation run identifier")
+    trace_id: str = Field(..., description="Trace ID for audit/debugging (UUID)")
     config_profile: Optional[str] = Field(None, description="Config used (balanced/high-vol/etc)")
-    decision_version: int = Field(..., description="Monotonic version for freshness checking")
+    decision_version: str = Field(..., description="SEMVER version (MAJOR.MINOR.PATCH) for decision schema/logic (ATOMIC across all markets)")
+    computed_at: str = Field(..., description="ISO timestamp when decision was computed")
+    git_commit_sha: Optional[str] = Field(None, description="Git commit SHA for version traceability (Section 15)")
 
 
 class MarketDecision(BaseModel):
@@ -132,6 +138,11 @@ class MarketDecision(BaseModel):
     - Classification coherence: MARKET_ALIGNED cannot claim misprice in reasons
     - Selection binding: selection_id maps to same team/side across entire payload
     - Competitor integrity: pick.team_id must be in game competitors
+    
+    ATOMIC CONSISTENCY:
+    - decision_version MUST be identical across all markets in same response
+    - trace_id MUST be identical across all markets in same response
+    - inputs_hash MUST be identical across all markets in same response
     """
     
     # Identifiers
@@ -139,26 +150,41 @@ class MarketDecision(BaseModel):
     game_id: str = Field(..., description="Internal game identifier")
     odds_event_id: str = Field(..., description="Provider event ID (prevents cross-game bleed)")
     market_type: MarketType = Field(..., description="Market type")
-    selection_id: str = Field(..., description="Canonical selection identifier")
     
-    # Pick (team or side)
-    pick: Union[PickSpread, PickTotal] = Field(..., description="Pick team or side")
+    # CANONICAL FIELDS (required for audit + display)
+    decision_id: str = Field(..., description="Unique UUID for this specific decision")
+    selection_id: str = Field(..., description="Canonical selection identifier")
+    preferred_selection_id: str = Field(..., description="The bettable leg anchor (selection_id for preferred side)")
+    market_selections: list[dict] = Field(..., description="All available selections (both sides of market)")
+    
+    # Pick (team or side) - null if BLOCKED
+    pick: Optional[Union[PickSpread, PickTotal]] = Field(None, description="Pick team or side")
     
     # Market data
     market: Union[MarketSpread, MarketMoneyline, MarketTotal] = Field(..., description="Market line/odds")
     
-    # Model data
-    model: Union[ModelSpread, ModelMoneyline, ModelTotal] = Field(..., description="Model fair value")
+    # Model data - null if BLOCKED
+    model: Optional[Union[ModelSpread, ModelMoneyline, ModelTotal]] = Field(None, description="Model fair value")
     
-    # Probabilities
-    probabilities: Probabilities = Field(..., description="Model vs market probabilities")
+    # Fair selection (fair line for preferred selection) - null if BLOCKED
+    fair_selection: Optional[dict] = Field(None, description="Fair line/total expressed for preferred selection")
     
-    # Edge assessment
-    edge: Edge = Field(..., description="Edge quantification")
+    # Probabilities - null if BLOCKED
+    probabilities: Optional[Probabilities] = Field(None, description="Model vs market probabilities")
+    
+    # Edge assessment - null if BLOCKED
+    edge: Optional[Edge] = Field(None, description="Edge quantification")
     
     # Classification & status
-    classification: Classification = Field(..., description="Edge classification")
+    classification: Optional[Classification] = Field(None, description="Normalized classification for UI/API")
+    market_type_display: str = Field(..., description="Display-safe market type label")
+    selection_label: Optional[str] = Field(None, description="Canonical selection label for cards/detail")
+    edge_points: Optional[float] = Field(None, description="Promoted edge points for API consumers")
+    model_probability: Optional[float] = Field(None, description="Promoted model probability for API consumers")
+    market_implied_probability: Optional[float] = Field(None, description="Promoted market implied probability for API consumers")
     release_status: ReleaseStatus = Field(..., description="Release eligibility")
+    di_pass: bool = Field(..., description="Data integrity gate pass flag")
+    mv_pass: bool = Field(..., description="Market validity gate pass flag")
     
     # Pre-computed UI text
     reasons: list[str] = Field(default_factory=list, description="Pre-written bullets for 'Why This Edge Exists'")
@@ -183,7 +209,12 @@ class GameDecisions(BaseModel):
     moneyline: Optional[MarketDecision] = None
     total: Optional[MarketDecision] = None
     
+    # Game context
+    home_team_name: str = Field(..., description="Home team display name")
+    away_team_name: str = Field(..., description="Away team display name")
+    
     # Meta
+    decision_record_id: Optional[str] = Field(None, description="Persisted decision record identity")
     inputs_hash: str = Field(..., description="Global inputs hash for this snapshot")
-    decision_version: int = Field(..., description="Monotonic version number")
+    decision_version: str = Field(..., description="SEMVER version (MAJOR.MINOR.PATCH)")
     computed_at: str = Field(..., description="ISO timestamp of computation")

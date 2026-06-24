@@ -1,5 +1,6 @@
 import React from 'react';
 import { getTierConfig, getNextTier, MAX_SIMS } from '../utils/simulationTiers';
+import { COPY } from '../utils/uiCopy';
 
 interface SimulationPowerBadgeProps {
   userTier: string;
@@ -24,16 +25,16 @@ const SimulationPowerBadge: React.FC<SimulationPowerBadgeProps> = ({
         <div className="flex items-center justify-between mb-2">
           <div>
             <h4 className="text-sm font-bold text-lightGold mb-1">
-              Monte Carlo Simulation ({tierConfig.sims.toLocaleString()} iterations – {tierConfig.label} {isMaxTier ? 'max' : 'cap'})
+              {COPY.decisionEngine} ({tierConfig.sims.toLocaleString()} Intelligence Cycles - {tierConfig.label} {isMaxTier ? 'max' : 'cap'})
             </h4>
             {!isMaxTier && (
               <div className="text-xs text-lightGold/70">
-                {nextTier ? `${nextTier.label} & Elite tiers` : 'Elite tier'} run this game at {nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()}\u2013{MAX_SIMS.toLocaleString()} sims for tighter edges.
+                {nextTier ? `${nextTier.label} & Elite tiers` : 'Elite tier'} run this game at {nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()}\u2013{MAX_SIMS.toLocaleString()} Intelligence Cycles for tighter edges.
               </div>
             )}
             {isMaxTier && (
               <div className="text-xs text-gold/80">
-                Running at full BeatVegas simulation depth.
+                Running at full Decision Depth.
               </div>
             )}
           </div>
@@ -48,7 +49,7 @@ const SimulationPowerBadge: React.FC<SimulationPowerBadgeProps> = ({
         </div>
         {!isMaxTier && (
           <div className="text-[10px] text-lightGold/50 mt-2">
-            Upgrade to {nextTier?.label || 'Elite'} for {nextTier ? (nextTier.sims / 1000).toFixed(0) : '100'}K sims/game
+            Upgrade to {nextTier?.label || 'Elite'} for {nextTier ? (nextTier.sims / 1000).toFixed(0) : '100'}K Intelligence Cycles/game
           </div>
         )}
       </div>
@@ -59,11 +60,11 @@ const SimulationPowerBadge: React.FC<SimulationPowerBadgeProps> = ({
     return (
       <div className="mt-2">
         <div className="text-xs text-lightGold/70">
-          {tierConfig.sims.toLocaleString()} sims active{!isMaxTier && ` · ${tierConfig.label} Tier`}
+          {tierConfig.sims.toLocaleString()} Intelligence Cycles active{!isMaxTier && ` · ${tierConfig.label} Tier`}
         </div>
         {!isMaxTier && (
           <div className="text-xs text-lightGold/60 mt-1">
-            {nextTier?.label || 'Elite'} tier{nextTier ? 's' : ''} use {nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()}\u2013{MAX_SIMS.toLocaleString()} sims on this matchup.
+            {nextTier?.label || 'Elite'} tier{nextTier ? 's' : ''} use {nextTier ? nextTier.sims.toLocaleString() : MAX_SIMS.toLocaleString()}\u2013{MAX_SIMS.toLocaleString()} Intelligence Cycles on this matchup.
           </div>
         )}
         {volatility === 'HIGH' && !isMaxTier && (
@@ -71,10 +72,10 @@ const SimulationPowerBadge: React.FC<SimulationPowerBadgeProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <div className="text-xs font-semibold text-orange-400 mb-1">
-                  ⚠️ High-variance matchup detected
+                  ⚠️ High outcome variance detected
                 </div>
                 <div className="text-xs text-lightGold/70">
-                  More simulation power can reduce noise in spots like this.
+                  More Decision Depth can reduce noise in spots like this.
                 </div>
               </div>
               {onUpgradeClick && (

@@ -9,6 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from services.calibration_service import calibration_service
 from services.grading_service import grading_service
+from services.decision_publisher import promote_pending_to_official
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,12 +72,12 @@ class CalibrationScheduler:
             )
             
             if calibration_version:
-                logger.info(f"✅ Calibration job completed: {calibration_version}")
+                    logger.info(f"✅ Calibration job completed: {calibration_version}")
             else:
                 logger.warning("⚠️ Calibration job did not create a new version")
         
         except Exception as e:
-            logger.error(f"❌ Error in weekly calibration job: {e}", exc_info=True)
+                logger.error(f"❌ Error in weekly calibration job: {e}", exc_info=True)
     
     def run_daily_grading(self):
         """
@@ -87,6 +88,13 @@ class CalibrationScheduler:
         logger.info("=" * 60)
         
         try:
+            # Promote eligible pending decisions to OFFICIAL before grading
+            try:
+                promoted = promote_pending_to_official(lookback_hours=48)
+                logger.info(f"Promoted {promoted} decisions to OFFICIAL")
+            except Exception as e:
+                logger.error(f"Error promoting decisions to OFFICIAL: {e}", exc_info=True)
+
             stats = grading_service.grade_all_pending(lookback_hours=48)
             
             logger.info(
@@ -97,7 +105,7 @@ class CalibrationScheduler:
             )
         
         except Exception as e:
-            logger.error(f"❌ Error in daily grading job: {e}", exc_info=True)
+                logger.error(f"❌ Error in daily grading job: {e}", exc_info=True)
     
     def run_now(self, job_id: str):
         """

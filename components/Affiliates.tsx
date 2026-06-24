@@ -1,8 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { getAffiliateStats, getRecentReferrals, getUserProfile } from '../services/api';
+import {
+  getAffiliateStats,
+  getRecentReferrals,
+  getUserProfile,
+  getMyAffiliateDashboard,
+  updateMyNotificationPreference,
+  updateMyLeaderboardPreferences,
+} from '../services/api';
 import type { AffiliateStat, Referral } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
+import AffiliateDisclosure from './AffiliateDisclosure';
 
 const StatCard: React.FC<{ stat: AffiliateStat }> = ({ stat }) => {
     const changeColor = stat.changeType === 'increase' ? 'text-neon-green' : 'text-bold-red';
@@ -21,6 +29,10 @@ const Affiliates: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [notificationPreference, setNotificationPreference] = useState<'email_only' | 'platform_only' | 'both'>('both');
+  const [displayName, setDisplayName] = useState('');
+  const [leaderboardOptOut, setLeaderboardOptOut] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<any>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -31,9 +43,16 @@ const Affiliates: React.FC = () => {
           getRecentReferrals(),
           getUserProfile().catch(() => null)
         ]);
+        const dashboardData = await getMyAffiliateDashboard().catch(() => null);
         setStats(statsData);
         setReferrals(referralsData);
         setProfile(profileData);
+        if (dashboardData) {
+          setNotificationPreference(dashboardData.notification_preference || 'both');
+          setDisplayName(dashboardData.display_name || 'Affiliate');
+          setLeaderboardOptOut(Boolean(dashboardData.leaderboard_opt_out));
+          setLeaderboard(dashboardData.leaderboard || null);
+        }
         setError(null);
       } catch (err) {
         setError('Failed to fetch affiliate data.');
@@ -49,6 +68,13 @@ const Affiliates: React.FC = () => {
     ? `https://beatvegas.ai/ref/${profile.username}` 
     : 'https://beatvegas.ai/ref/yourUsername';
 
+  const savePreferences = async () => {
+    await updateMyNotificationPreference(notificationPreference);
+    await updateMyLeaderboardPreferences(displayName, leaderboardOptOut);
+    const dashboardData = await getMyAffiliateDashboard();
+    setLeaderboard(dashboardData.leaderboard || null);
+  };
+
   if (error) {
     return <div className="text-center text-bold-red">{error}</div>;
   }
@@ -56,6 +82,7 @@ const Affiliates: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader title="Affiliate Dashboard" />
+      <AffiliateDisclosure />
       {loading ? <LoadingSpinner /> : (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -119,6 +146,62 @@ const Affiliates: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="bg-charcoal rounded-lg p-6 space-y-4">
+            <h3 className="font-bold text-white">Affiliate Leaderboard & Notification Preferences</h3>
+            <p className="text-sm text-light-gray">Relative conversion ranking only. No dollar amounts.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-light-gray mb-2">Notification Preference</label>
+                <select
+                  value={notificationPreference}
+                  onChange={(e) => setNotificationPreference(e.target.value as 'email_only' | 'platform_only' | 'both')}
+                  className="w-full bg-navy border border-border-gray rounded-lg px-4 py-2 text-white"
+                >
+                  <option value="both">Both</option>
+                  <option value="email_only">Email only</option>
+                  <option value="platform_only">Platform only</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-light-gray mb-2">Display Name</label>
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full bg-navy border border-border-gray rounded-lg px-4 py-2 text-white"
+                />
+              </div>
+            </div>
+
+            <label className="inline-flex items-center gap-2 text-sm text-light-gray">
+              <input
+                type="checkbox"
+                checked={leaderboardOptOut}
+                onChange={(e) => setLeaderboardOptOut(e.target.checked)}
+              />
+              Opt out from leaderboard listing
+            </label>
+
+            <button onClick={savePreferences} className="bg-gold text-dark-navy font-semibold px-5 py-2 rounded-lg">
+              Save Preferences
+            </button>
+
+            {leaderboard && (
+              <div className="bg-navy/40 rounded-lg p-4">
+                <p className="text-white font-semibold">My Rank: {leaderboard.my_rank ? `#${leaderboard.my_rank}` : 'Unranked'}</p>
+                <p className="text-light-gray text-sm mb-3">Top {leaderboard.my_percentile || 0}% this month</p>
+                <ul className="space-y-1">
+                  {(leaderboard.monthly_leaders || []).map((row: any, idx: number) => (
+                    <li key={`${row.affiliate_id}-${idx}`} className="text-sm text-white flex justify-between">
+                      <span>{idx + 1}. {row.display_name}</span>
+                      <span>{row.conversions} conversions</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}

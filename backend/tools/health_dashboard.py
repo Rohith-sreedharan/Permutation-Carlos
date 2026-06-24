@@ -35,12 +35,12 @@ class HealthDashboard:
             Dashboard data with health scores and metrics
         """
         print("\n📊 SYSTEM HEALTH DASHBOARD")
-        print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
         print("="*80)
         
         # Collect metrics
         dashboard_data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "sports": {},
             "overall_health": 0,
             "status": "UNKNOWN"
@@ -105,7 +105,7 @@ class HealthDashboard:
         """
         try:
             # Last 7 days
-            end_date = datetime.now()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=7)
             
             # Collect data

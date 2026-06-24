@@ -97,7 +97,7 @@ async def create_game_room(request: CreateGameRoomRequest, current_user=Depends(
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin only")
     
-    room_id = f"{request.sport}_{request.game_id}_{datetime.now().strftime('%Y%m%d')}"
+    room_id = f"{request.sport}_{request.game_id}_{datetime.now(timezone.utc).strftime('%Y%m%d')}"
     
     game_room = {
         "room_id": room_id,

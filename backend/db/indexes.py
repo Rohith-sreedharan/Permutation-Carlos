@@ -196,6 +196,50 @@ def get_simulations_indexes() -> List[IndexModel]:
     ]
 
 
+def get_billing_ledger_indexes() -> List[IndexModel]:
+    """Append-only billing ledger indexes."""
+    return [
+        IndexModel(
+            [("id", ASCENDING)],
+            unique=True,
+            name="billing_ledger_id_unique",
+        ),
+        IndexModel(
+            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            name="billing_ledger_user_created",
+        ),
+        IndexModel(
+            [("reference_id", ASCENDING)],
+            name="billing_ledger_reference_id",
+        ),
+        IndexModel(
+            [("event_type", ASCENDING), ("created_at", DESCENDING)],
+            name="billing_ledger_event_type_created",
+        ),
+    ]
+
+
+def get_decision_records_indexes() -> List[IndexModel]:
+    """Decision record indexes enforcing canonical duplicate prevention."""
+    return [
+        IndexModel(
+            [("record_id", ASCENDING)],
+            unique=True,
+            name="decision_records_record_id_unique",
+        ),
+        IndexModel(
+            [("identity_key", ASCENDING)],
+            unique=True,
+            name="decision_records_identity_key_unique",
+        ),
+        IndexModel(
+            [("event_id", ASCENDING), ("inputs_hash", ASCENDING), ("decision_version", ASCENDING)],
+            unique=True,
+            name="decision_records_event_inputs_version_unique",
+        ),
+    ]
+
+
 # ============================================================================
 # INDEX APPLICATION
 # ============================================================================
@@ -205,7 +249,9 @@ INDEX_DEFINITIONS = {
     "ai_picks": get_ai_picks_indexes(),
     "grading": get_grading_indexes(),
     "users": get_users_indexes(),
-    "monte_carlo_simulations": get_simulations_indexes()
+    "monte_carlo_simulations": get_simulations_indexes(),
+    "billing_ledger": get_billing_ledger_indexes(),
+    "decision_records": get_decision_records_indexes(),
 }
 
 

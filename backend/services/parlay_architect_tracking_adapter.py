@@ -259,7 +259,7 @@ class ParlayArchitectAdapter:
             event_id=leg_data["event_id"],
             sport=leg_data.get("sport", "unknown"),
             league=leg_data.get("league", "unknown"),
-            start_time_utc=leg_data.get("start_time_utc", datetime.now()),
+            start_time_utc=leg_data.get("start_time_utc", datetime.now(timezone.utc)),
             market_type=MarketType(leg_data.get("market_type", "SPREAD")),
             selection=leg_data.get("selection", "HOME"),
             tier=tier,
@@ -273,7 +273,11 @@ class ParlayArchitectAdapter:
             is_locked=leg_data.get("is_locked", False),
             injury_stable=leg_data.get("injury_stable", True),
             team_key=leg_data.get("team_key"),
-            canonical_state=leg_data.get("canonical_state")
+            canonical_state=leg_data.get("canonical_state"),
+            decision_id=leg_data.get("decision_id"),
+            snapshot_hash=leg_data.get("snapshot_hash"),
+            true_probability=leg_data.get("true_probability"),
+            american_odds=leg_data.get("american_odds"),
         )
     
     def _market_type_to_key(self, market_type: str) -> str:

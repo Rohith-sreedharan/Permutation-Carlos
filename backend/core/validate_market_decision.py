@@ -23,7 +23,7 @@ def validate_market_decision(
     violations = []
     
     # 1. Competitor integrity
-    if decision.market_type.value in ["spread", "moneyline"]:
+    if decision.market_type.value in ["SPREAD", "MONEYLINE_2WAY", "MONEYLINE_3WAY"]:
         pick_team_id = getattr(decision.pick, 'team_id', None)
         if pick_team_id and pick_team_id not in game_competitors:
             violations.append(f"Pick team_id '{pick_team_id}' not in game competitors {list(game_competitors.keys())}")
@@ -35,16 +35,24 @@ def validate_market_decision(
         violations.append("Missing debug.inputs_hash")
     
     # 3. Classification coherence
-    if decision.classification == Classification.MARKET_ALIGNED:
-        # MARKET_ALIGNED cannot claim misprice
-        misprice_keywords = ['misprice', 'edge', 'value', 'inefficiency']
+    if decision.classification == Classification.NO_ACTION:
+        # NO_ACTION cannot claim misprice/edge semantics.
+        misprice_keywords = ['misprice', 'inefficiency', 'value bet', 'mispriced']
+        # Phrases that indicate HAVING edge (not allowed for NO_ACTION)
+        edge_claim_patterns = ['point edge', 'edge detected', 'detected edge', 'edge of', 'found edge']
         for reason in decision.reasons:
-            if any(kw in reason.lower() for kw in misprice_keywords):
-                violations.append(f"MARKET_ALIGNED cannot claim misprice in reasons: '{reason}'")
+            reason_lower = reason.lower()
+            # Check for misprice keywords
+            if any(kw in reason_lower for kw in misprice_keywords):
+                violations.append(f"NO_ACTION cannot claim misprice in reasons: '{reason}'")
+            # Check for edge claims (but NOT "no edge" type phrases)
+            if any(p in reason_lower for p in edge_claim_patterns):
+                if 'no ' not in reason_lower and 'not ' not in reason_lower:
+                    violations.append(f"NO_ACTION cannot claim edge in reasons: '{reason}'")
     
     if decision.classification in [Classification.EDGE, Classification.LEAN]:
         # Must have meaningful edge_points or edge_ev
-        if decision.market_type.value == "moneyline":
+        if decision.market_type.value in ["MONEYLINE_2WAY", "MONEYLINE_3WAY"]:
             if not decision.edge.edge_ev or decision.edge.edge_ev == 0:
                 violations.append(f"{decision.classification} must have non-zero edge_ev for moneyline")
         else:
@@ -52,15 +60,16 @@ def validate_market_decision(
                 violations.append(f"{decision.classification} must have non-zero edge_points")
     
     # 4. Spread sign sanity (critical: prevents "both teams +6.5" bug)
-    if decision.market_type.value == "spread":
-        # Cannot validate opponent here without full odds snapshot
-        # But we can check that line is non-zero
+    if decision.market_type.value == "SPREAD":
+        # Pick'em markets (line = 0) are VALID
+        # Only check spread sign consistency for non-pick'em markets
         market_line = getattr(decision.market, 'line', None)
-        if market_line == 0:
-            violations.append("Spread market line cannot be 0")
+        if market_line is None:
+            violations.append("Spread market must have a line value")
+        # Note: market_line = 0 is valid for pick'em markets
     
     # 5. Total side logic
-    if decision.market_type.value == "total":
+    if decision.market_type.value == "TOTAL":
         pick_side = getattr(decision.pick, 'side', None)
         if pick_side not in ['OVER', 'UNDER']:
             violations.append(f"Total pick.side must be OVER or UNDER, got '{pick_side}'")

@@ -14,6 +14,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from db.mongo import db
 from db.schemas.logging_calibration_schemas import SimRun, SimRunInput
+from services.observability_service import observability_service
 import logging
 import subprocess
 
@@ -136,7 +137,10 @@ class SimRunTracker:
         recommendation_state: str,
         tier: Optional[str],
         confidence_index: Optional[float],
-        variance_bucket: Optional[str]
+        variance_bucket: Optional[str],
+        decision_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        snapshot_hash: Optional[str] = None,
     ) -> str:
         """
         Create a prediction record linked to a sim run
@@ -146,6 +150,9 @@ class SimRunTracker:
         """
         prediction_id = str(uuid.uuid4())
         
+        normalized_trace_id = trace_id or f"trace_sim_{sim_run_id}"
+        normalized_snapshot_hash = snapshot_hash or market_snapshot_id_used
+
         prediction = {
             "prediction_id": prediction_id,
             "sim_run_id": sim_run_id,
@@ -165,10 +172,29 @@ class SimRunTracker:
             "recommendation_state": recommendation_state,
             "tier": tier,
             "confidence_index": confidence_index,
-            "variance_bucket": variance_bucket
+            "variance_bucket": variance_bucket,
+            # Canonical lineage fields for downstream continuity.
+            "decision_id": decision_id,
+            "trace_id": normalized_trace_id,
+            "snapshot_hash": normalized_snapshot_hash,
         }
         
         self.predictions_collection.insert_one(prediction)
+
+        observability_service.log_prediction_lifecycle(
+            stage="PREDICTION_CREATED",
+            decision_id=decision_id,
+            event_id=event_id,
+            prediction_id=prediction_id,
+            trace_id=normalized_trace_id,
+            snapshot_hash=normalized_snapshot_hash,
+            metadata={
+                "sim_run_id": sim_run_id,
+                "market_key": market_key,
+                "selection": selection,
+                "recommendation_state": recommendation_state,
+            },
+        )
         
         logger.info(
             f"🎯 Created prediction: {prediction_id} for {event_id} "

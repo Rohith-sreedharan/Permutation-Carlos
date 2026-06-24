@@ -1,0 +1,99 @@
+{
+  "captured_at_utc": "2026-05-27T02:09:31.285371+00:00",
+  "backend_live": {
+    "openapi_status": 200
+  },
+  "agents": {
+    "agent.sentinel.v1": {
+      "collection": "sentinel_event_log",
+      "field": "agent_id",
+      "total_docs": 357,
+      "matching_docs": 4,
+      "latest_matching_doc": {
+        "event_id": "f5e78342-9d3c-47c4-843a-3d651313bc8b",
+        "event_type": "SAMPLE_GATE_SUPPRESSION",
+        "severity": "INFO",
+        "agent_id": "agent.sentinel.v1",
+        "subject": "ac2-test-segment-6698a6a1-8029-4abe-8091-c90b5ce80065",
+        "detail": {
+          "segment_key": "ac2-test-segment-6698a6a1-8029-4abe-8091-c90b5ce80065",
+          "n_actual": 3,
+          "n_required": 50,
+          "suppression_copy": "Track record building \u2014 check back soon."
+        },
+        "trace_id": "b75ea366-c4ea-42bf-b88f-95310540f8f3",
+        "timestamp": "2026-05-26T12:52:42.910452+00:00"
+      },
+      "status": "PASS"
+    },
+    "agent.response.v1": {
+      "collection": "response_action_log",
+      "field": "agent_id",
+      "total_docs": 4,
+      "matching_docs": 0,
+      "latest_matching_doc": null,
+      "status": "NO_MATCH"
+    },
+    "agent.grading.v1": {
+      "collection": "decision_settlement_metrics",
+      "field": "graded_by",
+      "total_docs": 1,
+      "matching_docs": 1,
+      "latest_matching_doc": {
+        "settlement_id": "5f58f480-8c6a-4b9e-ac98-e929a8de25a5",
+        "decision_id": "ev_edge_fddeb0d6",
+        "event_id": "ev_34b8819c",
+        "league": "NBA",
+        "phase4_decision_class": "EDGE",
+        "result_code": "WIN",
+        "unit_return": 1.0,
+        "clv": 0.039999999999999925,
+        "brier_score": 0.17640000000000003,
+        "model_probability": 0.58,
+        "market_implied_probability": 0.52,
+        "graded_by": "agent.grading.v1",
+        "graded_at": "2026-05-24T10:19:55.732635+00:00",
+        "home_score": 108,
+        "away_score": 104,
+        "_inserted_at": "2026-05-24T10:19:55.732635+00:00"
+      },
+      "status": "PASS"
+    },
+    "agent.calibration.v1": {
+      "collection": "calibration_records",
+      "field": "agent_id",
+      "total_docs": 0,
+      "matching_docs": 0,
+      "latest_matching_doc": null,
+      "status": "NO_MATCH"
+    },
+    "agent.distribution.v1": {
+      "collection": "telegram_distribution_log",
+      "field": "agent_id",
+      "total_docs": 0,
+      "matching_docs": 0,
+      "latest_matching_doc": null,
+      "status": "NO_MATCH"
+    },
+    "agent.growth.v1": {
+      "collection": "outbound_communication_log",
+      "field": "agent_id",
+      "total_docs": 4,
+      "matching_docs": 4,
+      "latest_matching_doc": {
+        "message_id": "7fcdf508-fab2-4f9c-8b84-876727e696b5",
+        "user_id": "6a147d1dee7e0266628ee6b7",
+        "campaign_id": "onboarding_v1",
+        "template_id": "onboarding_step_1",
+        "channel": "platform",
+        "sent_at_utc": "2026-05-25T16:47:25.052997+00:00",
+        "delivered": true,
+        "opened": false,
+        "converted": false,
+        "agent_id": "agent.growth.v1",
+        "trace_id": "c1114e2c-7005-4765-b222-e7a4ea05be20"
+      },
+      "status": "PASS"
+    }
+  }
+}

@@ -242,7 +242,7 @@ class DailyMonitor:
         """Generate complete daily report"""
         return {
             "date": date.isoformat(),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": self.metrics,
             "alerts": self.alerts,
             "summary": {

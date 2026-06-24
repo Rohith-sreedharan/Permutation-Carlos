@@ -24,7 +24,7 @@ ROLLBACK TRIGGERS:
 
 import logging
 from typing import Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pymongo.database import Database
 
 
@@ -86,7 +86,7 @@ class RollbackController:
             "lkg_frontend_build": lkg_frontend_build,
             "lkg_classifier_commit": lkg_classifier_commit,
             "lkg_model_version": lkg_model_version,
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
             "updated_by": updated_by,
             "reason": reason,
             "previous_lkg": current_lkg if current_lkg else None,
@@ -107,7 +107,7 @@ class RollbackController:
         # Log to rollback history
         self.db.lkg_history.insert_one({
             **new_lkg,
-            "history_id": f"lkg_hist_{datetime.utcnow().timestamp()}",
+            "history_id": f"lkg_hist_{datetime.now(timezone.utc).timestamp()}",
         })
         
         return True
@@ -138,10 +138,10 @@ class RollbackController:
         logger.critical(f"ROLLBACK INITIATED by {triggered_by}: {reason}")
         
         status = {
-            "rollback_id": f"rb_{datetime.utcnow().timestamp()}",
+            "rollback_id": f"rb_{datetime.now(timezone.utc).timestamp()}",
             "triggered_by": triggered_by,
             "reason": reason,
-            "started_at": datetime.utcnow().isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "dry_run": dry_run,
             "steps_completed": [],
             "steps_failed": [],
@@ -196,7 +196,7 @@ class RollbackController:
             status["steps_failed"].append(f"ALERT_FAILED: {e}")
         
         # Finalize status
-        status["completed_at"] = datetime.utcnow().isoformat()
+        status["completed_at"] = datetime.now(timezone.utc).isoformat()
         status["success"] = len(status["steps_failed"]) == 0
         
         # Log rollback
@@ -268,7 +268,7 @@ class RollbackController:
         Returns:
             Number of items purged
         """
-        broken_window_start = datetime.utcnow() - timedelta(minutes=30)
+        broken_window_start = datetime.now(timezone.utc) - timedelta(minutes=30)
         
         # Delete queue items from broken window
         result = self.db.telegram_queue.delete_many({
@@ -285,7 +285,7 @@ class RollbackController:
         Send rollback alert to ops team.
         """
         alert = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "severity": "CRITICAL",
             "message": f"ROLLBACK EXECUTED by {triggered_by}: {reason}",
             "lkg_config": {
@@ -339,7 +339,7 @@ class RollbackController:
             "candidate_frontend": frontend_build,
             "candidate_classifier": classifier_commit,
             "candidate_model": model_version,
-            "validation_started_at": datetime.utcnow().isoformat(),
+            "validation_started_at": datetime.now(timezone.utc).isoformat(),
             "validation_window_minutes": validation_window_minutes,
             "checks_passed": [],
             "checks_failed": [],
@@ -376,7 +376,7 @@ class RollbackController:
         
         # Overall validation
         status["validation_passed"] = len(status["checks_failed"]) == 0
-        status["validation_completed_at"] = datetime.utcnow().isoformat()
+        status["validation_completed_at"] = datetime.now(timezone.utc).isoformat()
         
         # Log validation result
         self.db.deployment_validation_log.insert_one(status)

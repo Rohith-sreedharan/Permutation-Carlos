@@ -173,80 +173,67 @@ class PredictionLogger:
         days: int = 30
     ) -> Dict[str, Any]:
         """
-        Calculate user's prediction performance
+        RETIRED: Independent recomputation from prediction_logs was a non-canonical trust path.
+        Returns canonical trust metrics from system_performance cache.
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
-        # Get settled predictions
-        predictions = list(self.collection.find({
-            "user_id": user_id,
-            "settled": True,
-            "settled_at": {"$gte": cutoff_date}
-        }))
-        
-        if not predictions:
+        logger.warning(
+            "behavioral_feedback.get_user_performance is retired; "
+            "reading from canonical trust_metrics.system_performance cache"
+        )
+        try:
+            import asyncio, concurrent.futures
+            from services.trust_metrics import trust_metrics_service
+            def _fetch():
+                return asyncio.run(trust_metrics_service.get_cached_metrics())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                metrics = pool.submit(_fetch).result(timeout=10)
+            overall = metrics.get("overall", {})
             return {
-                "total_predictions": 0,
-                "avg_brier_score": None,
+                "total_predictions": overall.get("total_predictions", 0),
+                "win_rate": overall.get("7day_accuracy", 0.0) / 100,
+                "avg_brier_score": overall.get("brier_score"),
                 "avg_log_loss": None,
-                "win_rate": None
+                "days": days,
+                "source": "system_performance.metrics",
             }
-        
-        total = len(predictions)
-        wins = sum(1 for p in predictions if p["actual_result"] == 1)
-        
-        brier_scores = [p["brier_score"] for p in predictions if p["brier_score"] is not None]
-        log_losses = [p["log_loss"] for p in predictions if p["log_loss"] is not None]
-        
-        return {
-            "total_predictions": total,
-            "wins": wins,
-            "losses": total - wins,
-            "win_rate": round(wins / total, 3) if total > 0 else 0,
-            "avg_brier_score": round(sum(brier_scores) / len(brier_scores), 4) if brier_scores else None,
-            "avg_log_loss": round(sum(log_losses) / len(log_losses), 4) if log_losses else None,
-            "days": days
-        }
-        
+        except Exception as exc:
+            logger.error("canonical metrics fallback failed: %s", exc)
+            return {"total_predictions": 0, "win_rate": None, "avg_brier_score": None, "avg_log_loss": None}
+
     def get_model_performance(
         self,
         days: int = 30
     ) -> Dict[str, Any]:
         """
-        Calculate overall model performance across all users
+        RETIRED: Independent recomputation from prediction_logs was a non-canonical trust path.
+        Returns canonical trust metrics from system_performance cache.
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
-        predictions = list(self.collection.find({
-            "settled": True,
-            "settled_at": {"$gte": cutoff_date}
-        }))
-        
-        if not predictions:
+        logger.warning(
+            "behavioral_feedback.get_model_performance is retired; "
+            "reading from canonical trust_metrics.system_performance cache"
+        )
+        try:
+            import asyncio, concurrent.futures
+            from services.trust_metrics import trust_metrics_service
+            def _fetch2():
+                return asyncio.run(trust_metrics_service.get_cached_metrics())
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                metrics = pool.submit(_fetch2).result(timeout=10)
+            overall = metrics.get("overall", {})
             return {
-                "total_predictions": 0,
-                "avg_brier_score": None,
+                "total_predictions": overall.get("total_predictions", 0),
+                "model_accuracy": overall.get("7day_accuracy", 0.0) / 100,
+                "avg_brier_score": overall.get("brier_score"),
                 "avg_log_loss": None,
-                "model_accuracy": None
+                "avg_error_delta": None,
+                "days": days,
+                "target_brier": 0.20,
+                "target_log_loss": 0.60,
+                "source": "system_performance.metrics",
             }
-        
-        total = len(predictions)
-        correct = sum(1 for p in predictions if p["actual_result"] == 1 and p["predicted_prob"] > 0.5)
-        
-        brier_scores = [p["brier_score"] for p in predictions if p["brier_score"] is not None]
-        log_losses = [p["log_loss"] for p in predictions if p["log_loss"] is not None]
-        error_deltas = [p["error_delta"] for p in predictions if p["error_delta"] is not None]
-        
-        return {
-            "total_predictions": total,
-            "avg_brier_score": round(sum(brier_scores) / len(brier_scores), 4) if brier_scores else None,
-            "avg_log_loss": round(sum(log_losses) / len(log_losses), 4) if log_losses else None,
-            "model_accuracy": round(correct / total, 3) if total > 0 else None,
-            "avg_error_delta": round(sum(error_deltas) / len(error_deltas), 4) if error_deltas else None,
-            "days": days,
-            "target_brier": 0.20,
-            "target_log_loss": 0.60
-        }
+        except Exception as exc:
+            logger.error("canonical metrics fallback failed: %s", exc)
+            return {"total_predictions": 0, "model_accuracy": None, "avg_brier_score": None, "avg_log_loss": None}
         
     def get_unsettled_predictions(
         self,

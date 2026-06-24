@@ -3,10 +3,10 @@ import { AlertCircle, Lock, Zap, TrendingUp, Users, Eye, MessageCircle, Clock, A
 import PageHeader from './PageHeader';
 import LoadingSpinner from './LoadingSpinner';
 import { swalSuccess, swalError } from '../utils/swal';
-import { verifyToken, fetchEventsFromDB } from '../services/api';
+import { verifyToken, fetchEventsFromDB , API_BASE_URL } from '../services/api';
 import type { Event } from '../types';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 // ============================================================================
 // TYPES
@@ -169,7 +169,7 @@ const WarRoom: React.FC = () => {
   const loadUserTier = async () => {
     try {
       const user = await verifyToken();
-      setUserTier(user?.tier || 'free');
+      setUserTier(user?.platform_access ? 'platform' : user?.telegram_access ? 'telegram' : 'free');
     } catch (err) {
       console.error('Failed to load user tier:', err);
       setUserTier('free');
@@ -863,7 +863,7 @@ const ModelContextPanel: React.FC<ModelContextPanelProps> = ({ game, marketType,
       {/* Meta */}
       <div className="text-xs text-light-gray">
         <p>Signal ID: {mockContext.signal_id}</p>
-        <p>{mockContext.simulation_iterations.toLocaleString()} simulations</p>
+        <p>{mockContext.simulation_iterations.toLocaleString()} Intelligence Cycles</p>
       </div>
     </div>
   );

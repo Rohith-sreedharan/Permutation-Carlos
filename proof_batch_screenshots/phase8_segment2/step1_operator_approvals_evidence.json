@@ -1,0 +1,75 @@
+{
+  "captured_at_utc": "2026-05-27T04:22:13.384813+00:00",
+  "operator_jwt_secret_present": true,
+  "operator_team_ids_env_present": true,
+  "issue_token_response": {
+    "claims": {
+      "operator_id": "op_001",
+      "role": "operator",
+      "exp": 1779859333
+    },
+    "token_present": true
+  },
+  "approve_response": {
+    "event_id": "192219b6-aa25-44e4-b5ca-94157f2fba9b",
+    "event_type": "APPROVAL_DECIDED",
+    "approval_id": "b228bcbe-8543-4f6a-b013-aae684794393",
+    "queue_type": "calibration_promotion",
+    "requested_by_agent": "agent.calibration.v1",
+    "decision": "approved",
+    "operator_id": "op_001",
+    "trace_id": "phase8-step1-approve-trace",
+    "payload": {
+      "note": "approved in segment2 test"
+    },
+    "logged_at_utc": "2026-05-27T04:22:13.548813+00:00"
+  },
+  "reject_response": {
+    "event_id": "1e0d5858-184a-435f-afdc-12168d948802",
+    "event_type": "APPROVAL_DECIDED",
+    "approval_id": "021bf7ba-54b4-4139-afa2-ba8d277f1bf3",
+    "queue_type": "distribution_reenable",
+    "requested_by_agent": "agent.recovery.v1",
+    "decision": "rejected",
+    "operator_id": "op_001",
+    "trace_id": "phase8-step1-reject-trace",
+    "payload": {
+      "note": "rejected in segment2 test"
+    },
+    "logged_at_utc": "2026-05-27T04:22:13.574428+00:00"
+  },
+  "approval_queue_write_check": {
+    "approved_doc": {
+      "event_id": "192219b6-aa25-44e4-b5ca-94157f2fba9b",
+      "event_type": "APPROVAL_DECIDED",
+      "approval_id": "b228bcbe-8543-4f6a-b013-aae684794393",
+      "queue_type": "calibration_promotion",
+      "requested_by_agent": "agent.calibration.v1",
+      "decision": "approved",
+      "operator_id": "op_001",
+      "trace_id": "phase8-step1-approve-trace",
+      "payload": {
+        "note": "approved in segment2 test"
+      },
+      "logged_at_utc": "2026-05-27T04:22:13.548813+00:00"
+    },
+    "rejected_doc": {
+      "event_id": "1e0d5858-184a-435f-afdc-12168d948802",
+      "event_type": "APPROVAL_DECIDED",
+      "approval_id": "021bf7ba-54b4-4139-afa2-ba8d277f1bf3",
+      "queue_type": "distribution_reenable",
+      "requested_by_agent": "agent.recovery.v1",
+      "decision": "rejected",
+      "operator_id": "op_001",
+      "trace_id": "phase8-step1-reject-trace",
+      "payload": {
+        "note": "rejected in segment2 test"
+      },
+      "logged_at_utc": "2026-05-27T04:22:13.574428+00:00"
+    }
+  },
+  "regular_user_jwt_result": {
+    "status_code": 403,
+    "expected": 403
+  }
+}

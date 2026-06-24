@@ -33,7 +33,7 @@ export default function LegalDisclaimer({
             Institutional-Grade Interpretation Notice
           </div>
           <div className="text-light-gray text-xs leading-relaxed">
-            This platform provides statistical model outputs. Edges represent pricing discrepancies between our simulations and the sportsbook line — not guaranteed outcomes. Use these insights as part of your decision framework.
+            This platform provides decision engine outputs. Edges represent pricing discrepancies between our intelligence model and the market-implied line - not guaranteed outcomes. Use these insights as part of your decision framework.
           </div>
         </div>
       </div>

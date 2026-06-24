@@ -29,6 +29,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _normalize_confidence(raw_confidence: Any) -> float:
+    """Normalize confidence values into [0, 1] for calibration-safe metrics."""
+    try:
+        confidence = float(raw_confidence)
+    except (TypeError, ValueError):
+        return 0.5
+
+    # Some legacy records store confidence in percentage points (e.g., 62.5)
+    if confidence > 1.0 and confidence <= 100.0:
+        confidence = confidence / 100.0
+
+    return max(0.0, min(1.0, confidence))
+
+
 # ============================================================================
 # ENHANCED TRUST METRICS WITH CALIBRATION & REGIME TRACKING
 # ============================================================================
@@ -46,6 +60,34 @@ class TrustMetricsService:
     
     def __init__(self):
         self.db = db
+
+    def _load_prediction_confidence(self, prediction_id: Optional[str]) -> float:
+        if not prediction_id:
+            return 0.5
+        pred = self.db["predictions"].find_one(
+            {"prediction_id": prediction_id},
+            {"_id": 0, "p_win": 1, "p_cover": 1, "p_over": 1, "predicted_win_probability": 1, "confidence": 1},
+        )
+        if not pred:
+            return 0.5
+        raw = (
+            pred.get("p_win")
+            or pred.get("p_cover")
+            or pred.get("p_over")
+            or pred.get("predicted_win_probability")
+            or pred.get("confidence")
+            or 0.5
+        )
+        return _normalize_confidence(raw)
+
+    def _load_sport(self, event_id: Optional[str]) -> str:
+        if not event_id:
+            return "UNKNOWN"
+        event = self.db["events"].find_one({"event_id": event_id}, {"_id": 0, "sport_key": 1})
+        sport_key = (event or {}).get("sport_key")
+        if not sport_key:
+            return "UNKNOWN"
+        return str(sport_key).split("_")[-1].upper()
     
     async def calculate_all_metrics(self) -> Dict:
         """
@@ -105,25 +147,27 @@ class TrustMetricsService:
             }
         """
         # 7-day metrics (use ISO string for comparison)
-        seven_days_ago = (now_utc() - timedelta(days=7)).isoformat()
-        seven_day_preds = list(self.db['monte_carlo_simulations'].find({
+        seven_days_ago = now_utc() - timedelta(days=7)
+        seven_day_preds = list(self.db['grading'].find({
+            'bet_status': 'SETTLED',
             'graded_at': {'$gte': seven_days_ago},
-            'status': {'$in': ['WIN', 'LOSS', 'PUSH']}
+            'result_code': {'$in': ['WIN', 'LOSS', 'PUSH']}
         }))
         
-        seven_day_wins = len([p for p in seven_day_preds if p.get('status') == 'WIN'])
-        seven_day_total = len([p for p in seven_day_preds if p.get('status') in ['WIN', 'LOSS']])
+        seven_day_wins = len([p for p in seven_day_preds if p.get('result_code') == 'WIN'])
+        seven_day_total = len([p for p in seven_day_preds if p.get('result_code') in ['WIN', 'LOSS']])
         seven_day_accuracy = (seven_day_wins / seven_day_total * 100) if seven_day_total > 0 else 0
         
         # 30-day metrics (use ISO string for comparison)
-        thirty_days_ago = (now_utc() - timedelta(days=30)).isoformat()
-        thirty_day_preds = list(self.db['monte_carlo_simulations'].find({
+        thirty_days_ago = now_utc() - timedelta(days=30)
+        thirty_day_preds = list(self.db['grading'].find({
+            'bet_status': 'SETTLED',
             'graded_at': {'$gte': thirty_days_ago},
-            'status': {'$in': ['WIN', 'LOSS', 'PUSH']}
+            'result_code': {'$in': ['WIN', 'LOSS', 'PUSH']}
         }))
         
-        thirty_day_units = sum([p.get('units_won', 0) for p in thirty_day_preds])
-        thirty_day_total = len([p for p in thirty_day_preds if p.get('status') in ['WIN', 'LOSS']])
+        thirty_day_units = sum([p.get('unit_return', 0) for p in thirty_day_preds])
+        thirty_day_total = len([p for p in thirty_day_preds if p.get('result_code') in ['WIN', 'LOSS']])
         thirty_day_roi = (thirty_day_units / thirty_day_total * 100) if thirty_day_total > 0 else 0
         
         # Brier score (lower is better, measures calibration)
@@ -132,10 +176,10 @@ class TrustMetricsService:
         return {
             '7day_accuracy': round(seven_day_accuracy, 1),
             '7day_record': f"{seven_day_wins}-{seven_day_total - seven_day_wins}",
-            '7day_units': round(sum([p.get('units_won', 0) for p in seven_day_preds]), 2),
+            '7day_units': round(sum([p.get('unit_return', 0) for p in seven_day_preds]), 2),
             '30day_roi': round(thirty_day_roi, 1),
             '30day_units': round(thirty_day_units, 2),
-            '30day_record': f"{len([p for p in thirty_day_preds if p.get('status') == 'WIN'])}-{len([p for p in thirty_day_preds if p.get('status') == 'LOSS'])}",
+            '30day_record': f"{len([p for p in thirty_day_preds if p.get('result_code') == 'WIN'])}-{len([p for p in thirty_day_preds if p.get('result_code') == 'LOSS'])}",
             'brier_score': round(brier_score, 3),
             'total_predictions': thirty_day_total
         }
@@ -151,27 +195,28 @@ class TrustMetricsService:
                 ...
             }
         """
-        thirty_days_ago = (now_utc() - timedelta(days=30)).isoformat()
-        sports = ['NBA', 'NFL', 'MLB', 'NHL', 'NCAAB', 'NCAAF']
+        thirty_days_ago = now_utc() - timedelta(days=30)
+        sports = ['NBA', 'NFL', 'MLB', 'NHL', 'NCAAB', 'NCAAF', 'UNKNOWN']
         
         sport_metrics = {}
         
         for sport in sports:
-            sport_preds = list(self.db['monte_carlo_simulations'].find({
+            all_settled = list(self.db['grading'].find({
+                'bet_status': 'SETTLED',
                 'graded_at': {'$gte': thirty_days_ago},
-                'sport': sport,
-                'status': {'$in': ['WIN', 'LOSS', 'PUSH']}
+                'result_code': {'$in': ['WIN', 'LOSS', 'PUSH']}
             }))
+            sport_preds = [g for g in all_settled if self._load_sport(g.get('event_id')) == sport]
             
             if len(sport_preds) == 0:
                 continue
             
-            wins = len([p for p in sport_preds if p.get('status') == 'WIN'])
-            losses = len([p for p in sport_preds if p.get('status') == 'LOSS'])
+            wins = len([p for p in sport_preds if p.get('result_code') == 'WIN'])
+            losses = len([p for p in sport_preds if p.get('result_code') == 'LOSS'])
             total = wins + losses
             
             accuracy = (wins / total * 100) if total > 0 else 0
-            units = sum([p.get('units_won', 0) for p in sport_preds])
+            units = sum([p.get('unit_return', 0) for p in sport_preds])
             roi = (units / total * 100) if total > 0 else 0
             
             sport_metrics[sport] = {
@@ -197,24 +242,25 @@ class TrustMetricsService:
                 "low_confidence": {"predicted": 0.52, "actual": 0.51, "count": 30}
             }
         """
-        thirty_days_ago = (now_utc() - timedelta(days=30)).isoformat()
-        
-        all_preds = list(self.db['monte_carlo_simulations'].find({
+        thirty_days_ago = now_utc() - timedelta(days=30)
+
+        all_preds = list(self.db['grading'].find({
+            'bet_status': 'SETTLED',
             'graded_at': {'$gte': thirty_days_ago},
-            'status': {'$in': ['WIN', 'LOSS']}
+            'result_code': {'$in': ['WIN', 'LOSS']}
         }))
         
         # Bucket by confidence level
-        high_conf = [p for p in all_preds if p.get('confidence', 0) >= 0.75]
-        medium_conf = [p for p in all_preds if 0.60 <= p.get('confidence', 0) < 0.75]
-        low_conf = [p for p in all_preds if p.get('confidence', 0) < 0.60]
+        high_conf = [p for p in all_preds if self._load_prediction_confidence(p.get('prediction_id')) >= 0.75]
+        medium_conf = [p for p in all_preds if 0.60 <= self._load_prediction_confidence(p.get('prediction_id')) < 0.75]
+        low_conf = [p for p in all_preds if self._load_prediction_confidence(p.get('prediction_id')) < 0.60]
         
         def calc_calibration(preds):
             if len(preds) == 0:
                 return {"predicted": 0, "actual": 0, "count": 0}
             
-            avg_predicted = sum([p.get('confidence', 0) for p in preds]) / len(preds)
-            wins = len([p for p in preds if p.get('status') == 'WIN'])
+            avg_predicted = sum([self._load_prediction_confidence(p.get('prediction_id')) for p in preds]) / len(preds)
+            wins = len([p for p in preds if p.get('result_code') == 'WIN'])
             actual_accuracy = wins / len(preds)
             
             return {
@@ -239,8 +285,9 @@ class TrustMetricsService:
                 ...
             ]
         """
-        recent = list(self.db['monte_carlo_simulations'].find({
-            'status': {'$in': ['WIN', 'LOSS', 'PUSH']}
+        recent = list(self.db['grading'].find({
+            'bet_status': 'SETTLED',
+            'result_code': {'$in': ['WIN', 'LOSS', 'PUSH']}
         }).sort('graded_at', -1).limit(10))
         
         results = []
@@ -259,10 +306,10 @@ class TrustMetricsService:
             
             results.append({
                 'game': f"{event.get('away_team')} vs {event.get('home_team')}",
-                'sport': pred.get('sport', 'NBA'),
-                'result': pred.get('status'),
-                'confidence': round(pred.get('confidence', 0), 2),
-                'units_won': pred.get('units_won', 0),
+                'sport': self._load_sport(pred.get('event_id')),
+                'result': pred.get('result_code'),
+                'confidence': round(self._load_prediction_confidence(pred.get('prediction_id')), 2),
+                'units_won': pred.get('unit_return', 0),
                 'graded_at': graded_at_str
             })
         
@@ -284,9 +331,10 @@ class TrustMetricsService:
         yesterday_start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
         yesterday_end = yesterday_start + timedelta(days=1)
         
-        yesterday_preds = list(self.db['monte_carlo_simulations'].find({
+        yesterday_preds = list(self.db['grading'].find({
+            'bet_status': 'SETTLED',
             'graded_at': {'$gte': yesterday_start, '$lt': yesterday_end},
-            'status': {'$in': ['WIN', 'LOSS']}
+            'result_code': {'$in': ['WIN', 'LOSS']}
         }))
         
         if len(yesterday_preds) == 0:
@@ -297,9 +345,9 @@ class TrustMetricsService:
                 'message': 'No games graded yesterday'
             }
         
-        wins = len([p for p in yesterday_preds if p.get('status') == 'WIN'])
+        wins = len([p for p in yesterday_preds if p.get('result_code') == 'WIN'])
         losses = len(yesterday_preds) - wins
-        units = sum([p.get('units_won', 0) for p in yesterday_preds])
+        units = sum([p.get('unit_return', 0) for p in yesterday_preds])
         accuracy = (wins / len(yesterday_preds) * 100)
         
         return {
@@ -324,8 +372,8 @@ class TrustMetricsService:
         count = 0
         
         for pred in predictions:
-            confidence = pred.get('confidence', 0.5)
-            actual_outcome = 1.0 if pred.get('status') == 'WIN' else 0.0
+            confidence = self._load_prediction_confidence(pred.get('prediction_id'))
+            actual_outcome = 1.0 if pred.get('result_code') == 'WIN' else 0.0
             
             error = (confidence - actual_outcome) ** 2
             total_error += error
@@ -378,15 +426,16 @@ class TrustMetricsService:
             day_start = (now_utc() - timedelta(days=i)).replace(hour=0, minute=0, second=0)
             day_end = day_start + timedelta(days=1)
             
-            day_preds = list(self.db['monte_carlo_simulations'].find({
+            day_preds = list(self.db['grading'].find({
+                'bet_status': 'SETTLED',
                 'graded_at': {'$gte': day_start, '$lt': day_end},
-                'status': {'$in': ['WIN', 'LOSS']}
+                'result_code': {'$in': ['WIN', 'LOSS']}
             }))
             
             if len(day_preds) > 0:
-                wins = len([p for p in day_preds if p.get('status') == 'WIN'])
+                wins = len([p for p in day_preds if p.get('result_code') == 'WIN'])
                 accuracy = (wins / len(day_preds) * 100)
-                units = sum([p.get('units_won', 0) for p in day_preds])
+                units = sum([p.get('unit_return', 0) for p in day_preds])
                 
                 trend.append({
                     'date': day_start.strftime('%Y-%m-%d'),

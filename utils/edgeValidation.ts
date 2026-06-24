@@ -144,14 +144,14 @@ export function validateEdge(input: EdgeValidationInput): EdgeValidationResult {
       summary = `Strong quantitative edge with ${(winProb * 100).toFixed(1)}% win probability and ${spread.toFixed(1)} point model spread. Market appears mispriced.`;
     } else {
       recommendation = `🔥 Valid EDGE detected. All 7 criteria met. High-conviction scenario.`;
-      summary = `Strong quantitative edge with ${passed_rules.length}/7 validation rules passed. Model confidence high, volatility acceptable, sufficient simulation depth.`;
+      summary = `Strong quantitative edge with high model confidence, controlled volatility, and sufficient simulation depth.`;
     }
   } else if (classification === 'LEAN') {
-    recommendation = `⚡ Moderate LEAN identified. ${passed_rules.length}/7 rules passed. Use conservative sizing.`;
-    summary = `Partial edge with ${passed_rules.length}/7 rules met. Consider soft exposure with reduced unit sizing. Failed criteria: ${failed_rules.map(r => r.split(' ')[0]).join(', ')}.`;
+    recommendation = `⚡ Moderate LEAN identified. Use conservative sizing.`;
+    summary = `Partial edge detected. Consider soft exposure with reduced unit sizing. Failed criteria: ${failed_rules.map(r => r.split(' ')[0]).join(', ')}.`;
   } else {
-    recommendation = `⚠️ NEUTRAL projection. Insufficient edge criteria (${passed_rules.length}/7 passed). Avoid action.`;
-    summary = `No actionable edge detected. Only ${passed_rules.length}/7 validation rules passed. Market appears efficiently priced. Recommend passing on this opportunity.`;
+    recommendation = `⚠️ NEUTRAL projection. Insufficient edge criteria. Avoid action.`;
+    summary = `No actionable edge detected. Market appears efficiently priced. Recommend passing on this opportunity.`;
   }
 
   return {

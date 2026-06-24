@@ -24,7 +24,7 @@ class HealthCheckResult:
     
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc)
 
 
 class SystemMonitor:
@@ -90,7 +90,7 @@ class SystemMonitor:
         """
         try:
             # Get last 7 days of calibration data
-            start_date = datetime.now() - timedelta(days=7)
+            start_date = datetime.now(timezone.utc) - timedelta(days=7)
             calibration_data = list(
                 self.db.signals.find({
                     "created_at": {"$gte": start_date},
@@ -148,7 +148,7 @@ class SystemMonitor:
         try:
             # Get last 30 days of graded signals
             signals = await self.db.get_graded_signals(
-                start_date=datetime.now() - timedelta(days=30),
+                start_date=datetime.now(timezone.utc) - timedelta(days=30),
                 edge_state="EDGE"  # Only check EDGE signals
             )
             
@@ -434,7 +434,7 @@ async def run_monitoring_loop():
             results = await monitor.run_full_health_check()
             
             # Log results
-            print(f"[{datetime.now()}] Health check complete:")
+            print(f"[{datetime.now(timezone.utc)}] Health check complete:")
             for result in results:
                 print(f"  {result.check_name}: {result.status} - {result.message}")
         

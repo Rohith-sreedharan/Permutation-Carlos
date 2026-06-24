@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import SubscriberReferralPanel from './SubscriberReferralPanel';
 import { getUserSettings, updateUserSettings, changePassword, enable2FA, verify2FA, disable2FA, get2FAStatus, deleteAccount, beginPasskeyRegistration, completePasskeyRegistration, listPasskeys, deletePasskey } from '../services/api';
+import { canonicalLogout } from '../services/api';
 import { swalSuccess, swalError } from '../utils/swal';
 import LoadingSpinner from './LoadingSpinner';
 import Swal from 'sweetalert2';
@@ -11,6 +13,54 @@ const Settings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [passkeys, setPasskeys] = useState<any[]>([]);
+  // Phase 13 — trial billing state
+  const [trialActive, setTrialActive] = useState(false);
+  const [trialChargeDisplay, setTrialChargeDisplay] = useState('');
+  const [trialSubId, setTrialSubId] = useState('');
+  const [cancellingTrial, setCancellingTrial] = useState(false);
+  const [trialCancelled, setTrialCancelled] = useState(false);
+
+  // Phase 13: Load trial status for billing section
+  useEffect(() => {
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    if (!token) return;
+    fetch('/api/trial/status', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (data.trial_active) {
+          setTrialActive(true);
+          setTrialChargeDisplay(data.charge_display || '');
+          setTrialSubId(data.stripe_subscription_id || '');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleCancelTrial = async () => {
+    setCancellingTrial(true);
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    try {
+      const resp = await fetch('/api/trial/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ stripe_subscription_id: trialSubId }),
+      });
+      if (resp.ok) {
+        setTrialActive(false);
+        setTrialCancelled(true);
+        swalSuccess('Trial cancelled. No charge will be made.');
+      } else {
+        swalError('Unable to cancel trial. Please try again.');
+      }
+    } catch {
+      swalError('A network error occurred. Please try again.');
+    } finally {
+      setCancellingTrial(false);
+    }
+  };
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -227,9 +277,8 @@ const Settings: React.FC = () => {
       try {
         await deleteAccount(result.value.password, result.value.confirmation);
         await swalSuccess('Account Deleted', 'Your account has been deleted. Redirecting...');
-        // Clear token and redirect to login
-        localStorage.removeItem('authToken');
-        setTimeout(() => window.location.href = '/auth', 1500);
+        // Use canonical logout (handles iOS Safari token clearing)
+        setTimeout(() => canonicalLogout(), 1500);
       } catch (err: any) {
         await swalError('Failed', err.message || 'Failed to delete account');
       }
@@ -400,10 +449,41 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* Phase 13 — Billing Section (trial cancel entry point #2) */}
+      {(trialActive || trialCancelled) && (
+        <div className="bg-charcoal rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold text-white mb-4">Billing</h3>
+          {trialCancelled ? (
+            <p className="text-neon-green text-sm">✓ Trial cancelled. No charge will be made.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-[#1e2d0a] border border-[#3d5c14] rounded-lg p-4">
+                <p className="text-[#9dc94a] text-sm font-medium mb-1">Free trial active</p>
+                {trialChargeDisplay && (
+                  <p className="text-light-gray text-xs">
+                    Your card will be charged <strong className="text-white">$97/month</strong> on{' '}
+                    <strong className="text-white">{trialChargeDisplay}</strong> unless you cancel first.
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleCancelTrial}
+                disabled={cancellingTrial}
+                className="w-full text-left px-4 py-3 bg-bold-red/20 rounded-lg text-bold-red hover:bg-bold-red/30 transition-colors disabled:opacity-50"
+              >
+                {cancellingTrial ? 'Cancelling trial…' : 'Cancel Trial'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Phase 13.18 — Subscriber Referral Program */}
+      <SubscriberReferralPanel />
+
       {/* Account Section */}
       <div className="bg-charcoal rounded-lg shadow-lg p-6">
-        <h3 className="text-xl font-bold text-white mb-4">Account</h3>
-        <div className="space-y-3">
+        <h3 className="text-xl font-bold text-white mb-4">Account</h3>        <div className="space-y-3">
           <button 
             onClick={handleChangePassword}
             className="w-full text-left px-4 py-3 bg-navy rounded-lg text-white hover:bg-navy/80 transition-colors"

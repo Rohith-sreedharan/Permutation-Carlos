@@ -32,7 +32,7 @@ export const ModelContextCard: React.FC<ModelContextCardProps> = ({
   const modelPrediction = model_context.prediction || 0.5;
   const volatilityIndex = model_context.volatility_index || 'unknown';
   const modelConfidence = model_context.confidence_score || 0;
-  const pickState = model_context.pick_state || 'NEUTRAL';
+  const pickState = model_context.pick_state || 'MARKET_ALIGNED';
 
   // Detect disagreement
   const userIsHighConfidence = user_confidence === 'high';
@@ -61,7 +61,7 @@ export const ModelContextCard: React.FC<ModelContextCardProps> = ({
           <p className="font-bold text-white">
             {pickState === 'PICK' && '✓ PICK'}
             {pickState === 'LEAN' && '→ LEAN'}
-            {pickState === 'NEUTRAL' && '◇ NEUTRAL'}
+            {(pickState === 'NEUTRAL' || pickState === 'MARKET_ALIGNED') && '⚖️ MARKET ALIGNED'}
             {pickState === 'AVOID' && '⚠ AVOID'}
           </p>
         </div>

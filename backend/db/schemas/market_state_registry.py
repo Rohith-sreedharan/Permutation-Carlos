@@ -14,7 +14,7 @@ All downstream features MUST read from this table:
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
@@ -198,11 +198,11 @@ class MarketStateRegistry(BaseModel):
     
     # Timestamps
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When registry entry was created"
     )
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Last update timestamp"
     )
     expires_at: Optional[datetime] = Field(

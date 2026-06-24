@@ -22,31 +22,28 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
         loadUser();
     }, []);
 
-    // Format tier name for display
-    const getTierDisplay = (tier: string) => {
-        const tierMap: Record<string, string> = {
-            'free': 'Free Tier',
-            'starter': 'Starter',
-            'core': 'Core',
-            'pro': 'Pro',
-            'elite': 'Elite 👑',
-            'sharps_room': 'Sharps Room',
-            'founder': 'Founder 👑'
-        };
-        return tierMap[tier?.toLowerCase()] || 'Starter';
+    const getAccessDisplay = (profile: any) => {
+        if (profile?.platform_access) return 'BeatVegas Platform';
+        if (profile?.telegram_access) return 'Telegram Syndicate';
+        return 'No active subscription';
     };
 
     return (
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center space-y-4 sm:space-y-0">
-            <h1 className="text-4xl font-bold text-white font-teko">{title}</h1>
-            <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center space-y-4 sm:space-y-0 pb-2">
+                        <h1
+                               className="text-lg sm:text-2xl md:text-4xl font-bold text-white font-teko tracking-tight leading-tight max-w-full wrap-break-word"
+                            title={title}
+                        >
+                            {title}
+                        </h1>
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 w-full sm:w-auto">
                 {children}
                 {user && (
                     <div className="flex items-center space-x-3">
                         <img src={user.avatarUrl} alt="User Avatar" className="w-10 h-10 rounded-full" />
                         <div>
                             <p className="font-semibold text-white">{user.username}</p>
-                            <p className="text-xs text-light-gray">{getTierDisplay(user.tier)}</p>
+                            <p className="text-xs text-light-gray">{getAccessDisplay(user)}</p>
                         </div>
                     </div>
                 )}

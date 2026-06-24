@@ -12,6 +12,78 @@ from core.ai_stub import enhance_predictions
 
 router = APIRouter(prefix="/api/core", tags=["core"])
 
+INTERNAL_EMAIL_BLOCKLIST = {
+    "beatvegasapp@gmail.com",
+}
+INTERNAL_PREFIX_BLOCKLIST = (
+    "phase9_",
+    "p11_",
+    "ev_",
+    "audit_",
+)
+INTERNAL_NAME_BLOCKLIST = {
+    "probe",
+}
+INTERNAL_USERNAME_BLOCKLIST = {
+    "deleted_user_bc03814a",
+}
+INTERNAL_EMAIL_DOMAIN_BLOCKLIST = [
+    "@beatvas-test.internal",
+    "@beatvegas-qa.internal",
+    "@beatvegas-test.internal",
+]
+INTERNAL_USERNAME_PREFIX_BLOCKLIST = [
+    "phase9_",
+    "p11_",
+    "ev_",
+    "audit_",
+    "phase13",
+    "popup_",
+    "trialtest_",
+    "phase13_",
+    "dup_",
+    "self_",
+]
+INTERNAL_STATUS_BLOCKLIST = {
+    "deleted",
+    "test",
+    "internal",
+}
+
+
+def _norm(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
+def _is_internal_user(doc: Dict[str, Any]) -> bool:
+    email = _norm(doc.get("email"))
+    username = _norm(doc.get("username"))
+    name = _norm(doc.get("name") or doc.get("display_name"))
+    status = _norm(doc.get("status") or doc.get("account_status") or doc.get("user_status"))
+
+    identifiers = [email, username, name]
+
+    if email in INTERNAL_EMAIL_BLOCKLIST:
+        return True
+    if any(domain in email for domain in INTERNAL_EMAIL_DOMAIN_BLOCKLIST):
+        return True
+    if username in INTERNAL_USERNAME_BLOCKLIST:
+        return True
+    if any(username.startswith(prefix) for prefix in INTERNAL_USERNAME_PREFIX_BLOCKLIST):
+        return True
+    if username.startswith("deleted_user_"):
+        return True
+    if status in INTERNAL_STATUS_BLOCKLIST:
+        return True
+    if any(value in INTERNAL_NAME_BLOCKLIST for value in identifiers if value):
+        return True
+    if any(value.startswith(INTERNAL_PREFIX_BLOCKLIST) for value in identifiers if value):
+        return True
+
+    return False
+
 
 def ts() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -107,13 +179,23 @@ def get_leaderboard(limit: int = 10):
     """
     try:
         from db.mongo import db as _db
-        users_docs = list(_db['users'].find().limit(limit))
+        users_docs = list(_db['users'].find().limit(max(limit * 5, 50)))
     except Exception:
         users_docs = []
 
     out = []
+    seen_user_keys = set()
     rank = 1
     for u in users_docs:
+        if _is_internal_user(u):
+            continue
+
+        dedupe_key = _norm(u.get("username") or u.get("user_id") or u.get("id") or u.get("email") or u.get("_id"))
+        if dedupe_key and dedupe_key in seen_user_keys:
+            continue
+        if dedupe_key:
+            seen_user_keys.add(dedupe_key)
+
         out.append({
             "id": str(u.get("_id")),
             "rank": rank,
@@ -123,6 +205,8 @@ def get_leaderboard(limit: int = 10):
             "streaks": u.get("streaks", 0),
         })
         rank += 1
+        if len(out) >= limit:
+            break
 
     return {"count": len(out), "leaderboard": out}
 
@@ -198,13 +282,23 @@ def get_top_analysts(limit: int = 10):
     """Return top analysts list derived from users or predictions when possible."""
     try:
         from db.mongo import db as _db
-        users_docs = list(_db['users'].find().limit(limit))
+        users_docs = list(_db['users'].find().limit(max(limit * 5, 50)))
     except Exception:
         users_docs = []
 
     out = []
+    seen_user_keys = set()
     rank = 1
     for u in users_docs:
+        if _is_internal_user(u):
+            continue
+
+        dedupe_key = _norm(u.get("username") or u.get("user_id") or u.get("id") or u.get("email") or u.get("_id"))
+        if dedupe_key and dedupe_key in seen_user_keys:
+            continue
+        if dedupe_key:
+            seen_user_keys.add(dedupe_key)
+
         out.append({
             "id": str(u.get("_id")),
             "rank": rank,
@@ -213,5 +307,7 @@ def get_top_analysts(limit: int = 10):
             "units": u.get("units", 0),
         })
         rank += 1
+        if len(out) >= limit:
+            break
 
     return {"count": len(out), "analysts": out}

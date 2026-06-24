@@ -19,7 +19,9 @@
  */
 
 // Environment config
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+import { API_BASE_URL } from './api';
+import { API_BASE_URL } from './api';
+
 
 // Allowed event names (MUST match backend)
 export const ALLOWED_EVENTS = [

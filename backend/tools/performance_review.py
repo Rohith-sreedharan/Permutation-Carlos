@@ -41,7 +41,7 @@ class PerformanceReviewer:
         Returns:
             Weekly review report
         """
-        end_date = datetime.now()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(weeks=weeks_back)
         
         print("\n📈 WEEKLY PERFORMANCE REVIEW")
@@ -79,7 +79,7 @@ class PerformanceReviewer:
             Monthly review report
         """
         # Calculate month boundaries
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if month_offset == 0:
             start_date = datetime(now.year, now.month, 1)
             end_date = now
@@ -323,7 +323,7 @@ class PerformanceReviewer:
             "type": "WEEKLY",
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": self.metrics,
             "anomalies": self.anomalies,
             "recommendations": self.recommendations,
@@ -336,7 +336,7 @@ class PerformanceReviewer:
             "type": "MONTHLY",
             "period_start": start.isoformat(),
             "period_end": end.isoformat(),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": self.metrics,
             "anomalies": self.anomalies,
             "recommendations": self.recommendations,

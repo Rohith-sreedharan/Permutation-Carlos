@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { fetchCLVData, fetchPerformanceReport, getUserTier } from '../services/api';
+import { fetchCLVData, fetchPerformanceReport, getSubscriptionStatus , API_BASE_URL } from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import PageHeader from './PageHeader';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 
 interface CLVData {
   picks: Array<{
@@ -41,7 +41,6 @@ const SharpsRoom: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
   const [error, setError] = useState<string | null>(null);
-  const [userTier, setUserTier] = useState<string | null>(null);
   const [showUpgradeCTA, setShowUpgradeCTA] = useState(false);
 
   useEffect(() => {
@@ -51,17 +50,12 @@ const SharpsRoom: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [tierInfo, clv, perf] = await Promise.all([
-        getUserTier(),
+      const [subscriptionStatus, clv, perf] = await Promise.all([
+        getSubscriptionStatus(),
         fetchCLVData(timeRange as '7d' | '30d' | '90d' | 'all'),
         fetchPerformanceReport(timeRange as '7d' | '30d' | '90d' | 'season')
       ]);
-      setUserTier(tierInfo.tier);
-      
-      // Check if user has access to Sharps Room
-      if (tierInfo.tier !== 'sharps_room' && tierInfo.tier !== 'founder') {
-        setShowUpgradeCTA(true);
-      }
+      setShowUpgradeCTA(!Boolean(subscriptionStatus.platform_access));
       
       setCLVData(clv as any); // CLVData type mismatch - backend returns different structure
       setPerfData(perf);

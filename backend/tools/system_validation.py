@@ -110,7 +110,7 @@ class SystemValidator:
     def validate_all(self) -> bool:
         """Run all validation checks"""
         print("🚦 STARTING GLOBAL SYSTEM READINESS VALIDATION")
-        print(f"Timestamp: {datetime.now().isoformat()}\n")
+        print(f"Timestamp: {datetime.now(timezone.utc).isoformat()}\n")
         
         # 1️⃣ Core Pipeline Integrity
         self.validate_pipeline_integrity()

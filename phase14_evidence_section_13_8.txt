@@ -1,0 +1,47 @@
+user lookup: 69faa2266ee8fd32ae152b31 (expected 69faa2266ee8fd32ae152b31)
+syndicate_price_id=price_1Tep2IDPeJotl54dNzM4biXd
+platform_price_id=price_1Tep2HDPeJotl54ds5lamYj1
+
+============================================================
+SECTION 13.8 — SYNDICATE UPGRADE FLOW — 7 TESTS
+Timestamp: 2026-06-12T00:55:37.877602+00:00
+============================================================
+
+[TEST 1] intelligence_preview → syndicate (invoice.payment_succeeded)
+  user_entitlements: {'active': True, 'tier': 'syndicate'}
+  billing_state_change_log:
+{"id": "6a5253fd-9aad-4e30-977c-29a1188bb4e5", "change_id": "6a5253fd-9aad-4e30-977c-29a1188bb4e5", "user_id": "69faa2266ee8fd32ae152b31", "event_type": "SUBSCRIPTION_ACTIVATED", "trace_id": "32ab08e7-f9a9-42da-bf2f-5f47f8bf96b0", "old_tier": null, "new_tier": "syndicate", "stripe_subscription_id": "sub_s_7f5f5fae", "metadata": {"amount_paid_usd": 39.0, "stripe_invoice_id": "in_t1_31dfc0bd"}, "created_at": "2026-06-12T00:55:37.913240+00:00"}
+
+[TEST 2] Syndicate tier confirmed in user_entitlements
+  PASS tier=syndicate active=True
+
+[TEST 3] syndicate → platform (customer.subscription.updated)
+  user_entitlements: {'active': True, 'tier': 'platform'}
+  billing_state_change_log:
+{"id": "704eaf8c-efe6-400d-9542-f69bd42c0e86", "change_id": "704eaf8c-efe6-400d-9542-f69bd42c0e86", "user_id": "69faa2266ee8fd32ae152b31", "event_type": "SUBSCRIPTION_TIER_UPDATED", "trace_id": "3d652916-39bf-400b-95a5-5e31d8f64b3d", "old_tier": "syndicate", "new_tier": "platform", "stripe_subscription_id": "sub_p_9081f727", "metadata": {}, "created_at": "2026-06-12T00:55:38.106522+00:00"}
+
+[TEST 4] Platform payment (invoice.payment_succeeded $97)
+  billing_state_change_log:
+{"id": "cff4a1b9-54f9-4a68-aa43-bd9c6f56c88d", "change_id": "cff4a1b9-54f9-4a68-aa43-bd9c6f56c88d", "user_id": "69faa2266ee8fd32ae152b31", "event_type": "SUBSCRIPTION_ACTIVATED", "trace_id": "750c0532-ccc3-4913-a358-d03550bbbecb", "old_tier": null, "new_tier": "platform", "stripe_subscription_id": "sub_p_f9535d5a", "metadata": {"amount_paid_usd": 97.0, "stripe_invoice_id": "in_t4_943cc423"}, "created_at": "2026-06-12T00:55:38.195496+00:00"}
+
+[TEST 5] Payment failed — entitlement NOT immediately revoked
+  tier before=platform/True after=platform/False (no change)
+  billing_state_change_log:
+{"id": "5cd52eba-55ce-4e77-bb87-8eaec7a6be1c", "change_id": "5cd52eba-55ce-4e77-bb87-8eaec7a6be1c", "user_id": "69faa2266ee8fd32ae152b31", "event_type": "PAYMENT_FAILED", "trace_id": "00c9cfd6-ef1e-4a19-8a1f-b516c5527ed3", "old_tier": null, "new_tier": null, "stripe_subscription_id": null, "metadata": {"amount_due_usd": 97.0, "stripe_invoice_id": "in_t5_4bc5f57c", "next_attempt": 1780901000}, "created_at": "2026-06-07T10:53:39.623774+00:00"}
+
+[TEST 6] invoice.created — acknowledged, no entitlement change
+  billing_state_change_log:
+{"id": "db84762a-0124-4d76-9bd5-c19cf8e01585", "change_id": "db84762a-0124-4d76-9bd5-c19cf8e01585", "user_id": "69faa2266ee8fd32ae152b31", "event_type": "INVOICE_CREATED", "trace_id": "55288739-fd3d-4472-bb0d-8adf9b9365fd", "old_tier": null, "new_tier": null, "stripe_subscription_id": null, "metadata": {"stripe_invoice_id": "in_t6_488ecae4", "amount_due_usd": 97.0, "status": "draft"}, "created_at": "2026-06-12T00:55:38.422922+00:00"}
+
+[TEST 7] Cancellation (customer.subscription.deleted)
+  user_entitlements: {'active': False, 'tier': 'platform', 'revoke_reason': 'SUBSCRIPTION_DELETED'}
+  billing_state_change_log:
+{"id": "08e8a4e9-f658-40f2-9440-dddeb12c197e", "change_id": "08e8a4e9-f658-40f2-9440-dddeb12c197e", "user_id": "69faa2266ee8fd32ae152b31", "event_type": "SUBSCRIPTION_CANCELLED", "trace_id": "cdc674e2-99a5-4a31-8010-0cafec33a5ff", "old_tier": "platform", "new_tier": null, "stripe_subscription_id": "sub_cancel_70f294f2", "metadata": {}, "created_at": "2026-06-12T00:55:38.553100+00:00"}
+  sentinel_event_log:
+{"event_type": "SUBSCRIPTION_EXPIRED", "user_id": "69faa2266ee8fd32ae152b31", "reason": "SUBSCRIPTION_DELETED_BY_STRIPE", "trace_id": "cdc674e2-99a5-4a31-8010-0cafec33a5ff", "timestamp": "2026-06-12T00:55:38.573010+00:00"}
+
+============================================================
+Total billing_state_change_log entries for user: 21
+Event types: ['SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_TIER_UPDATED', 'SUBSCRIPTION_ACTIVATED', 'PAYMENT_FAILED', 'INVOICE_CREATED', 'SUBSCRIPTION_CANCELLED', 'SUBSCRIPTION_ACTIVATED', 'CYCLES_RESET', 'SUBSCRIPTION_TIER_UPDATED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_REVOKED', 'INVOICE_CREATED', 'SUBSCRIPTION_CANCELLED', 'SUBSCRIPTION_ACTIVATED', 'CYCLES_RESET', 'SUBSCRIPTION_TIER_UPDATED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_REVOKED', 'INVOICE_CREATED', 'SUBSCRIPTION_CANCELLED']
+SECTION 13.8 — ALL 7 TESTS COMPLETE
+User restored to platform/active

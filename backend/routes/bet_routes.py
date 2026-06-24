@@ -5,10 +5,10 @@ Manual Bet Entry & History Routes
 Allows Free/Standard tier users to manually track their betting activity.
 
 Endpoints:
-- POST /api/bets/manual - Submit a bet manually
-- GET /api/bets/history - Retrieve bet history with filters
-- GET /api/bets/pnl - Calculate profit/loss metrics
-- PUT /api/bets/{bet_id}/settle - Update bet outcome
+- POST /api/tracker/manual - Submit a bet manually
+- GET /api/tracker/history - Retrieve bet history with filters
+- GET /api/tracker/pnl - Calculate profit/loss metrics
+- PUT /api/tracker/{bet_id}/settle - Update bet outcome
 """
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel, validator
@@ -19,7 +19,7 @@ import re
 from ..db.mongo import db
 from ..services.tilt_detection import TiltDetectionService
 
-router = APIRouter(prefix="/api/bets", tags=["bets"])
+router = APIRouter(prefix="/api/tracker", tags=["tracker"])
 
 tilt_service = TiltDetectionService(db)
 

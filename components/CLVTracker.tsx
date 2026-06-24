@@ -21,16 +21,16 @@ export interface CLVStats {
 
 interface CLVTrackerProps {
   userId: string;
-  userTier: 'starter' | 'pro' | 'sharps_room' | 'founder';
+  platformAccess: boolean;
 }
 
-const CLVTracker: React.FC<CLVTrackerProps> = ({ userId, userTier }) => {
+const CLVTracker: React.FC<CLVTrackerProps> = ({ userId, platformAccess }) => {
   const [clvData, setCLVData] = useState<CLVDataPoint[]>([]);
   const [stats, setStats] = useState<CLVStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
 
-  const hasProAccess = ['pro', 'sharps_room', 'founder'].includes(userTier);
+  const hasProAccess = platformAccess;
 
   useEffect(() => {
     if (!hasProAccess) return;
@@ -77,7 +77,7 @@ const CLVTracker: React.FC<CLVTrackerProps> = ({ userId, userTier }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
         </div>
-        <h3 className="text-xl font-bold">CLV Tracking: Pro Feature</h3>
+        <h3 className="text-xl font-bold">CLV Tracking: Platform Feature</h3>
         <p className="text-light-gray max-w-md mx-auto">
           Closing Line Value (CLV) is the ultimate measure of your picks' quality. Track your edge against the market.
         </p>
@@ -102,7 +102,7 @@ const CLVTracker: React.FC<CLVTrackerProps> = ({ userId, userTier }) => {
           </div>
         </div>
         <button className="bg-electric-blue text-white px-6 py-3 rounded-lg font-semibold hover:bg-electric-blue/90 transition">
-          Upgrade to Pro
+          Upgrade to Platform
         </button>
       </div>
     );

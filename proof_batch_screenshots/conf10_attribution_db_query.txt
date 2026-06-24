@@ -1,0 +1,13 @@
+=== CONF 10: ATTRIBUTION DB QUERY ===
+Server: root@67.207.93.88 | Collection: affiliate_attributions
+Query: db.affiliate_attributions.find({}, sort=[('clicked_at_utc', -1)]).limit(5)
+Captured: 2026-06-11T04:08:40 UTC
+
+Results:
+affiliate_id=affiliate-conf10-live | status=PENDING_SIGNUP | clicked_at_utc=2026-06-10T04:49:42.819330+00:00
+affiliate_id=9d4d6663-7397-4022-bd73-77a6764a2ed7 | status=None | clicked_at_utc=None
+affiliate_id=916e4a28-961b-46a4-8054-8ab1d7acfdbc | status=None | clicked_at_utc=None
+affiliate_id=24933737-2536-47f8-8aba-62d4be3a5f8c | status=None | clicked_at_utc=None
+affiliate_id=5f9e9ccd-3e5b-4f78-9b96-6b8ce48b3a91 | status=None | clicked_at_utc=None
+
+CONFIRMED: affiliate-conf10-live attribution record exists with status=PENDING_SIGNUP
